@@ -1,0 +1,6 @@
+{
+  "invoiceNumber": "INV-001",
+  "totalAmount": 1500,
+  "vendorName": "Acme Corp",
+  "dueDate": "2026-05-15"
+}

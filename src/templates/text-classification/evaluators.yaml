@@ -1,0 +1,6 @@
+evaluators:
+  - name: label-match
+    type: exact-diff
+    config:
+      passThreshold: 1.0
+      paths: [label]

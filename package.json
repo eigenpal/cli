@@ -1,0 +1,74 @@
+{
+  "name": "@eigenpal/cli",
+  "version": "0.4.2",
+  "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
+  "keywords": [
+    "eigenpal",
+    "cli",
+    "ai",
+    "agent",
+    "workflow",
+    "llm",
+    "evals",
+    "experiments",
+    "document",
+    "extraction",
+    "ocr"
+  ],
+  "homepage": "https://github.com/eigenpal/cli#readme",
+  "bugs": {
+    "url": "https://github.com/eigenpal/cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eigenpal/cli"
+  },
+  "license": "Apache-2.0",
+  "author": "Eigenpal <hello@eigenpal.com> (https://eigenpal.com)",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "eigenpal": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun src/cli.ts",
+    "build": "bun run generate:skill && bun build src/cli.ts --outdir dist --target node --format esm && rm -rf dist/templates dist/skill && cp -R src/templates dist/templates && cp -R src/skill dist/skill",
+    "generate:skill": "bun scripts/generate-skill-reference.ts",
+    "generate:skill:check": "bun scripts/generate-skill-reference.ts --check",
+    "generate:cli-docs": "bun scripts/generate-cli-docs.ts",
+    "generate:cli-docs:check": "bun scripts/generate-cli-docs.ts --check",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.10.1",
+    "@opentelemetry/api": "^1.9.0",
+    "ajv": "^8.17.1",
+    "commander": "^13.1.0",
+    "fflate": "0.8.2",
+    "nanoid": "^5.0.9",
+    "openai": "^6.27.0",
+    "picocolors": "^1.1.1",
+    "quickjs-emscripten": "^0.31.0",
+    "yaml": "^2.7.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@t3-oss/env-core": "^0.13.11",
+    "bun-types": "latest",
+    "prettier": "^3.8.1",
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ]
+}

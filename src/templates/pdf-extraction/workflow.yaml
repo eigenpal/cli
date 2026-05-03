@@ -1,0 +1,38 @@
+name: __NAME__
+version: 1.0.0
+description: Parse a PDF and extract structured fields with an LLM.
+
+triggerMethods:
+  - api
+
+inputs:
+  - name: document
+    type: file
+    file: true
+    description: PDF or image to extract from
+
+steps:
+  - name: parse
+    type: ai.document-parser
+    with:
+      file: '{{ input.document }}'
+      parser: auto
+
+  - name: extract
+    type: ai.extract
+    with:
+      input: '{{ steps.parse.output.text }}'
+      schema:
+        type: object
+        properties:
+          invoiceNumber: { type: string }
+          totalAmount: { type: number }
+          vendorName: { type: string }
+          dueDate: { type: string, format: date }
+        required: [invoiceNumber, totalAmount, vendorName]
+
+output:
+  invoiceNumber: '{{ steps.extract.output.invoiceNumber }}'
+  totalAmount: '{{ steps.extract.output.totalAmount }}'
+  vendorName: '{{ steps.extract.output.vendorName }}'
+  dueDate: '{{ steps.extract.output.dueDate | default: null }}'

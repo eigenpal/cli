@@ -1,0 +1,28 @@
+name: hello-world
+version: 1.0.0
+description: Smallest possible workflow — echoes the input back through transform.script.
+
+triggerMethods:
+  - api
+
+inputs:
+  - name: text
+    type: string
+
+steps:
+  - name: echo
+    type: transform.script
+    with:
+      inputs:
+        text: '{{ input.text }}'
+      code: |
+        return { length: text.length, original: text };
+      outputSchema:
+        type: object
+        properties:
+          length: { type: number }
+          original: { type: string }
+
+output:
+  length: '{{ steps.echo.output.length }}'
+  original: '{{ steps.echo.output.original }}'

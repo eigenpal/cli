@@ -1,0 +1,39 @@
+name: __NAME__
+version: 1.0.0
+description: Replace this with what your workflow does.
+
+# `triggerMethods` controls how this workflow can be invoked:
+#   - api: workflow can be called via the REST API and CLI
+#   - cron: workflow can be scheduled (set `cron` field below)
+triggerMethods:
+  - api
+
+# `inputs` declares the schema of arguments the workflow accepts. Each entry
+# becomes a top-level key on the call's `triggerInput` object. Use `file: true`
+# to mark an input as a file-arg (its value is a `[{ fileId }]` array at
+# runtime; in the dataset folder layout it lives under `input/<name>/`).
+inputs:
+  - name: text
+    type: string
+    description: Free-form text to process
+
+# A pipeline of one or more steps. The first step receives `input.*`; later
+# steps reference earlier outputs via `{{ steps.<name>.output.<field> }}`.
+steps:
+  - name: passthrough
+    type: transform.script
+    with:
+      inputs:
+        text: '{{ input.text }}'
+      code: |
+        return { length: text.length, original: text };
+      outputSchema:
+        type: object
+        properties:
+          length: { type: number }
+          original: { type: string }
+
+# `output` shapes the final return value. References any step's output.
+output:
+  length: '{{ steps.passthrough.output.length }}'
+  original: '{{ steps.passthrough.output.original }}'
