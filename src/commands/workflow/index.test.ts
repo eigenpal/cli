@@ -1,0 +1,193 @@
+import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  bumpSemver,
+  readJsonInput,
+  renderExperimentFailures,
+  spliceWorkflowVersion,
+  summarizeExperimentExecutions,
+} from './index';
+
+describe('readJsonInput', () => {
+  test('returns undefined when neither flag is set (PATCH semantics: leave alone)', async () => {
+    expect(await readJsonInput(undefined, undefined, 'input')).toBeUndefined();
+  });
+
+  test('parses an inline JSON literal', async () => {
+    expect(await readJsonInput('{"language":"en"}', undefined, 'input')).toEqual({
+      language: 'en',
+    });
+    expect(await readJsonInput('[1,2,3]', undefined, 'input')).toEqual([1, 2, 3]);
+    expect(await readJsonInput('"plain string"', undefined, 'input')).toBe('plain string');
+  });
+
+  test('reads JSON from a file path', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-readjson-'));
+    try {
+      const file = join(dir, 'expected.json');
+      writeFileSync(file, '{"data":{"foo":"bar"}}');
+      expect(await readJsonInput(undefined, file, 'expected')).toEqual({
+        data: { foo: 'bar' },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects when both flags are set', async () => {
+    await expect(readJsonInput('{}', '/some/path', 'input')).rejects.toThrow(
+      'pass either --input-json or --input-file, not both'
+    );
+  });
+
+  test('surfaces a clear error on invalid inline JSON', async () => {
+    await expect(readJsonInput('{not json', undefined, 'expected')).rejects.toThrow(
+      /invalid JSON in --expected-json/
+    );
+  });
+
+  test('surfaces a clear error on invalid file JSON', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-readjson-'));
+    try {
+      const file = join(dir, 'broken.json');
+      writeFileSync(file, '{not json');
+      await expect(readJsonInput(undefined, file, 'input')).rejects.toThrow(
+        /invalid JSON in --input-file/
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('summarizeExperimentExecutions', () => {
+  test('counts statuses and reports done when every execution is terminal', () => {
+    const result = summarizeExperimentExecutions([
+      { status: 'completed' },
+      { status: 'completed' },
+      { status: 'failed' },
+    ]);
+    expect(result.total).toBe(3);
+    expect(result.terminal).toBe(3);
+    expect(result.counts).toEqual({ completed: 2, failed: 1 });
+    expect(result.done).toBe(true);
+  });
+
+  test('done=false when any execution is still running', () => {
+    const result = summarizeExperimentExecutions([{ status: 'completed' }, { status: 'running' }]);
+    expect(result.terminal).toBe(1);
+    expect(result.done).toBe(false);
+  });
+
+  test('done=false on an empty result (race: server enqueueing)', () => {
+    const result = summarizeExperimentExecutions([]);
+    expect(result.total).toBe(0);
+    expect(result.done).toBe(false);
+  });
+});
+
+describe('renderExperimentFailures', () => {
+  test('emits one block per failed execution with stderr-only output', () => {
+    const captured = captureStdio(() => {
+      renderExperimentFailures(
+        [
+          { status: 'completed' },
+          { status: 'failed', exampleName: 'ex-1', error: 'boom\nstack', id: 'exec_1' },
+          { status: 'cancelled', error: null, id: 'exec_2' },
+        ] as Parameters<typeof renderExperimentFailures>[0],
+        3
+      );
+    });
+    expect(captured.stdout).toBe('');
+    expect(stripAnsi(captured.stderr)).toContain('✗ 2/3 did not pass');
+    expect(stripAnsi(captured.stderr)).toContain('ex-1');
+    expect(stripAnsi(captured.stderr)).toContain('boom stack');
+    expect(stripAnsi(captured.stderr)).toContain('exec_2');
+    expect(stripAnsi(captured.stderr)).toContain('eigenpal workflow execution get exec_1');
+  });
+
+  test('no-op when there are no failures', () => {
+    const captured = captureStdio(() => {
+      renderExperimentFailures([{ status: 'completed' }], 1);
+    });
+    expect(captured.stdout).toBe('');
+    expect(captured.stderr).toBe('');
+  });
+});
+
+describe('bumpSemver', () => {
+  test('bumps the patch component', () => {
+    expect(bumpSemver('1.2.3', 'patch')).toBe('1.2.4');
+    expect(bumpSemver('0.0.0', 'patch')).toBe('0.0.1');
+  });
+
+  test('bumps minor and zeros patch', () => {
+    expect(bumpSemver('1.2.3', 'minor')).toBe('1.3.0');
+  });
+
+  test('bumps major and zeros minor + patch', () => {
+    expect(bumpSemver('1.2.3', 'major')).toBe('2.0.0');
+  });
+
+  test('rejects non-bare-semver inputs', () => {
+    // Only X.Y.Z is supported — pre-release / build metadata not handled.
+    expect(() => bumpSemver('1.2.3-rc.1', 'patch')).toThrow(/not bare semver/);
+    expect(() => bumpSemver('v1.2.3', 'patch')).toThrow(/not bare semver/);
+    expect(() => bumpSemver('1.2', 'patch')).toThrow(/not bare semver/);
+  });
+});
+
+describe('spliceWorkflowVersion', () => {
+  test('replaces an existing top-level version line in place', () => {
+    const yaml = 'name: foo\nversion: 1.2.3\nsteps: []\n';
+    expect(spliceWorkflowVersion(yaml, '1.2.4')).toBe('name: foo\nversion: 1.2.4\nsteps: []\n');
+  });
+
+  test('handles quoted versions', () => {
+    const yaml = 'name: foo\nversion: "1.2.3"\nsteps: []\n';
+    expect(spliceWorkflowVersion(yaml, '2.0.0')).toContain('version: 2.0.0');
+  });
+
+  test('inserts after `name:` when version is missing', () => {
+    const yaml = 'name: foo\ndescription: x\nsteps: []\n';
+    const out = spliceWorkflowVersion(yaml, '1.0.0');
+    expect(out).toContain('name: foo\nversion: 1.0.0\n');
+  });
+
+  test('prepends version line when name is missing', () => {
+    const yaml = 'description: lone\nsteps: []\n';
+    const out = spliceWorkflowVersion(yaml, '0.1.0');
+    expect(out.startsWith('version: 0.1.0\n')).toBe(true);
+  });
+});
+
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function captureStdio(fn: () => void): { stdout: string; stderr: string } {
+  let stdout = '';
+  let stderr = '';
+  const origLog = console.log;
+  const origStderrWrite = process.stderr.write.bind(process.stderr);
+  console.log = (...args: unknown[]) => {
+    stdout += args.map(String).join(' ') + '\n';
+  };
+
+  (process.stderr as any).write = (chunk: string | Uint8Array) => {
+    stderr += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    return true;
+  };
+  try {
+    fn();
+  } finally {
+    console.log = origLog;
+
+    (process.stderr as any).write = origStderrWrite;
+  }
+  return { stdout, stderr };
+}
