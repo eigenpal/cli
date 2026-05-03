@@ -1,5 +1,6 @@
 import {
   cancel,
+  confirm,
   intro,
   isCancel,
   log,
@@ -142,7 +143,9 @@ async function pickBaseUrlInteractive(): Promise<string> {
     options.push({
       value: url,
       label: url,
-      hint: `(saved profile) from ${profiles.join(', ')}`,
+      // clack already wraps hints in parens — don't pre-wrap "saved profile"
+      // or it renders as ((saved profile) from acme).
+      hint: `saved profile: ${profiles.join(', ')}`,
     });
   }
   options.push({ value: '__custom__', label: 'Custom URL…', hint: 'paste your own' });
@@ -232,27 +235,45 @@ export async function authLogin(flagBaseUrl?: string): Promise<void> {
     baseUrl = await pickBaseUrlInteractive();
   }
 
-  // `?from=cli` is a hint for the dashboard — it can detect the param and
-  // surface a "create a key, copy it back to your terminal" banner. The CLI
-  // doesn't depend on that handler existing today; the dashboard ignores
-  // unknown query params and the copy-paste flow works.
-  const settingsUrl = `${baseUrl}/developers/api-keys?from=cli`;
+  const settingsUrl = `${baseUrl}/developers/api-keys`;
 
-  log.step(`Opening browser at ${ui.dim(settingsUrl)}`);
-  openBrowser(settingsUrl);
-  // Repeat the URL inside the note: openBrowser is best-effort (silently
-  // fails on headless VMs, WSL without xdg-open, restricted containers).
-  // Embedding it in the note means a user whose browser didn't pop has
-  // a copyable URL right next to the prompt instead of having to scroll
-  // back to the dim `log.step` line above.
+  // Explain the flow BEFORE doing anything side-effecting. Mature CLIs
+  // (gh auth login, vercel login) walk the user through what's about to
+  // happen so the browser opening doesn't feel like a black-box action.
+  // Note copy is action-oriented ("Create an API key") rather than
+  // descriptive ("How to authenticate"); the imperative reads as
+  // instructions rather than FAQ.
   note(
-    `If a browser didn't open, visit:\n${ui.bold(settingsUrl)}\n\nCreate a new key (suggested name: ${ui.bold('"Eigenpal CLI"')}), copy it,\nand paste it below. Input is hidden.`,
-    'Next'
+    `${ui.bold('1.')} Open your dashboard:\n` +
+      `   ${ui.bold(settingsUrl)}\n` +
+      `${ui.bold('2.')} Generate a key (suggested name: ${ui.bold('"Eigenpal CLI"')}).\n` +
+      `${ui.bold('3.')} Copy the key and paste it back here.`,
+    'Create an API key'
   );
+
+  // Default Yes — the common case is "open it for me." Users on headless
+  // VMs or who already have the dashboard open say No and skip the
+  // best-effort browser launch entirely (no failed-launch noise).
+  const shouldOpen = exitOnCancel(
+    await confirm({
+      message: 'Open the dashboard in your browser?',
+      initialValue: true,
+    })
+  );
+  if (shouldOpen) openBrowser(settingsUrl);
+
+  // Always reprint the URL as a plain line right above the password
+  // prompt, regardless of whether the browser was launched. Two reasons:
+  // (1) terminal-multiplexer users (tmux/screen) sometimes can't select
+  // text out of clack's bordered note box, but `log.info` is unstyled
+  // and selectable; (2) on long-running terminals the note may have
+  // scrolled out of view by the time the user comes back from creating
+  // the key. The URL right above the prompt closes both gaps.
+  log.info(`Dashboard URL: ${ui.bold(settingsUrl)}`);
 
   const key = exitOnCancel(
     await password({
-      message: 'API key (eig_live_…)',
+      message: 'Paste your API key (eig_live_…)',
       mask: '*',
       validate: (value) =>
         value.trim().length > 0

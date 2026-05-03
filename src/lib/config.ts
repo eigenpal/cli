@@ -35,16 +35,19 @@ const DEFAULT_BASE_URL = 'https://studio.eigenpal.com';
  * Profile selection (when env doesn't provide a key):
  *   EIGENPAL_PROFILE > persisted `current` > `default`
  *
- * `EIGENPAL_API_KEY` is a one-off bypass that skips profile lookup
- * entirely (CI use). When set, it short-circuits everything below.
+ * `EIGENPAL_API_KEY` is a one-off bypass intended for CI. When it's set
+ * the profile is **not consulted at all** — including for baseUrl.
+ * Mixing an env apiKey with a stored profile's baseUrl always fails (an
+ * API key is provisioned for one server; using it against another's URL
+ * never works). To target an on-prem server in CI, set both the API key
+ * and `EIGENPAL_BASE_URL`. Otherwise the bypass uses the cloud default.
  */
 export function resolveConfig(flags: { baseUrl?: string; dir?: string }): CliConfig {
-  const profile = readActiveCredentials();
+  const usingEnvKey = !!env.EIGENPAL_API_KEY;
+  const profile = usingEnvKey ? null : readActiveCredentials();
 
   const baseUrl = flags.baseUrl || env.EIGENPAL_BASE_URL || profile?.baseUrl || DEFAULT_BASE_URL;
-
   const apiKey = env.EIGENPAL_API_KEY || profile?.apiKey || '';
-
   const dir = flags.dir || env.EIGENPAL_DIR || './eigenpal';
 
   return {

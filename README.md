@@ -54,6 +54,19 @@ eigenpal workflow execution list <id> --json | jq       # query as JSON
 | **Evaluator**  | Scorers: LLM judge, exact match, custom.                |
 | **Experiment** | Batch run of a workflow over a dataset, scored.         |
 
+## Environment variables
+
+Most users never need to set these — `eigenpal auth login` writes a profile to `~/.config/eigenpal/credentials.json` and every command derives its config from there. Reach for env vars when you can't run an interactive login (CI), need to switch context for one shell, or want to override a single field without editing the credentials file.
+
+| Variable            | Purpose                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `EIGENPAL_API_KEY`  | Bypass the profile entirely. Set in CI to skip `auth login`. When set, `EIGENPAL_BASE_URL` (or the cloud default) is used — the active profile is **not** consulted, so a stale profile can't redirect a CI run to the wrong server. |
+| `EIGENPAL_BASE_URL` | Override the server URL for one command or shell. Pairs with `EIGENPAL_API_KEY` to point CI at an on-prem deployment. Without `EIGENPAL_API_KEY`, this overrides whatever the active profile would have used.                        |
+| `EIGENPAL_PROFILE`  | Switch the active profile for one shell without touching `~/.config/eigenpal/credentials.json`. Useful for ad-hoc context switches: `EIGENPAL_PROFILE=staging eigenpal status`. Persistent equivalent: `eigenpal auth use <name>`.   |
+| `EIGENPAL_DIR`      | Override the workflow project directory used by `init` / `validate`. Defaults to `./eigenpal`.                                                                                                                                       |
+
+Resolution precedence: command-line flags > env vars > active profile > defaults.
+
 ## Support
 
 File issues at [github.com/eigenpal/cli/issues](https://github.com/eigenpal/cli/issues).

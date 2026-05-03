@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.0.0
+## 0.4.3
 
 ### Major Changes
 
@@ -263,6 +263,14 @@
 
   Also scrubs internal references from CLI source ahead of open-sourcing — generic placeholder names in docstrings and test fixtures, internal-tracker IDs stripped from comments, and one user-facing error message updated to point at the public issue tracker.
 
+- be693a3: `EIGENPAL_API_KEY` is now a complete profile bypass — when set, the active profile's `baseUrl` is also ignored (previously the env key was paired with the profile's URL, which is always wrong because an API key is provisioned for one server).
+
+  In CI:
+  - **Cloud:** set `EIGENPAL_API_KEY=eig_live_…` and you get `https://studio.eigenpal.com`.
+  - **On-prem:** set both `EIGENPAL_API_KEY=…` and `EIGENPAL_BASE_URL=https://eigenpal.example.com`.
+
+  Interactive profiles are unchanged: when you log in via `eigenpal auth login`, the profile stores both apiKey and baseUrl, and every subsequent command derives baseUrl from that profile. Set `EIGENPAL_PROFILE=<name>` to switch profiles per-shell without modifying state.
+
 - d41ee8b: CLI: fix `eigenpal status` error UX + harden `formatCliError` for real-world connection failures.
   - `eigenpal status` against an unreachable base URL no longer mis-diagnoses the failure as an auth problem. Previously, `EIGENPAL_BASE_URL=http://localhost:9999 eigenpal status` printed "Authentication check failed; try `eigenpal auth login`" — the wrong rabbit hole. The status command now rethrows non-auth errors (connection refused, DNS NXDOMAIN, timeout, HTML responses, 5xx) so `formatCliError` upstream can surface the right hint: `Could not connect to the server at <url> ... Set EIGENPAL_BASE_URL or pass --base-url <url>.` Only real 401/403 responses are treated as auth failures.
   - `formatCliError` now detects connection failures wrapped in any Error shape — bare `Error('ENOTFOUND ...')`, `Error` with `code: 'ECONNREFUSED'`, and `TypeError('fetch failed')` whose `.cause` carries the underlying error. Previously only `TypeError` whose message contained `fetch`/`URL` was recognized, so `getaddrinfo`-style errors fell through to the generic raw-message branch and lost the URL context.
@@ -282,7 +290,22 @@
   - **Path-rejection error** suggests the corrected origin: instead of just "URL must be the server origin only", it now says e.g. "Try https://studio.eigenpal.com instead of '/api/v1'".
   - **Non-TTY error copy** is consistent across CI and pipe-redirect paths — both name the missing piece (interactive terminal) and the workaround (`--base-url` / env var).
 
+- be693a3: `eigenpal auth login` no longer opens your browser as the very first thing it does. The flow now mirrors mature CLIs (`gh auth login`, `vercel login`):
+  1. **Pick the server** (existing select prompt).
+  2. **Explain the flow** — a clear step-by-step note tells you what's about to happen and surfaces the dashboard URL prominently so you can copy it manually if you prefer.
+  3. **Confirm browser launch** — "Open the dashboard in your browser?" (default Yes). Users on headless VMs, WSL without xdg-open, or who already have the dashboard open can answer No and skip the best-effort browser launch entirely.
+  4. **Paste the API key** — same as before.
+
+  No surprise side effects, no "wait, why did a browser pop?" moment. The URL is also in the explanation note so a failed `openBrowser` doesn't strand you.
+
 - c82a215: `package.json` now carries full npm metadata: `license: Apache-2.0`, `keywords`, `repository`, `bugs`, `homepage`, and `author`. The published tarball also bundles `LICENSE` and `CHANGELOG.md` so the npm page renders the license badge instead of "License: none" and surfaces real keywords for search.
+- ee32a73: Three fixes around the public CLI mirror and login UX:
+  1. **Public mirror keeps history.** `sync_public_cli` no longer wipes `github.com/eigenpal/cli`'s git history on every release. It now clones the existing public repo, replaces the working tree with the new synth output, and pushes one commit per release. Each release adds `release: @eigenpal/cli@X.Y.Z` on top of the previous one. Tags accumulate too.
+  2. **CHANGELOG no longer starts from `0.0.0`.** The `Pin CLI version + apply pending changesets` step in `sync_public_cli` was running `bunx changeset version` _before_ pinning the source `0.0.0-placeholder` to the real release tag, so changeset wrote CHANGELOG headings like `## 0.0.1` while the actual published version was e.g. `0.4.2`. Pin first, then run changeset version, then sed-rewrite the topmost heading to match the real release tag.
+  3. **Login picker copy + URL cleanup.**
+     - Hint `(saved profile)` had double parens because clack auto-wraps hints in parens — was rendering as `((saved profile) from acme)`. Now `saved profile: <names>`.
+     - Dropped `?from=cli` from the dashboard URL — the dashboard ignores the param, and a clean URL is easier to copy/paste/visit manually.
+
 - c82a215: Public README cleanup:
   - Removed the duplicated `# @eigenpal/cli` heading and redundant install snippet that was being prepended to the public mirror's README. The bundled CLI README is already self-contained, so the synth header was just stacking a second title on top.
   - Reordered sections so users hit "what to install + what's available" first: Install → Commands → Use it → Primitives. Primitives is the conceptual reference; it now sits below the hands-on sections instead of above them.
@@ -386,6 +409,7 @@
     installed set.
   - Help description and CLI grouping no longer hard-code Claude Code.
 
+- f13cd4d: Release commits on the public CLI mirror (`github.com/eigenpal/cli`) are now authored by the **EigenPal Release Pal** GitHub App instead of an anonymous bot identity. The App has its own logo and renders as `eigenpal-release-pal[bot]` next to each commit, with the human who triggered the release shown as co-author. No user-visible CLI behavior change — the install path and tarball contents are identical.
 - 71361fd: Review + simplification pass on the recent eval/dataset/error work:
 
   **Bug fixes** surfaced by code review:
