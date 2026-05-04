@@ -11,18 +11,21 @@ eigenpal workflow execution compare <a> <b>           # side-by-side diff of two
 ## 1. Reproduce the failure
 
 ```bash
-eigenpal workflow execution run <workflow-name> <example-name>
+eigenpal workflow execution run <workflow-id> <example-name>
 ```
 
-Streams a live step list as the run progresses. Bails to the prompt
-the moment a step transitions to `failed`.
+`<workflow-id>` is either a `wf_…` id or a slug (the YAML's `name:`
+field). The workflow must be pushed (`eigenpal workflow push`) before
+`execution run` works — only saved workflows execute. Streams a live
+step list as the run progresses. Bails to the prompt the moment a step
+transitions to `failed`.
 
 If the workflow is server-stable and the failure is on a real
 historical execution, skip the rerun and pull the recorded execution
 directly:
 
 ```bash
-eigenpal workflow execution list <wf-id> --status failed --limit 5
+eigenpal workflow execution list <workflow-id> --status failed --limit 5
 eigenpal workflow execution get exec_…
 ```
 
@@ -185,7 +188,7 @@ regressions vs improvements; aggregate stats at the bottom.
 
 **No `--workflow-id` needed.** The server resolves the owning workflow
 from each batch id. Both batches must belong to the same workflow within
-your tenant. (Sibling `experiment` subcommands still take `<wf-id>` as
+your tenant. (Sibling `experiment` subcommands still take `<workflow-id>` as
 the first positional — only `compare` is workflow-agnostic.)
 
 ## 7. Connection vs auth errors
@@ -239,14 +242,14 @@ steps were faked. Re-import the dataset (`workflow dataset push
 
 ```bash
 # Kicks off, prints { batchId, executionIds }
-eigenpal workflow experiment run <wf-id>
+eigenpal workflow experiment run <workflow-id>
 
 # --watch polls until every execution is terminal, prints a per-example
 # failure summary, and exits non-zero if any failed/cancelled.
-eigenpal workflow experiment status <wf-id> --batch-id <id> --watch
+eigenpal workflow experiment status <workflow-id> --batch-id <id> --watch
 
 # Without --watch: one-shot snapshot, no polling. Prefer --watch in CI / agents.
-eigenpal workflow experiment status <wf-id> --batch-id <id>
+eigenpal workflow experiment status <workflow-id> --batch-id <id>
 ```
 
 The terminal `--watch` output looks like:

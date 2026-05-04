@@ -126,7 +126,7 @@ export const ProcessorExecutionContextSchema = z.object({
   jobId: z.string(),
   stepId: z.string(),
   tenantId: z.string(),
-  workflowId: z.string().nullable(), // null if workflow was deleted
+  workflowId: z.string(),
   workerId: z.string().optional(),
 });
 

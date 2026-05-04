@@ -5,7 +5,7 @@ itself is the manifest — there is no top-level `manifest.json`. The
 import endpoint **rejects** archives that contain one (legacy format).
 
 This is the format the CLI builds and ships to
-`eigenpal workflow dataset push <wf-id> --file dataset/`. After it lands
+`eigenpal workflow dataset push <workflow-id> --file dataset/`. After it lands
 on the server, the canonical per-row surface is
 `eigenpal workflow dataset example {get,create,update,delete}` (and
 `dataset list` for a table view) — the local folder is a pre-push
@@ -163,10 +163,10 @@ Reports per-example issues:
 
 ```bash
 # Replace = wipes existing examples for the workflow, uploads the folder fresh.
-eigenpal workflow dataset push <wf-id> --file ./dataset --mode replace
+eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
 
 # Append = adds to whatever's already on the server.
-eigenpal workflow dataset push <wf-id> --file ./dataset --mode append
+eigenpal workflow dataset push <workflow-id> --file ./dataset --mode append
 ```
 
 The endpoint streams progress as NDJSON. The terminal `done` event
@@ -183,8 +183,8 @@ includes `{ created, expectedSet, … }`:
 To inspect or round-trip what's currently on the server:
 
 ```bash
-eigenpal workflow dataset list <wf-id>
-eigenpal workflow dataset pull <wf-id> --out current.zip
+eigenpal workflow dataset list <workflow-id>
+eigenpal workflow dataset pull <workflow-id> --out current.zip
 # (or omit --out to stream the zip to stdout for piping)
 ```
 
@@ -200,8 +200,8 @@ re-zipping and re-uploading the whole folder.
 ### Inspect one example end-to-end
 
 ```bash
-eigenpal workflow dataset example get <wf-id> <example-id>
-eigenpal workflow dataset example get <wf-id> <example-id> --json | jq '.expectedOutput'
+eigenpal workflow dataset example get <workflow-id> <example-id>
+eigenpal workflow dataset example get <workflow-id> <example-id> --json | jq '.expectedOutput'
 ```
 
 Pretty mode prints labelled `Inputs` / `Expected` / `Metadata` sections;
@@ -216,7 +216,7 @@ eigenpal workflow execution get exec_… --json | jq '.output.data' > /tmp/corre
 
 # 2. Patch the example's expected output in place. PATCH semantics:
 #    every flag you omit is left alone.
-eigenpal workflow dataset example update <wf-id> <example-id> \
+eigenpal workflow dataset example update <workflow-id> <example-id> \
   --expected-file /tmp/correct.json
 ```
 
@@ -226,7 +226,7 @@ empty string to clear an annotation: `--annotation ""`.
 ### Add one new example
 
 ```bash
-eigenpal workflow dataset example create <wf-id> \
+eigenpal workflow dataset example create <workflow-id> \
   --name missing-required-field \
   --input-json '{"language":"en"}' \
   --expected-file /tmp/expected.json \
@@ -243,7 +243,7 @@ scalar args + `expected/output.json`-style outputs.
 ### Delete one bad example
 
 ```bash
-eigenpal workflow dataset example delete <wf-id> <example-id> --yes
+eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ```
 
 `--yes` is required for non-TTY shells (CI). Interactive shells may

@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.3
+## 0.4.4
 
 ### Major Changes
 
@@ -255,6 +255,8 @@
   - **`init agent` and bare `agent` now exit 2** instead of 0 when invoked. Both subcommands are reserved-but-unimplemented placeholders, and exiting 0 made it possible for a CI script that misrouted into one of them to silently no-op. POSIX exit 2 ("command exists but isn't usable as invoked") makes the misroute fail loudly. The human-readable "coming soon" stderr message is unchanged.
   - **New `--no-color` global flag.** Disables ANSI colors in all output, matching the convention shared by `gh`, `kubectl`, `npm`, and `terraform`. Equivalent to setting `NO_COLOR=1` in the environment, but takes effect for the current invocation only. Implemented as a lazy picocolors wrapper so the flip propagates to every helper in `lib/ui.ts` (and every downstream caller of `pc`) regardless of when in the command lifecycle the flag is parsed.
 
+- 49a8f94: Fixed a stray `undefined` in the `eigenpal auth login` outro. The success message used `dim(...)` (a stderr printer that returns `void`) inside a template literal where `ui.dim(...)` (the inline string formatter) was meant. The dim "Saved profile X — switch with" hint now renders correctly instead of literal `undefined`.
+- 16c6e83: Updated `@eigenpal/cli` author from `Eigenpal <hello@eigenpal.com>` to `Jedr Blaszyk <jedr@eigenpal.com>`. Surfaces on the npm package page and in `npm view @eigenpal/cli`.
 - b1d2d77: CLI: default `baseUrl` is now `https://studio.eigenpal.com` instead of `http://localhost:3000`.
 
   Affects only the fallback when nothing else is set — the priority chain is `--base-url > EIGENPAL_BASE_URL > active profile > default`. Users who ran `eigenpal auth login` against any environment already have a `baseUrl` in their profile and are unaffected. CI scripts that set `EIGENPAL_API_KEY` but relied on the implicit `localhost:3000` will now hit production; set `EIGENPAL_BASE_URL=http://localhost:3000` if you want the old behavior.

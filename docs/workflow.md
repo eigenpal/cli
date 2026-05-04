@@ -1,10 +1,6 @@
 # eigenpal workflow
 
-> **Auto-generated.** This file is regenerated from the live Commander tree in
-> `packages/cli/src/cli.ts` by `bun run --cwd packages/cli generate:cli-docs`.
-> Do not hand-edit — your changes will be overwritten on the next run.
-
-All workflow operations. Core verbs (list / push / pull / validate) sit directly here; sub-namespaces (versions, evaluators, dataset, experiment, execution, step-type) group operations on each owned resource. The agent surface mirrors this shape 1:1 when it lands.
+Manage workflows: push, pull, run, evaluate.
 
 ## Contents
 
@@ -21,34 +17,34 @@ All workflow operations. Core verbs (list / push / pull / validate) sit directly
   - [Step](#step)
 - [Details](#details)
   - [`eigenpal workflow list [options]`](#eigenpal-workflow-list-options)
-  - [`eigenpal workflow pull [options] <workflowId>`](#eigenpal-workflow-pull-options-workflowid)
+  - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow validate [options]`](#eigenpal-workflow-validate-options)
-  - [`eigenpal workflow clear-local [options] [workflow-slug] [examples...]`](#eigenpal-workflow-clear-local-options-workflow-slug-examples)
-  - [`eigenpal workflow evaluators pull [options] <workflowId>`](#eigenpal-workflow-evaluators-pull-options-workflowid)
-  - [`eigenpal workflow evaluators push [options] <workflowId>`](#eigenpal-workflow-evaluators-push-options-workflowid)
+  - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
+  - [`eigenpal workflow evaluators pull [options] <workflow-id>`](#eigenpal-workflow-evaluators-pull-options-workflow-id)
+  - [`eigenpal workflow evaluators push [options] <workflow-id>`](#eigenpal-workflow-evaluators-push-options-workflow-id)
   - [`eigenpal workflow evaluators validate [options] [path]`](#eigenpal-workflow-evaluators-validate-options-path)
-  - [`eigenpal workflow dataset list [options] <workflowId>`](#eigenpal-workflow-dataset-list-options-workflowid)
-  - [`eigenpal workflow dataset pull [options] <workflowId>`](#eigenpal-workflow-dataset-pull-options-workflowid)
-  - [`eigenpal workflow dataset push [options] <workflowId>`](#eigenpal-workflow-dataset-push-options-workflowid)
-  - [`eigenpal workflow dataset example create [options] <workflowId>`](#eigenpal-workflow-dataset-example-create-options-workflowid)
-  - [`eigenpal workflow dataset example update [options] <workflowId> <exampleId>`](#eigenpal-workflow-dataset-example-update-options-workflowid-exampleid)
-  - [`eigenpal workflow dataset example delete [options] <workflowId> <exampleId>`](#eigenpal-workflow-dataset-example-delete-options-workflowid-exampleid)
-  - [`eigenpal workflow dataset example get [options] <workflowId> <exampleId>`](#eigenpal-workflow-dataset-example-get-options-workflowid-exampleid)
+  - [`eigenpal workflow dataset list [options] <workflow-id>`](#eigenpal-workflow-dataset-list-options-workflow-id)
+  - [`eigenpal workflow dataset pull [options] <workflow-id>`](#eigenpal-workflow-dataset-pull-options-workflow-id)
+  - [`eigenpal workflow dataset push [options] <workflow-id>`](#eigenpal-workflow-dataset-push-options-workflow-id)
+  - [`eigenpal workflow dataset example create [options] <workflow-id>`](#eigenpal-workflow-dataset-example-create-options-workflow-id)
+  - [`eigenpal workflow dataset example update [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-update-options-workflow-id-exampleid)
+  - [`eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-delete-options-workflow-id-exampleid)
+  - [`eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-get-options-workflow-id-exampleid)
   - [`eigenpal workflow dataset validate [options] [path]`](#eigenpal-workflow-dataset-validate-options-path)
-  - [`eigenpal workflow experiment list [options] <workflowId>`](#eigenpal-workflow-experiment-list-options-workflowid)
-  - [`eigenpal workflow experiment run [options] <workflowId>`](#eigenpal-workflow-experiment-run-options-workflowid)
-  - [`eigenpal workflow experiment status [options] <workflowId> <batchId>`](#eigenpal-workflow-experiment-status-options-workflowid-batchid)
-  - [`eigenpal workflow experiment results [options] <workflowId> [batchId]`](#eigenpal-workflow-experiment-results-options-workflowid-batchid)
+  - [`eigenpal workflow experiment list [options] <workflow-id>`](#eigenpal-workflow-experiment-list-options-workflow-id)
+  - [`eigenpal workflow experiment run [options] <workflow-id>`](#eigenpal-workflow-experiment-run-options-workflow-id)
+  - [`eigenpal workflow experiment status [options] <workflow-id> <batchId>`](#eigenpal-workflow-experiment-status-options-workflow-id-batchid)
+  - [`eigenpal workflow experiment results [options] <workflow-id> [batchId]`](#eigenpal-workflow-experiment-results-options-workflow-id-batchid)
   - [`eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`](#eigenpal-workflow-experiment-compare-options-batchida-batchidb)
-  - [`eigenpal workflow execution run [options] <workflow-slug> [examples...]`](#eigenpal-workflow-execution-run-options-workflow-slug-examples)
+  - [`eigenpal workflow execution run [options] <workflow-id> [examples...]`](#eigenpal-workflow-execution-run-options-workflow-id-examples)
   - [`eigenpal workflow execution get [options] <executionId>`](#eigenpal-workflow-execution-get-options-executionid)
-  - [`eigenpal workflow execution list [options] <workflowId>`](#eigenpal-workflow-execution-list-options-workflowid)
+  - [`eigenpal workflow execution list [options] <workflow-id>`](#eigenpal-workflow-execution-list-options-workflow-id)
   - [`eigenpal workflow execution watch [options] <executionId>`](#eigenpal-workflow-execution-watch-options-executionid)
   - [`eigenpal workflow execution compare [options] <executionA> <executionB>`](#eigenpal-workflow-execution-compare-options-executiona-executionb)
   - [`eigenpal workflow execution cancel [options] <executionId>`](#eigenpal-workflow-execution-cancel-options-executionid)
-  - [`eigenpal workflow versions list [options] <workflowId>`](#eigenpal-workflow-versions-list-options-workflowid)
-  - [`eigenpal workflow versions restore [options] <workflowId> <versionId>`](#eigenpal-workflow-versions-restore-options-workflowid-versionid)
+  - [`eigenpal workflow versions list [options] <workflow-id>`](#eigenpal-workflow-versions-list-options-workflow-id)
+  - [`eigenpal workflow versions restore [options] <workflow-id> <versionId>`](#eigenpal-workflow-versions-restore-options-workflow-id-versionid)
   - [`eigenpal workflow step-type list [options]`](#eigenpal-workflow-step-type-list-options)
   - [`eigenpal workflow step-type get [options] <type>`](#eigenpal-workflow-step-type-get-options-type)
   - [`eigenpal workflow evaluator-type list [options]`](#eigenpal-workflow-evaluator-type-list-options)
@@ -60,38 +56,38 @@ All workflow operations. Core verbs (list / push / pull / validate) sit directly
 ```
 workflow
 ├── list
-├── pull <workflowId>
+├── pull <workflow-id>
 ├── push
 ├── evaluators
-│   ├── pull <workflowId>
-│   ├── push <workflowId>
+│   ├── pull <workflow-id>
+│   ├── push <workflow-id>
 │   └── validate [path]
 ├── dataset
-│   ├── list <workflowId>
-│   ├── pull <workflowId>
-│   ├── push <workflowId>
+│   ├── list <workflow-id>
+│   ├── pull <workflow-id>
+│   ├── push <workflow-id>
 │   ├── example
-│   │   ├── create <workflowId>
-│   │   ├── update <workflowId> <exampleId>
-│   │   ├── delete <workflowId> <exampleId>
-│   │   └── get <workflowId> <exampleId>
+│   │   ├── create <workflow-id>
+│   │   ├── update <workflow-id> <exampleId>
+│   │   ├── delete <workflow-id> <exampleId>
+│   │   └── get <workflow-id> <exampleId>
 │   └── validate [path]
 ├── experiment
-│   ├── list <workflowId>
-│   ├── run <workflowId>
-│   ├── status <workflowId> <batchId>
-│   ├── results <workflowId> [batchId]
+│   ├── list <workflow-id>
+│   ├── run <workflow-id>
+│   ├── status <workflow-id> <batchId>
+│   ├── results <workflow-id> [batchId]
 │   └── compare <batchIdA> <batchIdB>
 ├── execution
-│   ├── run <workflow-slug> [examples...]
+│   ├── run <workflow-id> [examples...]
 │   ├── get <executionId>
-│   ├── list <workflowId>
+│   ├── list <workflow-id>
 │   ├── watch <executionId>
 │   ├── compare <executionA> <executionB>
 │   └── cancel <executionId>
 ├── versions
-│   ├── list <workflowId>
-│   └── restore <workflowId> <versionId>
+│   ├── list <workflow-id>
+│   └── restore <workflow-id> <versionId>
 ├── step-type
 │   ├── list
 │   └── get <type>
@@ -99,7 +95,7 @@ workflow
 │   ├── list
 │   └── get <type>
 ├── validate
-├── clear-local [workflow-slug] [examples...]
+├── clear-local [examples...]
 └── step
     └── exec <type>
 ```
@@ -108,62 +104,62 @@ workflow
 
 ### Core
 
-| Command                                                                 | Description                                                                                                                                                                                  |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow list [options]`                                      | List workflows the caller can read.                                                                                                                                                          |
-| `eigenpal workflow pull [options] <workflowId>`                         | Download the YAML definition of the workflow at its current version.                                                                                                                         |
-| `eigenpal workflow push [options]`                                      | Create or update a workflow from a YAML file.                                                                                                                                                |
-| `eigenpal workflow validate [options]`                                  | Local-only validation against the templated project layout: ./workflow.yaml + ./evaluators.yaml + ./dataset/. For targeted validation use `evaluators validate` or `dataset validate`.       |
-| `eigenpal workflow clear-local [options] [workflow-slug] [examples...]` | Delete LOCAL execution artifacts and judge summaries under `./.eigenpal/` (server-side data is never touched). Keeps the latest run per example by default; pass `--all` to wipe everything. |
+| Command                                                 | Description                                                                                                                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow list [options]`                      | List workflows the caller can read.                                                                                                                                                    |
+| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                   |
+| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                          |
+| `eigenpal workflow validate [options]`                  | Local-only validation against the templated project layout: ./workflow.yaml + ./evaluators.yaml + ./dataset/. For targeted validation use `evaluators validate` or `dataset validate`. |
+| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                               |
 
 ### Evaluators
 
-| Command                                                    | Description                                                                                    |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `eigenpal workflow evaluators pull [options] <workflowId>` | Download the workflow's evaluators YAML.                                                       |
-| `eigenpal workflow evaluators push [options] <workflowId>` | Overwrite the workflow's evaluator config from a YAML file.                                    |
-| `eigenpal workflow evaluators validate [options] [path]`   | Validate an evaluators YAML file against the EvalConfig schema. Defaults to ./evaluators.yaml. |
+| Command                                                     | Description                                                                                    |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `eigenpal workflow evaluators pull [options] <workflow-id>` | Download the workflow's evaluators YAML.                                                       |
+| `eigenpal workflow evaluators push [options] <workflow-id>` | Overwrite the workflow's evaluator config from a YAML file.                                    |
+| `eigenpal workflow evaluators validate [options] [path]`    | Validate an evaluators YAML file against the EvalConfig schema. Defaults to ./evaluators.yaml. |
 
 ### Dataset
 
-| Command                                                                       | Description                                                                                                                                                                                                                  |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow dataset list [options] <workflowId>`                       | List eval examples for the workflow.                                                                                                                                                                                         |
-| `eigenpal workflow dataset pull [options] <workflowId>`                       | Download the workflow's dataset as a ZIP archive.                                                                                                                                                                            |
-| `eigenpal workflow dataset push [options] <workflowId>`                       | Replace or extend the workflow's dataset from a ZIP or folder.                                                                                                                                                               |
-| `eigenpal workflow dataset example create [options] <workflowId>`             | Create one eval example without re-uploading the whole dataset. Pair `--input-*` and `--expected-*` flags to seed trigger input + ground truth; `--annotation` is free-form metadata.                                        |
-| `eigenpal workflow dataset example update [options] <workflowId> <exampleId>` | Patch one eval example. Any flag you omit is left alone; pass `--annotation ""` to clear an annotation.                                                                                                                      |
-| `eigenpal workflow dataset example delete [options] <workflowId> <exampleId>` | Delete one eval example by id. Single-row deletes have a small blast radius compared to `dataset push --mode replace`, so there is no interactive confirmation; CI / non-TTY shells must pass `--yes` to acknowledge intent. |
-| `eigenpal workflow dataset example get [options] <workflowId> <exampleId>`    | Fetch one eval example by id, including triggerInput, expectedOutput, and metadata. Pretty sections in human mode; full payload under --json.                                                                                |
-| `eigenpal workflow dataset validate [options] [path]`                         | Validate a dataset folder against the examples/<name>/{input,expected,meta} convention. Defaults to ./dataset/.                                                                                                              |
+| Command                                                                        | Description                                                                                                     |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow dataset list [options] <workflow-id>`                       | List eval examples for the workflow.                                                                            |
+| `eigenpal workflow dataset pull [options] <workflow-id>`                       | Download the workflow's dataset as a ZIP archive.                                                               |
+| `eigenpal workflow dataset push [options] <workflow-id>`                       | Replace or extend the workflow's dataset from a ZIP or folder.                                                  |
+| `eigenpal workflow dataset example create [options] <workflow-id>`             | Create one eval example without re-uploading the dataset.                                                       |
+| `eigenpal workflow dataset example update [options] <workflow-id> <exampleId>` | Patch one eval example. Omitted flags are left alone.                                                           |
+| `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>` | Delete one eval example by id. Non-TTY shells require --yes.                                                    |
+| `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`    | Fetch one eval example with full triggerInput, expectedOutput, and metadata.                                    |
+| `eigenpal workflow dataset validate [options] [path]`                          | Validate a dataset folder against the examples/<name>/{input,expected,meta} convention. Defaults to ./dataset/. |
 
 ### Experiment
 
-| Command                                                                 | Description                                                                                                                                              |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow experiment list [options] <workflowId>`              | List executions for the workflow, newest first.                                                                                                          |
-| `eigenpal workflow experiment run [options] <workflowId>`               | Start a batch eval against the workflow's dataset.                                                                                                       |
-| `eigenpal workflow experiment status [options] <workflowId> <batchId>`  | Aggregate progress for a batch by `batchId`.                                                                                                             |
-| `eigenpal workflow experiment results [options] <workflowId> [batchId]` | Download eval results in CSV or JSON.                                                                                                                    |
-| `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`  | Side-by-side eval-score diff between two experiment batches. Highlights regressions vs improvements per (example, evaluator) and prints aggregate stats. |
+| Command                                                                  | Description                                        |
+| ------------------------------------------------------------------------ | -------------------------------------------------- |
+| `eigenpal workflow experiment list [options] <workflow-id>`              | List executions for the workflow, newest first.    |
+| `eigenpal workflow experiment run [options] <workflow-id>`               | Start a batch eval against the workflow's dataset. |
+| `eigenpal workflow experiment status [options] <workflow-id> <batchId>`  | Aggregate progress for a batch by `batchId`.       |
+| `eigenpal workflow experiment results [options] <workflow-id> [batchId]` | Download eval results in CSV or JSON.              |
+| `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`   | Diff eval scores between two experiment batches.   |
 
 ### Execution
 
-| Command                                                                   | Description                                                                                                                                                           |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow execution run [options] <workflow-slug> [examples...]` | Run a workflow against one or more local examples on the server. Builds the input payload from the local dataset folder.                                              |
-| `eigenpal workflow execution get [options] <executionId>`                 | Fetch a single execution payload. Optionally narrow to one step.                                                                                                      |
-| `eigenpal workflow execution list [options] <workflowId>`                 | List recent executions for a workflow.                                                                                                                                |
-| `eigenpal workflow execution watch [options] <executionId>`               | Stream live status of an execution: vertical step list with adaptive polling (2s while transitioning, 5s steady, 30-min auto-detach). ASCII status badges; pipe-safe. |
-| `eigenpal workflow execution compare [options] <executionA> <executionB>` | Side-by-side comparison of two executions. Highlights status / duration / output diffs per step.                                                                      |
-| `eigenpal workflow execution cancel [options] <executionId>`              | Request cancellation of an execution. Idempotent — already-terminal executions exit 0 with an info line.                                                              |
+| Command                                                                   | Description                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `eigenpal workflow execution run [options] <workflow-id> [examples...]`   | Run a saved workflow against local dataset examples.             |
+| `eigenpal workflow execution get [options] <executionId>`                 | Fetch a single execution payload. Optionally narrow to one step. |
+| `eigenpal workflow execution list [options] <workflow-id>`                | List recent executions for a workflow.                           |
+| `eigenpal workflow execution watch [options] <executionId>`               | Stream live execution status until terminal or 30-min detach.    |
+| `eigenpal workflow execution compare [options] <executionA> <executionB>` | Diff two executions side-by-side, per step.                      |
+| `eigenpal workflow execution cancel [options] <executionId>`              | Cancel an execution. Idempotent on already-terminal runs.        |
 
 ### Versions
 
-| Command                                                                 | Description                                      |
-| ----------------------------------------------------------------------- | ------------------------------------------------ |
-| `eigenpal workflow versions list [options] <workflowId>`                | List historical workflow versions, newest first. |
-| `eigenpal workflow versions restore [options] <workflowId> <versionId>` | Restore the workflow to a previous version.      |
+| Command                                                                  | Description                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `eigenpal workflow versions list [options] <workflow-id>`                | List historical workflow versions, newest first. |
+| `eigenpal workflow versions restore [options] <workflow-id> <versionId>` | Restore the workflow to a previous version.      |
 
 ### Step-type
 
@@ -201,15 +197,15 @@ List workflows the caller can read.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal workflow pull [options] <workflowId>`
+### `eigenpal workflow pull [options] <workflow-id>`
 
 Download the YAML definition of the workflow at its current version.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -243,16 +239,15 @@ Local-only validation against the templated project layout: ./workflow.yaml + ./
 | -------------- | -------- | ------- | -------------------------------------------------------------------------- |
 | `--dir <path>` | no       |         | Project root (defaults to cwd; resolves the three default paths from here) |
 
-### `eigenpal workflow clear-local [options] [workflow-slug] [examples...]`
+### `eigenpal workflow clear-local [options] [examples...]`
 
-Delete LOCAL execution artifacts and judge summaries under `./.eigenpal/` (server-side data is never touched). Keeps the latest run per example by default; pass `--all` to wipe everything.
+Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.
 
 ### Arguments
 
-| Name            | Required | Variadic | Description |
-| --------------- | -------- | -------- | ----------- |
-| `workflow-slug` | no       | no       |             |
-| `examples`      | no       | yes      |             |
+| Name       | Required | Variadic | Description |
+| ---------- | -------- | -------- | ----------- |
+| `examples` | no       | yes      |             |
 
 ### Options
 
@@ -261,15 +256,15 @@ Delete LOCAL execution artifacts and judge summaries under `./.eigenpal/` (serve
 | `--dir <dir>` | no       |         | Local eigenpal directory                                   |
 | `--all`       | no       | `false` | Remove all artifacts, including the latest kept by default |
 
-### `eigenpal workflow evaluators pull [options] <workflowId>`
+### `eigenpal workflow evaluators pull [options] <workflow-id>`
 
 Download the workflow's evaluators YAML.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -278,15 +273,15 @@ Download the workflow's evaluators YAML.
 | `--out <path>`     | no       |         | Write YAML to file instead of stdout |
 | `--base-url <url>` | no       |         | Server base URL                      |
 
-### `eigenpal workflow evaluators push [options] <workflowId>`
+### `eigenpal workflow evaluators push [options] <workflow-id>`
 
 Overwrite the workflow's evaluator config from a YAML file.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -306,15 +301,15 @@ Validate an evaluators YAML file against the EvalConfig schema. Defaults to ./ev
 | ------ | -------- | -------- | ----------- |
 | `path` | no       | no       |             |
 
-### `eigenpal workflow dataset list [options] <workflowId>`
+### `eigenpal workflow dataset list [options] <workflow-id>`
 
 List eval examples for the workflow.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -325,15 +320,15 @@ List eval examples for the workflow.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal workflow dataset pull [options] <workflowId>`
+### `eigenpal workflow dataset pull [options] <workflow-id>`
 
 Download the workflow's dataset as a ZIP archive.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -342,15 +337,15 @@ Download the workflow's dataset as a ZIP archive.
 | `--out <zip>`      | no       |         | Write the dataset ZIP to this path. When omitted, the binary streams to stdout. |
 | `--base-url <url>` | no       |         | Server base URL                                                                 |
 
-### `eigenpal workflow dataset push [options] <workflowId>`
+### `eigenpal workflow dataset push [options] <workflow-id>`
 
 Replace or extend the workflow's dataset from a ZIP or folder.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -362,15 +357,15 @@ Replace or extend the workflow's dataset from a ZIP or folder.
 | `--base-url <url>`         | no       |            | Server base URL                                                                            |
 | `--json`                   | no       |            | Output the raw server response as JSON                                                     |
 
-### `eigenpal workflow dataset example create [options] <workflowId>`
+### `eigenpal workflow dataset example create [options] <workflow-id>`
 
-Create one eval example without re-uploading the whole dataset. Pair `--input-*` and `--expected-*` flags to seed trigger input + ground truth; `--annotation` is free-form metadata.
+Create one eval example without re-uploading the dataset.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -385,16 +380,16 @@ Create one eval example without re-uploading the whole dataset. Pair `--input-*`
 | `--base-url <url>`       | no       |         | Server base URL                                     |
 | `--json`                 | no       |         | Output the raw server response as JSON              |
 
-### `eigenpal workflow dataset example update [options] <workflowId> <exampleId>`
+### `eigenpal workflow dataset example update [options] <workflow-id> <exampleId>`
 
-Patch one eval example. Any flag you omit is left alone; pass `--annotation ""` to clear an annotation.
+Patch one eval example. Omitted flags are left alone.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `exampleId`  | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `exampleId`   | yes      | no       |             |
 
 ### Options
 
@@ -410,16 +405,16 @@ Patch one eval example. Any flag you omit is left alone; pass `--annotation ""` 
 | `--base-url <url>`       | no       |         | Server base URL                                             |
 | `--json`                 | no       |         | Output the raw server response as JSON                      |
 
-### `eigenpal workflow dataset example delete [options] <workflowId> <exampleId>`
+### `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`
 
-Delete one eval example by id. Single-row deletes have a small blast radius compared to `dataset push --mode replace`, so there is no interactive confirmation; CI / non-TTY shells must pass `--yes` to acknowledge intent.
+Delete one eval example by id. Non-TTY shells require --yes.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `exampleId`  | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `exampleId`   | yes      | no       |             |
 
 ### Options
 
@@ -429,16 +424,16 @@ Delete one eval example by id. Single-row deletes have a small blast radius comp
 | `--base-url <url>` | no       |         | Server base URL                                                               |
 | `--json`           | no       |         | Output the raw server response as JSON                                        |
 
-### `eigenpal workflow dataset example get [options] <workflowId> <exampleId>`
+### `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`
 
-Fetch one eval example by id, including triggerInput, expectedOutput, and metadata. Pretty sections in human mode; full payload under --json.
+Fetch one eval example with full triggerInput, expectedOutput, and metadata.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `exampleId`  | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `exampleId`   | yes      | no       |             |
 
 ### Options
 
@@ -457,15 +452,15 @@ Validate a dataset folder against the examples/<name>/{input,expected,meta} conv
 | ------ | -------- | -------- | ----------- |
 | `path` | no       | no       |             |
 
-### `eigenpal workflow experiment list [options] <workflowId>`
+### `eigenpal workflow experiment list [options] <workflow-id>`
 
 List executions for the workflow, newest first.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -477,15 +472,15 @@ List executions for the workflow, newest first.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal workflow experiment run [options] <workflowId>`
+### `eigenpal workflow experiment run [options] <workflow-id>`
 
 Start a batch eval against the workflow's dataset.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -497,16 +492,16 @@ Start a batch eval against the workflow's dataset.
 | `--base-url <url>`  | no       |         | Server base URL                                      |
 | `--json`            | no       |         | Output the raw server response as JSON               |
 
-### `eigenpal workflow experiment status [options] <workflowId> <batchId>`
+### `eigenpal workflow experiment status [options] <workflow-id> <batchId>`
 
 Aggregate progress for a batch by `batchId`.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `batchId`    | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `batchId`     | yes      | no       |             |
 
 ### Options
 
@@ -518,16 +513,16 @@ Aggregate progress for a batch by `batchId`.
 | `--base-url <url>`     | no       |         | Server base URL                                                                             |
 | `--json`               | no       |         | Output the raw server response as JSON                                                      |
 
-### `eigenpal workflow experiment results [options] <workflowId> [batchId]`
+### `eigenpal workflow experiment results [options] <workflow-id> [batchId]`
 
 Download eval results in CSV or JSON.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `batchId`    | no       | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `batchId`     | no       | no       |             |
 
 ### Options
 
@@ -539,7 +534,7 @@ Download eval results in CSV or JSON.
 
 ### `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`
 
-Side-by-side eval-score diff between two experiment batches. Highlights regressions vs improvements per (example, evaluator) and prints aggregate stats.
+Diff eval scores between two experiment batches.
 
 ### Arguments
 
@@ -550,23 +545,23 @@ Side-by-side eval-score diff between two experiment batches. Highlights regressi
 
 ### Options
 
-| Flag                                                   | Required | Default            | Description                                                                                                                           |
-| ------------------------------------------------------ | -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `--sort <abs-delta-desc\|delta-asc\|delta-desc\|name>` | no       | `"abs-delta-desc"` | Row sort order. Default sorts by absolute delta descending so the biggest movers (regressions and improvements alike) are at the top. |
-| `--regression-threshold <n>`                           | no       | `0.05`             | Δ < -threshold is flagged as a regression with ⚠ (default 0.05)                                                                       |
-| `--base-url <url>`                                     | no       |                    | Server base URL                                                                                                                       |
-| `--json`                                               | no       |                    | Output the raw server response as JSON                                                                                                |
+| Flag                                                   | Required | Default            | Description                                            |
+| ------------------------------------------------------ | -------- | ------------------ | ------------------------------------------------------ |
+| `--sort <abs-delta-desc\|delta-asc\|delta-desc\|name>` | no       | `"abs-delta-desc"` | Row sort order (default: biggest movers first)         |
+| `--regression-threshold <n>`                           | no       | `0.05`             | Δ below this is flagged as a regression (default 0.05) |
+| `--base-url <url>`                                     | no       |                    | Server base URL                                        |
+| `--json`                                               | no       |                    | Output the raw server response as JSON                 |
 
-### `eigenpal workflow execution run [options] <workflow-slug> [examples...]`
+### `eigenpal workflow execution run [options] <workflow-id> [examples...]`
 
-Run a workflow against one or more local examples on the server. Builds the input payload from the local dataset folder.
+Run a saved workflow against local dataset examples.
 
 ### Arguments
 
-| Name            | Required | Variadic | Description |
-| --------------- | -------- | -------- | ----------- |
-| `workflow-slug` | yes      | no       |             |
-| `examples`      | no       | yes      |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `examples`    | no       | yes      |             |
 
 ### Options
 
@@ -596,15 +591,15 @@ Fetch a single execution payload. Optionally narrow to one step.
 | `--base-url <url>`  | no       |                                 | Server base URL                                       |
 | `--json`            | no       |                                 | Output the raw server response as JSON                |
 
-### `eigenpal workflow execution list [options] <workflowId>`
+### `eigenpal workflow execution list [options] <workflow-id>`
 
 List recent executions for a workflow.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -618,7 +613,7 @@ List recent executions for a workflow.
 
 ### `eigenpal workflow execution watch [options] <executionId>`
 
-Stream live status of an execution: vertical step list with adaptive polling (2s while transitioning, 5s steady, 30-min auto-detach). ASCII status badges; pipe-safe.
+Stream live execution status until terminal or 30-min detach.
 
 ### Arguments
 
@@ -635,7 +630,7 @@ Stream live status of an execution: vertical step list with adaptive polling (2s
 
 ### `eigenpal workflow execution compare [options] <executionA> <executionB>`
 
-Side-by-side comparison of two executions. Highlights status / duration / output diffs per step.
+Diff two executions side-by-side, per step.
 
 ### Arguments
 
@@ -653,7 +648,7 @@ Side-by-side comparison of two executions. Highlights status / duration / output
 
 ### `eigenpal workflow execution cancel [options] <executionId>`
 
-Request cancellation of an execution. Idempotent — already-terminal executions exit 0 with an info line.
+Cancel an execution. Idempotent on already-terminal runs.
 
 ### Arguments
 
@@ -669,15 +664,15 @@ Request cancellation of an execution. Idempotent — already-terminal executions
 | `--base-url <url>` | no       |         | Server base URL                                                       |
 | `--json`           | no       |         | Output the raw server response as JSON                                |
 
-### `eigenpal workflow versions list [options] <workflowId>`
+### `eigenpal workflow versions list [options] <workflow-id>`
 
 List historical workflow versions, newest first.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
 
 ### Options
 
@@ -688,16 +683,16 @@ List historical workflow versions, newest first.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal workflow versions restore [options] <workflowId> <versionId>`
+### `eigenpal workflow versions restore [options] <workflow-id> <versionId>`
 
 Restore the workflow to a previous version.
 
 ### Arguments
 
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `workflowId` | yes      | no       |             |
-| `versionId`  | yes      | no       |             |
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `versionId`   | yes      | no       |             |
 
 ### Options
 

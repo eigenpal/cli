@@ -2,13 +2,9 @@ import { join } from 'path';
 import { type ApiClient } from '../lib/client';
 import { type ExecutionArtifactPayload, writeExecutionArtifacts } from '../lib/execution-artifacts';
 import { formatCliError } from '../lib/format-error';
-import {
-  buildExamplePayload,
-  buildWorkflowPayload,
-  getExampleNames,
-  resolveEvalBaseDir,
-} from '../lib/payload';
+import { buildExamplePayload, getExampleNames, resolveEvalBaseDir } from '../lib/payload';
 import { createProgressLines } from '../lib/progress-lines';
+import { resolveWorkflowId } from '../lib/resolve-workflow';
 import { dim, info, isTTY, ui } from '../lib/ui';
 
 const POLL_INTERVAL_MS = 2000;
@@ -37,46 +33,43 @@ export interface RunExecOptions {
 }
 
 export interface ExecRunSummary {
-  workflowSlug: string;
+  workflow: string;
   passed: number;
   failed: number;
   total: number;
 }
 
 /**
- * Run exec: for each example, build payload from shared utils, POST /api/v1/execute, poll, show progress.
+ * Run exec: resolve `<workflow>` to a saved workflow id, then for each
+ * example POST inputs to `/api/v1/workflows/<id>/run` and poll. Local YAML
+ * is never sent — the platform's saved version is the source of truth.
  */
 export async function runExec(
   client: ApiClient,
   dir: string,
-  workflowSlug: string,
+  workflowIdOrSlug: string,
   exampleNames: string[],
   options: RunExecOptions = {}
 ): Promise<ExecRunSummary> {
-  const workflow = buildWorkflowPayload(dir, workflowSlug);
-  const names = getExampleNames(dir, workflowSlug, exampleNames.length ? exampleNames : undefined);
+  const workflowId = await resolveWorkflowId(client, workflowIdOrSlug);
+  const names = getExampleNames(dir, exampleNames.length ? exampleNames : undefined);
   if (names.length === 0) throw new Error('No matching eval examples found.');
 
+  // Coerce the override: NaN / 0 / negative all fall back to the default.
+  // Then clamp to [1, names.length] — no point spawning more workers than
+  // examples. Outer Math.max guards against names.length === 1 collapsing to 0
+  // when we've already short-circuited on names.length === 0 above.
   const requested = options.concurrencyOverride ?? DEFAULT_CONCURRENCY;
-  const concurrency = Math.max(
-    1,
-    Math.min(
-      Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_CONCURRENCY,
-      names.length
-    )
-  );
-  // Layout-aware: flat templates write `dataset/examples/<name>/`; legacy
-  // multi-workflow projects use `workflows/<slug>/eval/<name>/`. Resolver
-  // returns whichever exists (flat preferred); `getExampleNames` already
-  // narrowed `names` against the same resolver.
-  const resolvedEval = resolveEvalBaseDir(dir, workflowSlug);
-  if (!resolvedEval) throw new Error('No eval examples directory found.');
-  const evalBaseDir = resolvedEval.baseDir;
+  const requestedValid =
+    Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_CONCURRENCY;
+  const concurrency = Math.max(1, Math.min(requestedValid, names.length));
+  const evalBaseDir = resolveEvalBaseDir(dir);
+  if (!evalBaseDir) throw new Error('No dataset/examples directory found.');
 
   info(
-    `Running workflow ${ui.bold(`"${workflowSlug}"`)} ${ui.dim(`(${names.length} example(s), concurrency ${concurrency})`)}`
+    `Running workflow ${ui.bold(`"${workflowIdOrSlug}"`)} ${ui.dim(`(${workflowId}, ${names.length} example(s), concurrency ${concurrency})`)}`
   );
-  dim('Using execute endpoint.');
+  dim('Using saved-workflow run endpoint.');
 
   const interactive = isTTY();
   const progress = createProgressLines({
@@ -93,6 +86,11 @@ export async function runExec(
   let failed = 0;
   let nextIndex = 0;
 
+  const reportDone = (index: number, label: string): void => {
+    if (interactive) progress.setDone(index, label);
+    else console.log(label);
+  };
+
   const runOne = async (): Promise<void> => {
     while (true) {
       const index = nextIndex++;
@@ -103,46 +101,37 @@ export async function runExec(
       try {
         const example = buildExamplePayload(exampleDir);
 
-        if (!interactive) console.log(`${ui.dim('→')} ${name}`);
-        else progress.setRunning(index);
+        if (interactive) progress.setRunning(index);
+        else console.log(`${ui.dim('→')} ${name}`);
 
-        let executionId: string;
-        try {
-          const res = (await client.post('/api/v1/execute', {
-            yaml: workflow.yaml,
-            input: example.input,
-            overrides: example.overrides ?? undefined,
-            templates: workflow.templates.length ? workflow.templates : undefined,
-            blocks: workflow.blocks.length ? workflow.blocks : undefined,
-          })) as { executionId?: string };
-          if (typeof res?.executionId !== 'string') {
-            throw new Error('Execute API did not return executionId');
-          }
-          executionId = res.executionId;
-        } catch (err) {
-          const msg = formatCliError(err);
-          if (interactive) progress.setDone(index, `${name} ${ui.err('FAIL')} ${msg}`);
-          else console.log(`${name} ${ui.err('FAIL')} ${msg}`);
-          failed++;
-          continue;
+        const res = (await client.post(`/api/v1/workflows/${workflowId}/run`, {
+          input: example.input,
+          overrides: example.overrides ?? undefined,
+          trigger: 'cli',
+        })) as { executionId?: string };
+        if (typeof res?.executionId !== 'string') {
+          throw new Error('Run API did not return executionId');
         }
+        const executionId = res.executionId;
+
         // Surface the id immediately — if polling or artifact-write fails
         // below, the user still has a handle to recover with
         // `eigenpal workflow execution get <id>`.
         process.stderr.write(`  ${ui.dim(`→ ${name}: ${executionId}`)}\n`);
 
         const result = await pollExecution(client, executionId);
-        const label =
+        reportDone(
+          index,
           result.status === 'completed'
             ? `${name} ${ui.ok('PASS')}`
-            : `${name} ${ui.err('FAIL')} ${result.error ?? result.status}`;
-        if (interactive) progress.setDone(index, label);
-        else console.log(label);
+            : `${name} ${ui.err('FAIL')} ${result.error ?? result.status}`
+        );
 
         if (result.status === 'completed') passed++;
         else failed++;
 
-        // Write artifact folder: executions/<executionId>/output.json + files
+        // Write artifact folder: executions/<executionId>/output.json + files.
+        // Failure here doesn't change pass/fail — surface a warning only.
         try {
           const artifact = (await client.get(
             `/api/v1/executions/${executionId}?includeSteps=true`
@@ -154,9 +143,7 @@ export async function runExec(
             console.warn(ui.dim(`  Warning: could not write artifacts: ${formatCliError(artErr)}`));
         }
       } catch (err) {
-        const msg = formatCliError(err);
-        if (interactive) progress.setDone(index, `${name} ${ui.err('FAIL')} ${msg}`);
-        else console.log(`${name} ${ui.err('FAIL')} ${msg}`);
+        reportDone(index, `${name} ${ui.err('FAIL')} ${formatCliError(err)}`);
         failed++;
       }
     }
@@ -170,7 +157,7 @@ export async function runExec(
   );
 
   return {
-    workflowSlug,
+    workflow: workflowIdOrSlug,
     passed,
     failed,
     total: names.length,

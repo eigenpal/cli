@@ -127,6 +127,16 @@ describe('normalizeBaseUrl', () => {
       const r = normalizeBaseUrl('not a url at all !!');
       expect(r.ok).toBe(false);
     });
+
+    it('rejects single-label hostnames (likely typos)', () => {
+      const r = normalizeBaseUrl('sdfsd');
+      expect(r).toEqual({ ok: false, error: expect.stringContaining('looks incomplete') });
+    });
+
+    it('rejects single-label hostnames even when scheme is provided', () => {
+      const r = normalizeBaseUrl('https://asdf');
+      expect(r).toEqual({ ok: false, error: expect.stringContaining('looks incomplete') });
+    });
   });
 
   describe('idempotence', () => {

@@ -130,12 +130,15 @@ export {
   TriggerMethodsSchema,
   TriggerTypeSchema,
   TriggerTypeValue,
+  WORKFLOW_NAME_PATTERN,
   WorkflowDefinitionSchema,
   WorkflowInputDefSchema,
+  WorkflowNameSchema,
   WorkflowSettingsSchema,
   // Trigger method helper functions
   getTriggerMethods,
   hasTriggerMethod,
+  suggestWorkflowName,
   // Trigger method types
   type ApiTriggerMethod,
   type CreateWorkflowDefinition,

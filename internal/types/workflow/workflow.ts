@@ -7,6 +7,46 @@ import {
 import { StepSchema } from './steps';
 
 /**
+ * Workflow `name:` is the human-readable slug. Must be URL-safe and
+ * shell-safe so it can stand in for the workflow id in CLI commands and
+ * URL paths without quoting or percent-encoding. The shape mirrors
+ * `DATASET_NAME_PATTERN` (in `eval/dataset-archive.ts`) — same constraint
+ * for the same kind of identifier.
+ *
+ * Valid:   `my-agent`, `my_agent`, `parse-invoices-v2`, `agent_2`
+ * Invalid: `My Agent`, `My-Agent`, `_leading`, `-leading`, `agent!`
+ */
+export const WORKFLOW_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+/**
+ * Best-effort canonicalization of a free-form string into a valid workflow
+ * name. Lowercases ASCII, replaces every run of non-alphanumeric characters
+ * with `-`, strips leading/trailing `-`/`_`, and clamps to 64 chars. Used
+ * only for the "did you mean" hint — the validator still rejects the
+ * original string.
+ *
+ *   suggestWorkflowName('My Agent')          === 'my-agent'
+ *   suggestWorkflowName('Parse Invoices v2') === 'parse-invoices-v2'
+ *   suggestWorkflowName('--')                === ''   (caller must guard)
+ */
+export function suggestWorkflowName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^[_-]+|[_-]+$/g, '')
+    .slice(0, 64);
+}
+
+export const WorkflowNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    WORKFLOW_NAME_PATTERN,
+    'Workflow name must start with a lowercase letter or digit and contain only lowercase letters, digits, "_" or "-".'
+  );
+
+/**
  * Trigger type - re-exported from processor for consistency
  */
 export const TriggerTypeSchema = ProcessorTriggerTypeSchema;
@@ -125,8 +165,11 @@ export function hasTriggerMethod(
  * Workflow definition - the complete YAML structure
  */
 export const WorkflowDefinitionSchema = z.object({
-  /** Workflow name (identifier) */
-  name: z.string().min(1),
+  /**
+   * Workflow name — also serves as the URL-safe slug. Must match
+   * `WORKFLOW_NAME_PATTERN` (lowercase letters/digits/`_`/`-`, 1–64 chars).
+   */
+  name: WorkflowNameSchema,
   /** Kind: 'workflow' (default) or 'block' (reusable block) */
   kind: z.enum(['workflow', 'block']).default('workflow').optional(),
   /** Semantic version */

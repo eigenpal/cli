@@ -76,7 +76,7 @@ export function ensureEvalArtifactsGitignore(dir: string): void {
   const normalizedBase = base.replace(/\\/g, '/').replace(/^\.\/+/, '');
   const patterns = [
     `${normalizedBase}/**/executions/**`,
-    `${normalizedBase}/workflows/**/eval/llm-judge-summary-*.*`,
+    `${normalizedBase}/dataset/examples/**/llm-judge-summary-*.*`,
   ];
   const legacyPatterns = patterns.map((pattern) => `./${pattern}`);
   const sectionHeader = '# Eigenpal eval artifacts';

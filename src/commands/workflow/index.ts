@@ -22,6 +22,7 @@ import { ApiClient as Client } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { formatEigenpalDirIfAvailable } from '../../lib/format-eigenpal';
 import { action } from '../../lib/format-error';
+import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
   error,
@@ -83,6 +84,28 @@ function buildClient(opts: WorkflowCommandConfig): ApiClient {
   const config = resolveConfig(opts);
   requireApiKey(config);
   return new Client(config);
+}
+
+/**
+ * Convenience for the dozen-plus commands that take `<workflow-id>` and
+ * immediately need both an authenticated client and a resolved
+ * server-side id. Replaces the two-line:
+ *
+ *   const client = buildClient(opts);
+ *   const workflowId = await resolveWorkflowId(client, workflow);
+ *
+ * with a single destructured call. Kept intentionally small — anything
+ * fancier (e.g. wrapping the whole Commander action) would have to thread
+ * Commander's positional/options shape through generics, which costs more
+ * in type noise than the boilerplate it removes.
+ */
+async function buildClientForWorkflow(
+  workflowIdOrSlug: string,
+  opts: WorkflowCommandConfig
+): Promise<{ client: ApiClient; workflowId: string }> {
+  const client = buildClient(opts);
+  const workflowId = await resolveWorkflowId(client, workflowIdOrSlug);
+  return { client, workflowId };
 }
 
 function descriptionFor(tool: WorkflowToolName): string {
@@ -244,8 +267,16 @@ function parseNdjsonEvents(text: string): Array<Record<string, unknown>> {
 export function registerWorkflowCommands(program: Command): void {
   const workflow = program
     .command('workflow')
-    .description(
-      'All workflow operations. Core verbs (list / push / pull / validate) sit directly here; sub-namespaces (versions, evaluators, dataset, experiment, execution, step-type) group operations on each owned resource. The agent surface mirrors this shape 1:1 when it lands.'
+    .description('Manage workflows: push, pull, run, evaluate.')
+    .addHelpText(
+      'after',
+      `
+<workflow-id> accepts a wf_… id (preferred for scripts) or the slug (the
+YAML's \`name:\` field). Both:
+
+  $ eigenpal workflow pull wf_abc123
+  $ eigenpal workflow pull my-extraction
+`
     );
 
   // The "core" verbs operating on the workflow itself live directly on
@@ -272,8 +303,7 @@ export function registerWorkflowCommands(program: Command): void {
   registerAllValidateCommand(workflow);
 
   // Local-only artifact cleanup. Lives under workflow because artifacts are
-  // stored at .eigenpal/workflows/<slug>/eval/. Mirror as `agent clear-local`
-  // when agent eval artifacts get their own subtree.
+  // written under ./dataset/examples/<example>/executions/.
   registerClearLocalCommand(workflow);
 
   // Local single-step execution (transform.script / ai.extract) for the
@@ -332,12 +362,12 @@ function registerWorkflowCoreCommands(parent: Command): void {
   );
 
   const pullCmd = parent
-    .command('pull <workflowId>')
+    .command('pull <workflow-id>')
     .description(descriptionFor('workflow_get_definition'))
     .option('--out <path>', 'Write YAML to file instead of stdout');
   withBaseUrl(pullCmd).action(
-    action(async (workflowId: string, opts: WorkflowCommandConfig & { out?: string }) => {
-      const client = buildClient(opts);
+    action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
+      const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
       const result = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
         currentVersion?: { yamlContent?: string };
       };
@@ -435,6 +465,10 @@ flag would otherwise shadow it. Validation failures come back as
         const client = buildClient(opts);
 
         if (opts.workflowId) {
+          // Resolve `--workflow-id <wf_… or slug>` to a concrete id before
+          // any API call so error messages, splice logic and PATCH URLs all
+          // see the same value.
+          const workflowId = await resolveWorkflowId(client, opts.workflowId);
           // Update path: the server's POST /api/v1/workflows/:id/versions
           // requires a `version` body param. Resolve it from one of three
           // mutually-exclusive sources:
@@ -454,18 +488,18 @@ flag would otherwise shadow it. Validation failures come back as
             nextVersion = opts.setVersion;
           } else if (opts.bump) {
             // Need the server's current version to compute the next one.
-            const wf = (await client.get(`/api/v1/workflows/${opts.workflowId}`)) as {
+            const wf = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
               currentVersion?: { version?: string } | null;
             };
             const current = wf?.currentVersion?.version;
             if (!current) {
               throw new Error(
-                `Cannot --bump ${opts.bump} on ${opts.workflowId}: server has no current version. Push an initial version (with \`--set-version 1.0.0\` or a YAML \`version:\` field) first.`
+                `Cannot --bump ${opts.bump} on ${workflowId}: server has no current version. Push an initial version (with \`--set-version 1.0.0\` or a YAML \`version:\` field) first.`
               );
             }
             if (!SEMVER_RE.test(current)) {
               throw new Error(
-                `Cannot --bump ${opts.bump} on ${opts.workflowId}: server's current version "${current}" is not bare semver X.Y.Z.`
+                `Cannot --bump ${opts.bump} on ${workflowId}: server's current version "${current}" is not bare semver X.Y.Z.`
               );
             }
             nextVersion = bumpSemver(current, opts.bump as BumpLevel);
@@ -475,7 +509,7 @@ flag would otherwise shadow it. Validation failures come back as
 
           if (!nextVersion) {
             error(
-              `Cannot update workflow ${ui.bold(opts.workflowId)} — pass --bump <patch|minor|major> or --set-version <X.Y.Z>, or add a top-level \`version: X.Y.Z\` to ${filePath}.`
+              `Cannot update workflow ${ui.bold(workflowId)} — pass --bump <patch|minor|major> or --set-version <X.Y.Z>, or add a top-level \`version: X.Y.Z\` to ${filePath}.`
             );
             process.exit(1);
           }
@@ -487,7 +521,7 @@ flag would otherwise shadow it. Validation failures come back as
             ? spliceWorkflowVersion(yamlOnDisk, nextVersion)
             : yamlOnDisk;
 
-          const result = (await client.post(`/api/v1/workflows/${opts.workflowId}/versions`, {
+          const result = (await client.post(`/api/v1/workflows/${workflowId}/versions`, {
             yaml: yamlToSend,
             version: nextVersion,
           })) as { id?: string; version?: string; [k: string]: unknown };
@@ -495,7 +529,7 @@ flag would otherwise shadow it. Validation failures come back as
             printJson(result);
             return;
           }
-          success(`Pushed ${ui.bold(opts.workflowId)} (v${result.version ?? nextVersion})`);
+          success(`Pushed ${ui.bold(workflowId)} (v${result.version ?? nextVersion})`);
         } else {
           // Create path: server defaults to 1.0.0 if no version is sent.
           // `--bump` is meaningless when there's no current version to bump
@@ -569,28 +603,20 @@ export function spliceWorkflowVersion(yaml: string, next: string): string {
 
 function registerClearLocalCommand(parent: Command): void {
   parent
-    .command('clear-local [workflow-slug] [examples...]')
+    .command('clear-local [examples...]')
     .description(
-      'Delete LOCAL execution artifacts and judge summaries under `./.eigenpal/` (server-side data is never touched). Keeps the latest run per example by default; pass `--all` to wipe everything.'
+      'Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.'
     )
     .option('--dir <dir>', 'Local eigenpal directory', undefined)
     .option('--all', 'Remove all artifacts, including the latest kept by default', false)
-    .action(
-      async (
-        workflowSlug: string | undefined,
-        examples: string[],
-        opts: { dir?: string; all?: boolean }
-      ) => {
-        const config = resolveConfig(opts);
-        try {
-          await clearEvalOutputs(config.dir, workflowSlug, examples, {
-            removeAll: opts.all,
-          });
-        } finally {
-          formatEigenpalDirIfAvailable(config.dir);
-        }
+    .action(async (examples: string[], opts: { dir?: string; all?: boolean }) => {
+      const config = resolveConfig(opts);
+      try {
+        await clearEvalOutputs(config.dir, examples, { removeAll: opts.all });
+      } finally {
+        formatEigenpalDirIfAvailable(config.dir);
       }
-    );
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -600,32 +626,29 @@ function registerClearLocalCommand(parent: Command): void {
 function registerEvaluatorsCommands(parent: Command): void {
   const evaluators = parent
     .command('evaluators')
-    .description('Workflow evaluators YAML (push / pull / validate).');
+    .description('Manage evaluator config (push / pull / validate).');
 
   const pullCmd = evaluators
-    .command('pull <workflowId>')
+    .command('pull <workflow-id>')
     .description(descriptionFor('workflow_get_evaluators'))
     .option('--out <path>', 'Write YAML to file instead of stdout');
   withBaseUrl(pullCmd).action(
-    action(async (workflowId: string, opts: WorkflowCommandConfig & { out?: string }) => {
-      const client = buildClient(opts);
+    action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
+      const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
       const res = await client.getStream(`/api/v1/workflows/${workflowId}/evaluators/export`);
       await writeOrPrint(opts.out, await res.text());
     })
   );
 
   const pushCmd = evaluators
-    .command('push <workflowId>')
+    .command('push <workflow-id>')
     .description(descriptionFor('workflow_set_evaluators'))
     .requiredOption('--file <yaml>', 'Path to evaluators YAML file');
   addJsonFlag(withBaseUrl(pushCmd)).action(
     action(
-      async (
-        workflowId: string,
-        opts: WorkflowCommandConfig & { file: string; json?: boolean }
-      ) => {
+      async (workflow: string, opts: WorkflowCommandConfig & { file: string; json?: boolean }) => {
         const yaml = await fs.readFile(opts.file, 'utf8');
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(`/api/v1/workflows/${workflowId}/evaluators/import`, {
           yaml,
         })) as { count?: number; evaluators?: unknown[]; [k: string]: unknown };
@@ -633,12 +656,12 @@ function registerEvaluatorsCommands(parent: Command): void {
           printJson(result);
           return;
         }
-        const count =
-          typeof result.count === 'number'
-            ? result.count
-            : Array.isArray(result.evaluators)
-              ? result.evaluators.length
-              : null;
+        // Server may report `count` directly OR return the evaluators array
+        // (older route shape). Prefer the explicit count, fall back to the
+        // array length, then to a generic label when neither is available.
+        let count: number | null = null;
+        if (typeof result.count === 'number') count = result.count;
+        else if (Array.isArray(result.evaluators)) count = result.evaluators.length;
         const counted =
           count == null ? 'evaluators' : `${count} evaluator${count === 1 ? '' : 's'}`;
         success(`Set ${counted} on ${ui.bold(workflowId)}`);
@@ -656,18 +679,18 @@ function registerEvaluatorsCommands(parent: Command): void {
 function registerDatasetCommands(parent: Command): void {
   const dataset = parent
     .command('dataset')
-    .description('Workflow eval dataset (push / pull / list / validate).');
+    .description('Manage eval dataset (push / pull / list / validate).');
 
   const listCmd = dataset
-    .command('list <workflowId>')
+    .command('list <workflow-id>')
     .description(descriptionFor('workflow_list_examples'));
   addJsonFlag(withBaseUrl(withPagination(listCmd, 100))).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const raw = await client.get(`/api/v1/workflows/${workflowId}/eval-examples`, {
           limit: String(opts.limit),
           offset: String(opts.offset),
@@ -695,15 +718,15 @@ function registerDatasetCommands(parent: Command): void {
   );
 
   const pullCmd = dataset
-    .command('pull <workflowId>')
+    .command('pull <workflow-id>')
     .description(descriptionFor('workflow_get_dataset'))
     .option(
       '--out <zip>',
       'Write the dataset ZIP to this path. When omitted, the binary streams to stdout.'
     );
   withBaseUrl(pullCmd).action(
-    action(async (workflowId: string, opts: WorkflowCommandConfig & { out: string }) => {
-      const client = buildClient(opts);
+    action(async (workflow: string, opts: WorkflowCommandConfig & { out: string }) => {
+      const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
       await downloadStreamToFile(
         client,
         `/api/v1/workflows/${workflowId}/dataset/export`,
@@ -713,7 +736,7 @@ function registerDatasetCommands(parent: Command): void {
   );
 
   const pushCmd = dataset
-    .command('push <workflowId>')
+    .command('push <workflow-id>')
     .description(descriptionFor('workflow_set_dataset'))
     .requiredOption(
       '--file <path>',
@@ -741,7 +764,7 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
   addJsonFlag(withBaseUrl(pushCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig & {
           file: string;
           mode: 'append' | 'replace';
@@ -752,6 +775,7 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
         if (opts.mode !== 'append' && opts.mode !== 'replace') {
           throw new Error('--mode must be "append" or "replace"');
         }
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         // Replace deletes every existing eval_examples row for the
         // workflow + cascades through `files`. Mirror the dashboard's
         // typed-slug confirmation gate at TTY level. `--yes` bypasses
@@ -779,7 +803,6 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
           ? await readDirAsZip(opts.file)
           : new Uint8Array(await fs.readFile(opts.file));
         const filename = stat.isDirectory() ? `${path.basename(opts.file)}.zip` : opts.file;
-        const client = buildClient(opts);
         const formData = new FormData();
         // TS's `BlobPart` doesn't accept `ArrayBufferLike`-backed views
         // since the SharedArrayBuffer split, and `BlobPart` itself is a
@@ -968,14 +991,12 @@ function registerDatasetCrudCommands(dataset: Command): void {
   // `vercel project add` — once you learn one verb, the rest read for free.
   const example = dataset
     .command('example')
-    .description('Per-row CRUD for one eval example (create / update / delete / get).');
+    .description('Per-row eval example CRUD (create / update / delete / get).');
 
   // ----------------------------- example create ----------------------------
   const createCmd = example
-    .command('create <workflowId>')
-    .description(
-      'Create one eval example without re-uploading the whole dataset. Pair `--input-*` and `--expected-*` flags to seed trigger input + ground truth; `--annotation` is free-form metadata.'
-    )
+    .command('create <workflow-id>')
+    .description('Create one eval example without re-uploading the dataset.')
     .requiredOption('--name <name>', 'Example name (1–64 chars)')
     .option('--input-json <json>', 'Trigger input as a JSON literal')
     .option('--input-file <path>', 'Trigger input from a JSON file (or `-` for stdin)')
@@ -998,7 +1019,7 @@ handles scalar args + \`expected/output.json\`-style outputs.
   addJsonFlag(withBaseUrl(createCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig & {
           name: string;
           inputJson?: string;
@@ -1020,7 +1041,7 @@ handles scalar args + \`expected/output.json\`-style outputs.
         if (expectedOutput !== undefined) body.expectedOutput = expectedOutput;
         if (opts.annotation !== undefined) body.annotation = opts.annotation;
 
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
           `/api/v1/workflows/${workflowId}/eval-examples`,
           body
@@ -1036,10 +1057,8 @@ handles scalar args + \`expected/output.json\`-style outputs.
 
   // ----------------------------- example update ----------------------------
   const updateCmd = example
-    .command('update <workflowId> <exampleId>')
-    .description(
-      'Patch one eval example. Any flag you omit is left alone; pass `--annotation ""` to clear an annotation.'
-    )
+    .command('update <workflow-id> <exampleId>')
+    .description('Patch one eval example. Omitted flags are left alone.')
     .option('--name <name>', 'Rename the example (1–64 chars)')
     .option('--input-json <json>', 'Replace trigger input with this JSON literal')
     .option('--input-file <path>', 'Replace trigger input from a JSON file (or `-` for stdin)')
@@ -1049,11 +1068,11 @@ handles scalar args + \`expected/output.json\`-style outputs.
     .option('--row-order <n>', 'Reorder the row (0-based)', intArg);
   addJsonFlag(withBaseUrl(updateCmd)).action(
     action(
-      // _workflowId is unused on the server (PATCH route is by example id) but
+      // _workflow is unused on the server (PATCH route is by example id) but
       // we keep it as the first positional so the command stays consistent
       // with `create` and `delete`.
       async (
-        _workflowId: string,
+        _workflow: string,
         exampleId: string,
         opts: WorkflowCommandConfig & {
           name?: string;
@@ -1101,10 +1120,8 @@ handles scalar args + \`expected/output.json\`-style outputs.
 
   // ----------------------------- example delete ----------------------------
   const deleteCmd = example
-    .command('delete <workflowId> <exampleId>')
-    .description(
-      'Delete one eval example by id. Single-row deletes have a small blast radius compared to `dataset push --mode replace`, so there is no interactive confirmation; CI / non-TTY shells must pass `--yes` to acknowledge intent.'
-    )
+    .command('delete <workflow-id> <exampleId>')
+    .description('Delete one eval example by id. Non-TTY shells require --yes.')
     .option(
       '--yes',
       'Required for non-TTY shells; explicit acknowledgment that this is destructive',
@@ -1113,7 +1130,7 @@ handles scalar args + \`expected/output.json\`-style outputs.
   addJsonFlag(withBaseUrl(deleteCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         exampleId: string,
         opts: WorkflowCommandConfig & { yes: boolean; json?: boolean }
       ) => {
@@ -1124,7 +1141,7 @@ handles scalar args + \`expected/output.json\`-style outputs.
         }
         // The server's DELETE returns the deleted row so the success line
         // can echo a human-readable name without a pre-flight GET.
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const deleted = (await client.delete(`/api/v1/eval-examples/${exampleId}`)) as ExampleRow;
         if (opts.json) {
           printJson(deleted);
@@ -1142,16 +1159,14 @@ handles scalar args + \`expected/output.json\`-style outputs.
   // expectedOutput, annotation, rowOrder). `dataset list` only renders the
   // table subset; this is the "describe" verb.
   const getCmd = example
-    .command('get <workflowId> <exampleId>')
-    .description(
-      'Fetch one eval example by id, including triggerInput, expectedOutput, and metadata. Pretty sections in human mode; full payload under --json.'
-    );
+    .command('get <workflow-id> <exampleId>')
+    .description('Fetch one eval example with full triggerInput, expectedOutput, and metadata.');
   addJsonFlag(withBaseUrl(getCmd)).action(
     action(
-      // _workflowId mirrors create/update/delete so the positional shape stays
+      // _workflow mirrors create/update/delete so the positional shape stays
       // consistent — the GET endpoint is keyed by example id only.
       async (
-        _workflowId: string,
+        _workflow: string,
         exampleId: string,
         opts: WorkflowCommandConfig & { json?: boolean }
       ) => {
@@ -1202,23 +1217,23 @@ function renderExampleHuman(row: FullExampleRow): void {
 function registerExperimentCommands(parent: Command): void {
   const experiment = parent
     .command('experiment')
-    .description('Run, monitor, and export batch experiments against a workflow dataset.');
+    .description('Run, monitor, and export batch experiments.');
 
   const listCmd = experiment
-    .command('list <workflowId>')
+    .command('list <workflow-id>')
     .description(descriptionFor('workflow_list_executions'))
     .option('--batch-id <id>', 'Filter by batch');
   addJsonFlag(withBaseUrl(withPagination(listCmd))).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig &
           PaginationOpts & {
             batchId?: string;
             json?: boolean;
           }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const params: Record<string, string> = {
           limit: String(opts.limit),
           offset: String(opts.offset),
@@ -1251,7 +1266,7 @@ function registerExperimentCommands(parent: Command): void {
   );
 
   const runCmd = experiment
-    .command('run <workflowId>')
+    .command('run <workflow-id>')
     .description(descriptionFor('workflow_run_experiment'))
     .option(
       '--example-id <id>',
@@ -1266,8 +1281,8 @@ function registerExperimentCommands(parent: Command): void {
       `
 Examples:
   $ eigenpal workflow experiment run wf_abc123
-  $ eigenpal workflow experiment run wf_abc123 --example-id evx_111 --example-id evx_222
-  $ eigenpal workflow experiment run wf_abc123 --wait --interval 5
+  $ eigenpal workflow experiment run my-extraction --example-id evx_111
+  $ eigenpal workflow experiment run "Parse Invoices" --wait --interval 5
   $ eigenpal workflow experiment run wf_abc123 --json | jq '.batchId'
 
 \`--wait\` blocks until the batch reaches a terminal state and exits non-zero
@@ -1279,7 +1294,7 @@ returns immediately with \`{ batchId, total }\`; poll
   addJsonFlag(withBaseUrl(runCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig & {
           exampleId: string[];
           wait: boolean;
@@ -1287,7 +1302,7 @@ returns immediately with \`{ batchId, total }\`; poll
           json?: boolean;
         }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const start = (await client.post(`/api/v1/workflows/${workflowId}/evals/run`, {
           examples: opts.exampleId.length > 0 ? opts.exampleId : undefined,
         })) as { batchId: string; total: number };
@@ -1334,7 +1349,7 @@ returns immediately with \`{ batchId, total }\`; poll
   );
 
   const statusCmd = experiment
-    .command('status <workflowId> <batchId>')
+    .command('status <workflow-id> <batchId>')
     .description(descriptionFor('workflow_get_experiment_status'))
     .option(
       '--watch',
@@ -1356,7 +1371,7 @@ returns immediately with \`{ batchId, total }\`; poll
   addJsonFlag(withBaseUrl(statusCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         batchId: string,
         opts: WorkflowCommandConfig & {
           watch: boolean;
@@ -1365,7 +1380,7 @@ returns immediately with \`{ batchId, total }\`; poll
           json?: boolean;
         }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const url = `/api/v1/workflows/${workflowId}/experiments/${batchId}`;
 
         if (!opts.watch) {
@@ -1459,21 +1474,21 @@ returns immediately with \`{ batchId, total }\`; poll
     return value;
   };
   const resultsCmd = experiment
-    .command('results <workflowId> [batchId]')
+    .command('results <workflow-id> [batchId]')
     .description(descriptionFor('workflow_get_experiment_results'))
     .requiredOption('--format <csv|json>', 'Output format', parseExportFormat)
     .option('--out <path>', 'Output file. When omitted, the binary streams to stdout.');
   withBaseUrl(resultsCmd).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         batchId: string | undefined,
         opts: WorkflowCommandConfig & {
           format: 'csv' | 'json';
           out?: string;
         }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const params = new URLSearchParams({ format: opts.format });
         if (batchId) params.set('batchId', batchId);
         await downloadStreamToFile(
@@ -1492,17 +1507,15 @@ returns immediately with \`{ batchId, total }\`; poll
   // implied — two batch ids uniquely identify the experiments.
   const compareCmd = experiment
     .command('compare <batchIdA> <batchIdB>')
-    .description(
-      'Side-by-side eval-score diff between two experiment batches. Highlights regressions vs improvements per (example, evaluator) and prints aggregate stats.'
-    )
+    .description('Diff eval scores between two experiment batches.')
     .option(
       '--sort <abs-delta-desc|delta-asc|delta-desc|name>',
-      'Row sort order. Default sorts by absolute delta descending so the biggest movers (regressions and improvements alike) are at the top.',
+      'Row sort order (default: biggest movers first)',
       'abs-delta-desc'
     )
     .option(
       '--regression-threshold <n>',
-      'Δ < -threshold is flagged as a regression with ⚠ (default 0.05)',
+      'Δ below this is flagged as a regression (default 0.05)',
       Number.parseFloat,
       0.05
     )
@@ -1631,15 +1644,15 @@ function registerVersionsCommands(parent: Command): void {
     .description('Inspect and restore historical workflow versions.');
 
   const listCmd = versions
-    .command('list <workflowId>')
+    .command('list <workflow-id>')
     .description(descriptionFor('workflow_list_versions'));
   addJsonFlag(withBaseUrl(withPagination(listCmd))).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const raw = await client.get(`/api/v1/workflows/${workflowId}/versions`, {
           limit: String(opts.limit),
           offset: String(opts.offset),
@@ -1659,16 +1672,16 @@ function registerVersionsCommands(parent: Command): void {
   );
 
   const restoreCmd = versions
-    .command('restore <workflowId> <versionId>')
+    .command('restore <workflow-id> <versionId>')
     .description(descriptionFor('workflow_restore_version'));
   addJsonFlag(withBaseUrl(restoreCmd)).action(
     action(
       async (
-        workflowId: string,
+        workflow: string,
         versionId: string,
         opts: WorkflowCommandConfig & { json?: boolean }
       ) => {
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
           `/api/v1/workflows/${workflowId}/history/${versionId}/restore`,
           {}

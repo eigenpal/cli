@@ -281,7 +281,7 @@ export type WorkflowFileOutput = z.infer<typeof WorkflowFileOutputSchema>;
  *
  * File outputs have the shape: { fileId: string } where fileId starts with:
  * - 'file_' (DB-stored files and execution output files)
- * - 'input-file-' (ephemeral input files from CLI/API)
+ * - 'input-file-' (inline-uploaded inputs from CLI/API)
  */
 export function isFileOutput(value: unknown): value is WorkflowFileOutput {
   if (

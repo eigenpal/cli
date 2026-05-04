@@ -23,14 +23,56 @@ This skill is the schema reference. The CLI does the actual work.
 1.  eigenpal init workflow my-extraction --template pdf-extraction
 2.  edit workflow.yaml + evaluators.yaml + dataset/examples/*/expected/output.json
 3.  eigenpal workflow validate                                       # local: all three checks, no server contact
-4.  eigenpal workflow execution run my-extraction sample-name        # one-off run for debugging
-5.  eigenpal workflow push --file workflow.yaml                      # creates wf_… on first push
-6.  eigenpal workflow evaluators push <wf-id> --file evaluators.yaml
-7.  eigenpal workflow dataset push <wf-id> --file dataset/ --mode replace
-8.  eigenpal workflow experiment run <wf-id>                         # → { batchId, executionIds }
-9.  eigenpal workflow experiment status <wf-id> <batch-id>
-10. eigenpal workflow experiment results <wf-id> <batch-id> --format csv --out r.csv
+4.  eigenpal workflow push --file workflow.yaml                      # creates wf_… on first push
+5.  eigenpal workflow execution run my-extraction sample-name        # one-off run for debugging
+6.  eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
+7.  eigenpal workflow dataset push <workflow-id> --file dataset/ --mode replace
+8.  eigenpal workflow experiment run <workflow-id>                         # → { batchId, executionIds }
+9.  eigenpal workflow experiment status <workflow-id> <batch-id>
+10. eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
 ```
+
+> **`push` BEFORE `execution run`.** The CLI no longer ships YAML at run
+> time — only saved workflows execute. `execution run <workflow-id>` reads
+> the definition from the server, so any local edit to `workflow.yaml`
+> must be `push`ed first or the run will use the previous version. If
+> the workflow has never been pushed, `execution run` exits with
+> `Workflow "<arg>" not found on the server. Push it first.`
+
+## Identifying a workflow
+
+Every command that takes `<workflow-id>` expects a **`wf_xxx` id** — the
+opaque, server-generated identifier printed by `workflow push` and
+`workflow list`. Stable across renames; this is the form to use in
+scripts and CI.
+
+As a typing convenience the workflow's slug (the YAML's `name:` field)
+is also accepted — the CLI resolves it server-side. The resolver
+detects the form by the `wf_` prefix:
+
+| Argument starts with… | Looked up via                                     |
+| --------------------- | ------------------------------------------------- |
+| `wf_…`                | `GET /api/v1/workflows/<id>`                      |
+| anything else         | `GET /api/v1/workflows?name=<slug>` (exact match) |
+
+Workflow names are constrained to `[a-z0-9][a-z0-9_-]*` (lowercase
+letters, digits, `_`, `-`; 1–64 chars), so every slug is terminal-safe
+and url-safe by construction — no shell quoting required.
+
+```bash
+# Both work; prefer the id form in scripts.
+eigenpal workflow execution run wf_abc123 sample-1
+eigenpal workflow execution run my-extraction sample-1
+```
+
+If the workflow hasn't been pushed yet, the resolver fails fast:
+`Workflow "<arg>" not found on the server. Push it first, or run \`eigenpal workflow list\` to see what's available.`
+
+**Other id types — not interchangeable with workflow id:**
+
+- `workflow execution {get,watch,cancel,compare} <executionId>` — `exec_…`
+- `workflow experiment compare <batchA> <batchB>` — batch ids (`evb_…`)
+- `workflow dataset example {get,update,delete} <wf-id> <exampleId>` — second positional is the example id (`evx_…`)
 
 ## Common recipes
 
@@ -103,7 +145,7 @@ to retry.
 eigenpal workflow experiment compare evb_old evb_new --regression-threshold 0.05
 ```
 
-Unlike its siblings, `compare` takes no `<wf-id>` — the server resolves
+Unlike its siblings, `compare` takes no `<workflow-id>` — the server resolves
 the owning workflow from each batch id. Both batches must live in the
 same workflow within your tenant. See [`reference/debugging.md`](reference/debugging.md#6-compare-two-experiment-batches)
 for sort flags + `--json` shape.
@@ -118,7 +160,7 @@ cat packages/cli/src/skill/reference/evaluators.md   # or read this skill's `ref
 eigenpal workflow evaluators validate ./evaluators.yaml
 
 # Push (overwrites the workflow's evaluator config)
-eigenpal workflow evaluators push <wf-id> --file evaluators.yaml
+eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
 ```
 
 ### Build + validate + upload a dataset
@@ -128,40 +170,40 @@ eigenpal workflow evaluators push <wf-id> --file evaluators.yaml
 eigenpal workflow dataset validate ./dataset            # rejects bad folder names, arg-name collisions, etc.
 
 # Push. `replace` wipes server-side examples for this workflow first; `append` adds.
-eigenpal workflow dataset push <wf-id> --file ./dataset --mode replace
+eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
 # Watch the `expectedSet` count in the final NDJSON `done` event — if 0, evals run un-graded.
 ```
 
 To inspect or round-trip the server's current dataset:
 
 ```bash
-eigenpal workflow dataset list <wf-id>
-eigenpal workflow dataset pull <wf-id> --out current.zip   # round-trip back to local
+eigenpal workflow dataset list <workflow-id>
+eigenpal workflow dataset pull <workflow-id> --out current.zip   # round-trip back to local
 ```
 
 ### Edit one example without re-uploading the whole dataset
 
 ```bash
 # Inspect one example end-to-end (triggerInput + expectedOutput + metadata):
-eigenpal workflow dataset example get <wf-id> <example-id>
-eigenpal workflow dataset example get <wf-id> <example-id> --json | jq '.expectedOutput'
+eigenpal workflow dataset example get <workflow-id> <example-id>
+eigenpal workflow dataset example get <workflow-id> <example-id> --json | jq '.expectedOutput'
 
 # Capture a corrected output as the new ground truth (the most common one):
 #   1. Look at what the workflow returned
 eigenpal workflow execution get exec_… --json | jq '.output.data' > /tmp/correct.json
 #   2. Patch that example's expected output in place
-eigenpal workflow dataset example update <wf-id> <example-id> \
+eigenpal workflow dataset example update <workflow-id> <example-id> \
   --expected-file /tmp/correct.json
 
 # Add one new example to a known dataset:
-eigenpal workflow dataset example create <wf-id> \
+eigenpal workflow dataset example create <workflow-id> \
   --name missing-required-field \
   --input-json '{"language":"en"}' \
   --expected-file /tmp/expected.json \
   --annotation "edge case: required field absent from input"
 
 # Drop a bad example by id (CI requires --yes):
-eigenpal workflow dataset example delete <wf-id> <example-id> --yes
+eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ```
 
 `example update` is a partial PATCH — any flag you omit is left alone. Pass
@@ -172,27 +214,28 @@ dataset folder and re-push with `dataset push --mode replace`.
 
 ```bash
 # Kick off — runs every example in the dataset against every evaluator.
-eigenpal workflow experiment run <wf-id>                       # → { batchId, executionIds }
+eigenpal workflow experiment run <workflow-id>                       # → { batchId, executionIds }
 
 # Or restrict to one example:
-eigenpal workflow experiment run <wf-id> --example-id evx_…
+eigenpal workflow experiment run <workflow-id> --example-id evx_…
 
 # Poll until done. `experiment status` auto-detaches after 30 min; just re-run.
-eigenpal workflow experiment status <wf-id> <batch-id>
+eigenpal workflow experiment status <workflow-id> <batch-id>
 
 # Pull results — `--out` writes the file directly from the server's signed-URL
 # storage, so large CSVs don't go through the CLI process.
-eigenpal workflow experiment results <wf-id> <batch-id> --format csv --out r.csv
+eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
 ```
 
 ### Debug a failing workflow
 
 ```bash
-# 1. Reproduce locally with the live step list
-eigenpal workflow execution run <workflow-name> <example-name>
+# 1. Re-run a single example against the saved workflow (must be pushed first).
+#    <workflow-id> accepts a `wf_…` id (preferred for scripts) or the slug.
+eigenpal workflow execution run <workflow-id> <example-name>
 
 # 2. Or pull a recorded failure from the server
-eigenpal workflow execution list <wf-id> --status failed --limit 5
+eigenpal workflow execution list <workflow-id> --status failed --limit 5
 eigenpal workflow execution get  exec_…                           # full payload, all steps
 eigenpal workflow execution get  exec_… --step extract --include input,output,error
 
@@ -299,24 +342,24 @@ eigenpal status                  # active tenant, user, key id, workflow count
 
 # Definition
 eigenpal workflow list
-eigenpal workflow push --file workflow.yaml [--workflow-id <wf-id>]
-eigenpal workflow pull <wf-id>
+eigenpal workflow push --file workflow.yaml [--workflow-id <workflow-id>]
+eigenpal workflow pull <workflow-id>
 eigenpal workflow validate [path]
 
 # Evaluators
-eigenpal workflow evaluators push <wf-id> --file evaluators.yaml
-eigenpal workflow evaluators pull <wf-id>
+eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
+eigenpal workflow evaluators pull <workflow-id>
 eigenpal workflow evaluators validate [path]
 
 # Dataset
-eigenpal workflow dataset push <wf-id> --file dataset/ [--mode {append|replace}]      # default: append
-eigenpal workflow dataset pull <wf-id> --out dataset.zip
-eigenpal workflow dataset list <wf-id>
+eigenpal workflow dataset push <workflow-id> --file dataset/ [--mode {append|replace}]      # default: append
+eigenpal workflow dataset pull <workflow-id> --out dataset.zip
+eigenpal workflow dataset list <workflow-id>
 eigenpal workflow dataset validate [path]
-eigenpal workflow dataset example create <wf-id> --name <n> [--input-file] [--expected-file] [--annotation]
-eigenpal workflow dataset example update <wf-id> <example-id> [--name] [--input-file] [--expected-file] [--annotation] [--row-order]
-eigenpal workflow dataset example delete <wf-id> <example-id> --yes
-eigenpal workflow dataset example get    <wf-id> <example-id>                          # full row + metadata
+eigenpal workflow dataset example create <workflow-id> --name <n> [--input-file] [--expected-file] [--annotation]
+eigenpal workflow dataset example update <workflow-id> <example-id> [--name] [--input-file] [--expected-file] [--annotation] [--row-order]
+eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
+eigenpal workflow dataset example get    <workflow-id> <example-id>                          # full row + metadata
 
 # All-in-one validation against the templated project layout
 eigenpal workflow validate                    # ./workflow.yaml + ./evaluators.yaml + ./dataset/
@@ -325,10 +368,10 @@ eigenpal workflow validate                    # ./workflow.yaml + ./evaluators.y
 eigenpal workflow clear-local                 # delete local execution artifacts (no server impact)
 
 # Experiments (batch eval runs)
-eigenpal workflow experiment run     <wf-id> [--example-id <id> ...]
-eigenpal workflow experiment status  <wf-id> <batch-id> [--watch]    # exit 1 on terminal w/ failures, 2 on --max-wait
-eigenpal workflow experiment results <wf-id> [batch-id] --format {csv|json} --out r.csv
-eigenpal workflow experiment list    <wf-id>
+eigenpal workflow experiment run     <workflow-id> [--example-id <id> ...]
+eigenpal workflow experiment status  <workflow-id> <batch-id> [--watch]    # exit 1 on terminal w/ failures, 2 on --max-wait
+eigenpal workflow experiment results <workflow-id> [batch-id] --format {csv|json} --out r.csv
+eigenpal workflow experiment list    <workflow-id>
 eigenpal workflow experiment compare <batch-a> <batch-b> [--regression-threshold] [--sort]   # no --workflow-id
 
 # Step-type / evaluator-type introspection
@@ -341,16 +384,16 @@ eigenpal workflow evaluator-type get <type>
 eigenpal workflow step exec <type> [--config-json | --config-file] [--inputs k=v...] [--output-schema]
 
 # Execution (one-off run + read-side debugging + cancellation)
-eigenpal workflow execution run     <workflow-slug> [examples...]
+eigenpal workflow execution run     <workflow-id> [examples...]
 eigenpal workflow execution get     <exec-id>
-eigenpal workflow execution list    <wf-id> [--status running|failed|completed]
+eigenpal workflow execution list    <workflow-id> [--status running|failed|completed]
 eigenpal workflow execution watch   <exec-id>          # 2s/5s adaptive polling
 eigenpal workflow execution compare <exec-a> <exec-b>
 eigenpal workflow execution cancel  <exec-id>          # tells the worker to stop between steps; safe to retry
 
 # Versions
-eigenpal workflow versions list    <wf-id>                          # pushed semver history (newest first)
-eigenpal workflow versions restore <wf-id> <version-id>             # re-activate a prior version as the live one
+eigenpal workflow versions list    <workflow-id>                          # pushed semver history (newest first)
+eigenpal workflow versions restore <workflow-id> <version-id>             # re-activate a prior version as the live one
 
 # Tooling
 eigenpal skill install           # interactive multiselect for Claude Code, Cursor, …

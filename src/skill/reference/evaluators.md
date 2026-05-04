@@ -135,20 +135,20 @@ Reports field-level issues:
 
 ```bash
 # Push the evaluators (overwrites the workflow's existing config).
-eigenpal workflow evaluators push <wf-id> --file evaluators.yaml
+eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
 
 # Kick off a server-side batch eval over the whole pushed dataset.
 # Returns { batchId, executionIds }.
-eigenpal workflow experiment run <wf-id>
+eigenpal workflow experiment run <workflow-id>
 
 # Or restrict to a single example:
-eigenpal workflow experiment run <wf-id> --example-id evx_…
+eigenpal workflow experiment run <workflow-id> --example-id evx_…
 
 # Watch progress.
-eigenpal workflow experiment status <wf-id> --batch-id <id>
+eigenpal workflow experiment status <workflow-id> --batch-id <id>
 
 # Pull results when done.
-eigenpal workflow experiment results <wf-id> --batch-id <id> \
+eigenpal workflow experiment results <workflow-id> --batch-id <id> \
   --format csv --out results.csv
 ```
 

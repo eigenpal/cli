@@ -224,12 +224,6 @@ function renderCommandDetail(cmd: Command): string {
   return lines.join('\n');
 }
 
-const GENERATED_BANNER = [
-  '> **Auto-generated.** This file is regenerated from the live Commander tree in',
-  '> `packages/cli/src/cli.ts` by `bun run --cwd packages/cli generate:cli-docs`.',
-  '> Do not hand-edit — your changes will be overwritten on the next run.',
-].join('\n');
-
 /**
  * Strip `[options]` / `[command]` boilerplate from a command's usage string so
  * the ASCII tree shows just the command name + its meaningful argument
@@ -270,8 +264,6 @@ function renderTopLevelCommandFile(cmd: Command): string {
   const name = cmd.name();
   const lines: string[] = [];
   lines.push(`# eigenpal ${name}`);
-  lines.push('');
-  lines.push(GENERATED_BANNER);
   lines.push('');
 
   if (cmd.description()) {

@@ -1,9 +1,5 @@
 # eigenpal init
 
-> **Auto-generated.** This file is regenerated from the live Commander tree in
-> `packages/cli/src/cli.ts` by `bun run --cwd packages/cli generate:cli-docs`.
-> Do not hand-edit — your changes will be overwritten on the next run.
-
 Scaffold a new workflow project. Without `[name]`, scaffolds into the current directory using the cwd basename as the workflow name. With `[name]`, creates `./<name>/` and uses that as the slug. The flat layout matches what `workflow execution run <slug>` already discovers — no manual file moves.
 
 ## Contents

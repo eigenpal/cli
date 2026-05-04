@@ -9,6 +9,7 @@ import type { Command } from 'commander';
 import { ApiClient } from '../lib/client';
 import { requireApiKey, resolveConfig } from '../lib/config';
 import { formatEigenpalDirIfAvailable } from '../lib/format-eigenpal';
+import { resolveWorkflowId } from '../lib/resolve-workflow';
 import {
   addJsonFlag,
   error,
@@ -30,36 +31,30 @@ import { runExec } from './exec';
 export function registerWorkflowExecutionCommands(parent: Command): void {
   const execution = parent
     .command('execution')
-    .description(
-      'Run a workflow against local dataset examples; inspect, watch, and compare server-side executions.'
-    );
+    .description('Run, inspect, and compare server-side executions.');
 
   const runCmd = execution
-    .command('run <workflow-slug> [examples...]')
-    .description(
-      'Run a workflow against one or more local examples on the server. Builds the input payload from the local dataset folder.'
-    )
+    .command('run <workflow-id> [examples...]')
+    .description('Run a saved workflow against local dataset examples.')
     .option('--dir <dir>', 'Local eigenpal directory', undefined)
     .option('--concurrency <n>', 'Max examples to run in parallel (default: 3)', intArg)
     .addHelpText(
       'after',
       `
 Examples:
-  $ eigenpal workflow execution run parse-invoices
-  $ eigenpal workflow execution run parse-invoices sample-1 sample-2
-  $ eigenpal workflow execution run parse-invoices --concurrency 5
-  $ eigenpal workflow execution run parse-invoices sample --json | jq '.passed'
+  $ eigenpal workflow execution run wf_abc123                  # all examples
+  $ eigenpal workflow execution run wf_abc123 sample-1 sample-2
+  $ eigenpal workflow execution run wf_abc123 --concurrency 5
+  $ eigenpal workflow execution run wf_abc123 sample --json | jq '.passed'
 
-The local-folder runner always waits for every example to reach a terminal
-state and writes per-example artifacts to \`./.eigenpal/workflows/<slug>/eval/<example>/executions/\`.
-Pass \`--json\` to suppress the human progress lines and emit a single
-\`{ workflowSlug, passed, failed, total }\` summary on stdout. Exits 1 when any
-example fails.
+Reads examples from ./dataset/examples/<example>/ and writes per-run
+artifacts to ./dataset/examples/<example>/executions/<timestamp>/.
+Exits 1 when any example fails.
 `
     );
   addJsonFlag(withBaseUrl(runCmd)).action(
     async (
-      workflowSlug: string,
+      workflow: string,
       examples: string[],
       opts: {
         dir?: string;
@@ -72,7 +67,7 @@ example fails.
       try {
         requireApiKey(config);
         const client = new ApiClient(config);
-        const summary = await runExec(client, config.dir, workflowSlug, examples, {
+        const summary = await runExec(client, config.dir, workflow, examples, {
           concurrencyOverride: opts.concurrency,
         });
         if (opts.json) {
@@ -110,16 +105,14 @@ example fails.
   addJsonFlag(withBaseUrl(getCmd)).action(getExecution);
 
   const listCmd = execution
-    .command('list <workflowId>')
+    .command('list <workflow-id>')
     .description('List recent executions for a workflow.')
     .option('--status <status>', 'Filter by status: pending|running|completed|failed|cancelled');
   addJsonFlag(withBaseUrl(withPagination(listCmd))).action(listExecutions);
 
   const watchCmd = execution
     .command('watch <executionId>')
-    .description(
-      'Stream live status of an execution: vertical step list with adaptive polling (2s while transitioning, 5s steady, 30-min auto-detach). ASCII status badges; pipe-safe.'
-    )
+    .description('Stream live execution status until terminal or 30-min detach.')
     .option(
       '--max-wait <seconds>',
       'Detach after N seconds (default 1800 = 30 min)',
@@ -130,17 +123,13 @@ example fails.
 
   const compareCmd = execution
     .command('compare <executionA> <executionB>')
-    .description(
-      'Side-by-side comparison of two executions. Highlights status / duration / output diffs per step.'
-    )
+    .description('Diff two executions side-by-side, per step.')
     .option('--step <name>', 'Restrict comparison to one step');
   withBaseUrl(compareCmd).action(compareExecutions);
 
   const cancelCmd = execution
     .command('cancel <executionId>')
-    .description(
-      'Request cancellation of an execution. Idempotent — already-terminal executions exit 0 with an info line.'
-    )
+    .description('Cancel an execution. Idempotent on already-terminal runs.')
     .option('--yes', 'Required for non-TTY shells (CI, pipes). Acts immediately, no prompt.')
     .addHelpText(
       'after',
@@ -333,11 +322,12 @@ interface ExecutionListRow {
   [k: string]: unknown;
 }
 
-async function listExecutions(workflowId: string, opts: ListOpts): Promise<void> {
+async function listExecutions(workflow: string, opts: ListOpts): Promise<void> {
   const config = resolveConfig(opts);
   requireApiKey(config);
   const client = new ApiClient(config);
 
+  const workflowId = await resolveWorkflowId(client, workflow);
   const params: Record<string, string> = {
     limit: String(opts.limit),
     offset: String(opts.offset),

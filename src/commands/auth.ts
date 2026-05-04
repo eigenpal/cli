@@ -104,6 +104,17 @@ export function normalizeBaseUrl(
     parsed.hostname === '127.0.0.1' ||
     parsed.hostname === '[::1]';
 
+  // Reject single-label hostnames — valid as intranet shorthand, but in
+  // practice always typos. Allowed exceptions: loopback aliases (handled
+  // above) and bracketed IPv6 like `[2001:db8::1]` which has no dot.
+  const isBracketedIpv6 = parsed.hostname.startsWith('[') && parsed.hostname.endsWith(']');
+  if (!isLoopback && !isBracketedIpv6 && !parsed.hostname.includes('.')) {
+    return {
+      ok: false,
+      error: `Hostname "${parsed.hostname}" looks incomplete — did you mean "${parsed.hostname}.com"? Use a fully qualified domain name.`,
+    };
+  }
+
   // Origin-only canonical form: scheme://host[:port], no trailing slash.
   // `URL.origin` already gives us this; double-checking with a strip in
   // case of any edge case.
@@ -165,7 +176,7 @@ async function pickBaseUrlInteractive(): Promise<string> {
       message: 'Server URL',
       placeholder: 'https://eigenpal.example.com',
       validate: (value) => {
-        const norm = normalizeBaseUrl(value);
+        const norm = normalizeBaseUrl(value ?? '');
         return norm.ok ? undefined : norm.error;
       },
     })
@@ -276,9 +287,7 @@ export async function authLogin(flagBaseUrl?: string): Promise<void> {
       message: 'Paste your API key (eig_live_…)',
       mask: '*',
       validate: (value) =>
-        value.trim().length > 0
-          ? undefined
-          : 'Paste the key from your dashboard, or press Ctrl-C to cancel.',
+        value?.trim() ? undefined : 'Paste the key from your dashboard, or press Ctrl-C to cancel.',
     })
   );
   const trimmedKey = key.trim();
@@ -291,12 +300,12 @@ export async function authLogin(flagBaseUrl?: string): Promise<void> {
   try {
     authCheck = (await client.get('/api/v1/auth/check')) as typeof authCheck;
   } catch (err) {
-    s.stop('API key validation failed', 1);
+    s.error('API key validation failed');
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
   if (!authCheck.ok) {
-    s.stop('API key validation failed', 1);
+    s.error('API key validation failed');
     process.exit(1);
   }
   s.stop(`Validated against ${ui.bold(authCheck.tenantName || authCheck.tenantId)}`);
@@ -317,7 +326,7 @@ export async function authLogin(flagBaseUrl?: string): Promise<void> {
   const tenantLabel = ui.bold(authCheck.tenantName || authCheck.tenantId);
   const action = updated ? 'Updated profile' : 'Saved profile';
   outro(
-    `${ui.ok('✓')} Logged in as ${tenantLabel}\n  ${dim(`${action} ${ui.bold(profileName)} — switch with`)} ${ui.bold(`eigenpal auth use ${profileName}`)}`
+    `${ui.ok('✓')} Logged in as ${tenantLabel}\n  ${ui.dim(`${action} ${ui.bold(profileName)} — switch with`)} ${ui.bold(`eigenpal auth use ${profileName}`)}`
   );
 }
 
