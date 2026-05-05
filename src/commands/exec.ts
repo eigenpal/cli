@@ -22,7 +22,7 @@ async function pollExecution(client: ApiClient, executionId: string): Promise<Ex
   const start = Date.now();
   while (Date.now() - start < MAX_POLL_MS) {
     const res = (await client.get(`/api/v1/executions/${executionId}`)) as ExecutionStatus;
-    if (['completed', 'failed', 'cancelled'].includes(res.status)) return res;
+    if (['completed', 'failed', 'cancelled', 'rejected'].includes(res.status)) return res;
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   return { executionId, status: 'timeout', error: 'Execution timed out' };

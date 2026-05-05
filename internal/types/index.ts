@@ -210,6 +210,31 @@ export {
   type SpanTypeValue,
 } from './otel';
 
+// Durable `executions` row statuses (workflow + agent shared queue)
+export {
+  DURABLE_EXECUTION_TYPES,
+  EXECUTION_AGENT_CANCEL_REQUESTABLE_STATUSES,
+  EXECUTION_AGENT_METRICS_STATUSES,
+  EXECUTION_AGENT_QUEUED_STATUSES,
+  EXECUTION_AGENT_REAP_SCAN_STATUSES,
+  EXECUTION_CONCURRENCY_ACTIVE_STATUSES,
+  EXECUTION_EVAL_RUNNING_STATUSES,
+  EXECUTION_FAILED_OR_CANCELLED_STATUSES,
+  EXECUTION_NON_TERMINAL_STATUSES,
+  EXECUTION_SHARED_CANCEL_REQUESTABLE_STATUSES,
+  EXECUTION_STATUSES,
+  NON_SUCCESS_TERMINAL_EXECUTION_STATUSES,
+  TERMINAL_EXECUTION_STATUSES,
+  executionWallClockMs,
+  isNonSuccessTerminalExecutionStatus,
+  isTerminalExecutionStatus,
+  type DurableExecutionType,
+  type ExecutionConcurrencyActiveStatus,
+  type ExecutionNonTerminalStatus,
+  type ExecutionStatus,
+  type TerminalExecutionStatus,
+} from './execution-row';
+
 // Workflow types (YAML-based sequential execution)
 export * from './workflow';
 

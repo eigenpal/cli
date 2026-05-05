@@ -505,13 +505,13 @@ Aggregate progress for a batch by `batchId`.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                                                                 |
-| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
-| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled), then exit |
-| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                    |
-| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                 |
-| `--base-url <url>`     | no       |         | Server base URL                                                                             |
-| `--json`               | no       |         | Output the raw server response as JSON                                                      |
+| Flag                   | Required | Default | Description                                                                                          |
+| ---------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit |
+| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                             |
+| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                          |
+| `--base-url <url>`     | no       |         | Server base URL                                                                                      |
+| `--json`               | no       |         | Output the raw server response as JSON                                                               |
 
 ### `eigenpal workflow experiment results [options] <workflow-id> [batchId]`
 

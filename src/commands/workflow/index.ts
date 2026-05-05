@@ -1353,7 +1353,7 @@ returns immediately with \`{ batchId, total }\`; poll
     .description(descriptionFor('workflow_get_experiment_status'))
     .option(
       '--watch',
-      'Poll until every execution reaches a terminal state (completed/failed/cancelled), then exit',
+      'Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit',
       false
     )
     .option(
@@ -1441,11 +1441,12 @@ returns immediately with \`{ batchId, total }\`; poll
             if (process.stderr.isTTY) process.stderr.write('\n');
             const failed = summary.counts.failed ?? 0;
             const cancelled = summary.counts.cancelled ?? 0;
-            if (failed + cancelled > 0) {
+            const rejected = summary.counts.rejected ?? 0;
+            if (failed + cancelled + rejected > 0) {
               renderExperimentFailures(execs, summary.total);
             }
             printJson(result);
-            if (failed + cancelled > 0) process.exit(1);
+            if (failed + cancelled + rejected > 0) process.exit(1);
             return;
           }
           if (Date.now() >= deadline) {
@@ -1585,7 +1586,7 @@ export function renderExperimentFailures(
   totalCount: number
 ): void {
   const failedExecs = execs.filter(
-    (e) => e.status === 'failed' || e.status === 'cancelled'
+    (e) => e.status === 'failed' || e.status === 'cancelled' || e.status === 'rejected'
   ) as Array<{
     id: string;
     status: string;
@@ -1609,7 +1610,7 @@ export function renderExperimentFailures(
   );
 }
 
-const TERMINAL_EXEC_STATES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_EXEC_STATES = new Set(['completed', 'failed', 'cancelled', 'rejected']);
 
 export function summarizeExperimentExecutions(execs: Array<{ status?: string }>): {
   total: number;

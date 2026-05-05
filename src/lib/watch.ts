@@ -64,7 +64,7 @@ export interface WatchResult {
   detached: boolean;
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'rejected']);
 
 const STATUS_BADGES: Record<string, string> = {
   pending: '[ ]',

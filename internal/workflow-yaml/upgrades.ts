@@ -51,11 +51,83 @@ function upgradeTriggerToTriggerMethods(workflow: WorkflowObject): WorkflowObjec
 }
 
 /**
+ * Upgrade: legacy AI steps used `type: ai` + `ai: parse|extract` instead of `type: ai.parse` / `ai.extract`.
+ */
+function upgradeLegacyAiStepFormat(workflow: WorkflowObject): WorkflowObject {
+  const steps = workflow.steps;
+  if (!Array.isArray(steps)) return workflow;
+  return { ...workflow, steps: steps.map(upgradeStepDeep) };
+}
+
+function upgradeStepDeep(step: unknown): unknown {
+  if (!step || typeof step !== 'object') return step;
+  const s = step as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...s };
+
+  if (out.type === 'ai' && typeof out.ai === 'string') {
+    const op = out.ai as string;
+    delete out.ai;
+    out.type = `ai.${op}`;
+  }
+
+  // Legacy: `type: parallel` → `control.parallel`
+  if (out.type === 'parallel') {
+    out.type = 'control.parallel';
+  }
+
+  // Legacy: `type: transform` + `transform: set` → `transform.set` (same pattern as AI)
+  if (out.type === 'transform' && typeof out.transform === 'string') {
+    const op = out.transform as string;
+    delete out.transform;
+    out.type = `transform.${op}`;
+  }
+
+  // Legacy ai.parse put storage key in `with.ref` (+ filename/mimeType) instead of
+  // `with.input` as FilePathDescriptor or { fileId }. Map to kind: 's3' for the parser.
+  if (out.type === 'ai.parse' && out.with && typeof out.with === 'object') {
+    const w = out.with as Record<string, unknown>;
+    if (w.input === undefined && typeof w.ref === 'string') {
+      const { ref, filename, mimeType, ...rest } = w;
+      out.with = {
+        ...rest,
+        input: {
+          kind: 's3',
+          ref,
+          filename: typeof filename === 'string' ? filename : 'document',
+          mimeType: typeof mimeType === 'string' ? mimeType : 'application/octet-stream',
+        },
+      };
+    }
+  }
+
+  if (Array.isArray(out.steps)) {
+    out.steps = out.steps.map(upgradeStepDeep);
+  }
+  if (Array.isArray(out.then)) {
+    out.then = out.then.map(upgradeStepDeep);
+  }
+  if (Array.isArray(out.else)) {
+    out.else = out.else.map(upgradeStepDeep);
+  }
+  if (Array.isArray(out.branches)) {
+    out.branches = out.branches.map((branch: unknown) => {
+      if (!branch || typeof branch !== 'object') return branch;
+      const b = branch as Record<string, unknown>;
+      if (!Array.isArray(b.steps)) return branch;
+      return { ...b, steps: b.steps.map(upgradeStepDeep) };
+    });
+  }
+
+  return out;
+}
+
+/**
  * List of all upgrades to apply, in order.
  * Each upgrade function receives a workflow object and returns an upgraded version.
  */
 const UPGRADES: Array<(workflow: WorkflowObject) => WorkflowObject> = [
   upgradeTriggerToTriggerMethods,
+  upgradeLegacyAiStepFormat,
   // Add future upgrades here:
   // upgradeStepConfigFormat,
   // upgradeOutputFormat,
@@ -86,7 +158,31 @@ export function needsUpgrade(workflow: WorkflowObject): boolean {
     return true;
   }
 
-  // Add checks for future upgrades here
+  if (Array.isArray(workflow.steps) && workflowHasUpgradableSteps(workflow.steps)) {
+    return true;
+  }
 
+  return false;
+}
+
+function workflowHasUpgradableSteps(steps: unknown[]): boolean {
+  for (const step of steps) {
+    if (!step || typeof step !== 'object') continue;
+    const s = step as Record<string, unknown>;
+    if (s.type === 'ai' && typeof s.ai === 'string') return true;
+    if (s.type === 'parallel') return true;
+    if (s.type === 'transform' && typeof s.transform === 'string') return true;
+    if (Array.isArray(s.steps) && workflowHasUpgradableSteps(s.steps as unknown[])) return true;
+    if (Array.isArray(s.then) && workflowHasUpgradableSteps(s.then as unknown[])) return true;
+    if (Array.isArray(s.else) && workflowHasUpgradableSteps(s.else as unknown[])) return true;
+    if (Array.isArray(s.branches)) {
+      for (const b of s.branches as unknown[]) {
+        if (!b || typeof b !== 'object') continue;
+        const br = b as Record<string, unknown>;
+        if (Array.isArray(br.steps) && workflowHasUpgradableSteps(br.steps as unknown[]))
+          return true;
+      }
+    }
+  }
   return false;
 }

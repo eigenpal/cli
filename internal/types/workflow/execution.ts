@@ -166,7 +166,6 @@ export const WorkflowExecutionSchema = z.object({
   workerId: z.string().nullable(),
 
   /** Retry management */
-  retryCount: z.number().default(0),
   maxRetries: z.number().default(0),
 
   /** Retry chain tracking */

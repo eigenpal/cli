@@ -165,7 +165,7 @@ check happens between every step transition, including inside
 Behavior by current state:
 
 - `created` / `pending` — transitions straight to `cancelled`.
-- `running` / `waiting` — stamps `cancellationRequestedAt`; the worker
+- `running` / `waiting` — stamps `cancelRequestedAt`; the worker
   observes it on the next step boundary and exits cleanly.
 - already terminal (`completed` / `failed` / `cancelled`) — no-op,
   exits 0 with an info line. Safe to retry.

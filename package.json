@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -57,7 +57,7 @@
     "picocolors": "^1.1.1",
     "quickjs-emscripten": "^0.32.0",
     "yaml": "^2.7.0",
-    "zod": "^4.0.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@t3-oss/env-core": "^0.13.11",

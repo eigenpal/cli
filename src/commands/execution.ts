@@ -141,7 +141,7 @@ Examples:
 
 Behavior:
   - created/pending: transitions straight to cancelled.
-  - running/waiting: stamps cancellationRequestedAt; the worker observes it
+  - running/waiting: stamps cancelRequestedAt; the worker observes it
     between step transitions and exits cleanly.
   - already terminal (completed/failed/cancelled): no-op, exits 0 with an
     info line. Idempotent — safe to retry.

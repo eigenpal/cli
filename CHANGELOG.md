@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.4
+## 0.4.5
 
 ### Major Changes
 
@@ -446,7 +446,7 @@
 - 71361fd: Generate the skill reference (step types, evaluators, workflow YAML) from the canonical Zod schemas in `@eigenpal/types` on every build, with a CI gate that blocks PRs whose schema changes don't ship the regenerated docs.
 - 71361fd: Tighten error-message quality across the dataset/eval/execute pipeline so the CLI surfaces actionable feedback instead of opaque dumps.
   - `eigenpal workflow set-dataset` now decodes the import endpoint's NDJSON terminal event: `aborted` renders the structured `issues[]` with an aligned field column and exits non-zero; `done` warns loudly when `expectedSet < created` so missing `expected/output.json` files don't slip through silently. Adds smart hints for `invalid_expected_output` and `argument_name_collision` codes.
-  - Two endpoints (`POST /api/v1/execute`, `POST /api/v1/eval`) replaced their legacy `{ error, details }` payloads with the structured envelope (`{ issues, hint, requestId, docsUrl }`) the CLI's `printApiError` already consumes.
+  - `POST /api/v1/execute` replaced its legacy `{ error, details }` payload with the structured envelope (`{ issues, hint, requestId, docsUrl }`) the CLI's `printApiError` already consumes.
   - `exact-diff` evaluator no longer falls back to "compare whole envelope when `.data` is missing." That fallback silently absorbed the import shape bugs we just fixed; it now requires `.data` on both sides (matching the system-wide `WorkflowResult` and `ExpectedOutputSchema` contracts) so any future shape regression fails loudly.
   - Exports `printIssues` from the CLI's `validate` command so other commands reuse the same field-aligned issue formatter.
 
