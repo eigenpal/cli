@@ -67,6 +67,20 @@ export interface ExtractOptions {
   model?: string;
   /** Temperature (0-2) */
   temperature?: number;
+  /**
+   * Best-effort reproducibility seed. OpenAI documents seed as "mostly
+   * deterministic" given the same `system_fingerprint`. openai-compatible
+   * providers ignore it silently. Pin in callers that need deterministic
+   * output (e.g. anchor detection in ai.split).
+   */
+  seed?: number;
+  /**
+   * Cancels the in-flight LLM request when aborted. The OpenAI SDK
+   * forwards this to fetch, so a 30s call dies on the next OS-level
+   * network round-trip rather than running to completion — load-bearing
+   * for snappy cooperative cancellation in the worker.
+   */
+  signal?: AbortSignal;
 }
 
 /**

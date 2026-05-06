@@ -12,6 +12,7 @@ export const PROCESSOR_IDS = {
   // Document processing
   DOCUMENT_PARSER: 'builtin/parser',
   EXTRACT: 'builtin/extract',
+  SPLIT: 'builtin/split',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',
   XLSX_TO_JSON: 'builtin/xlsx-to-json',

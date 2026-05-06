@@ -20,6 +20,7 @@ export * from './document-parser';
 export * from './extract';
 export * from './merge';
 export * from './pdf-embedder';
+export * from './split';
 export * from './template';
 export * from './xlsx-to-json';
 
@@ -37,6 +38,7 @@ import {
   PdfEmbedderInputSchema,
   PdfEmbedderOutputSchema,
 } from './pdf-embedder';
+import { SplitConfigSchema, SplitInputSchema, SplitOutputSchema } from './split';
 import { TemplateConfigSchema, TemplateInputSchema, TemplateOutputSchema } from './template';
 import {
   XlsxToJsonConfigSchema,
@@ -93,6 +95,12 @@ export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
     inputSchema: PdfEmbedderInputSchema,
     outputSchema: PdfEmbedderOutputSchema,
     configSchema: PdfEmbedderConfigSchema,
+  },
+  [PROCESSOR_IDS.SPLIT]: {
+    id: PROCESSOR_IDS.SPLIT,
+    inputSchema: SplitInputSchema,
+    outputSchema: SplitOutputSchema,
+    configSchema: SplitConfigSchema,
   },
   [PROCESSOR_IDS.XLSX_TO_JSON]: {
     id: PROCESSOR_IDS.XLSX_TO_JSON,

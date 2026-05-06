@@ -93,7 +93,7 @@ Exits 1 when any example fails.
     .option('--step <name>', 'Show only this step (or comma-separated list)')
     .option(
       '--include <kinds>',
-      'Comma-separated subset of input,output,error,duration',
+      'Comma-separated subset of input,output,error,duration. `input` projects the resolved templated config (= what the processor actually received). `inputRef` returns the minimal predecessor-id reference instead.',
       'input,output,error,duration'
     )
     .addHelpText(
@@ -232,6 +232,7 @@ async function getExecution(executionId: string, opts: GetOpts): Promise<void> {
 
   try {
     const result = (await client.get(`/api/v1/executions/${executionId}?includeSteps=true`)) as {
+      executionId?: string;
       id?: string;
       status?: string;
       startedAt?: string | null;
@@ -241,8 +242,11 @@ async function getExecution(executionId: string, opts: GetOpts): Promise<void> {
         stepName: string;
         status: string;
         durationMs?: number | null;
-        input?: unknown;
-        output?: unknown;
+        // Server returns these under their canonical names; CLI surfaces
+        // them as input/output/config in --include (more terse).
+        inputData?: unknown;
+        outputData?: unknown;
+        resolvedConfig?: unknown;
         error?: string | null;
         overrideMode?: string | null;
       }>;
@@ -280,9 +284,10 @@ async function getExecution(executionId: string, opts: GetOpts): Promise<void> {
       return;
     }
 
-    // Pretty default — vertical step list via renderFrame, plus failed-step
-    // error trailers and the workflow-level error if there is one. JSON view
-    // is one flag away (`--json`) for callers that need the full payload.
+    // Pretty default — vertical step list via renderFrame, plus a truncated
+    // output preview per step so agents see the useful signal without
+    // reaching for --json. Failed-step error trailers and the workflow-level
+    // error follow. JSON view is one flag away (`--json`) for the full payload.
     const snapshot: ExecutionSnapshot = {
       id: result.id ?? executionId,
       status: result.status ?? 'unknown',
@@ -294,6 +299,7 @@ async function getExecution(executionId: string, opts: GetOpts): Promise<void> {
         status: s.status,
         durationMs: s.durationMs,
         error: s.error,
+        outputPreview: previewOutput(s.outputData),
       })),
       error: result.error ?? null,
     };
@@ -495,6 +501,32 @@ function compareOutputs(a: unknown, b: unknown): string {
   return `differs (A=${aJson.length}b, B=${bJson.length}b)`;
 }
 
+/**
+ * Build a single-line truncated preview of a step's output for the pretty
+ * `execution get` view. Strings render verbatim (capped); structured shapes
+ * stringify and truncate so agents see "is this remotely the right shape"
+ * without piping to jq. Returns null for nullish/empty payloads — caller
+ * skips rendering entirely so the line list stays clean.
+ */
+const PREVIEW_MAX = 120;
+function previewOutput(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    if (value.length === 0) return null;
+    return value.length > PREVIEW_MAX ? `${value.slice(0, PREVIEW_MAX - 1)}…` : value;
+  }
+  let json: string;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    return null;
+  }
+  if (!json || json === '{}' || json === '[]' || json === 'null') return null;
+  // Collapse newlines + repeated whitespace so the preview stays one line.
+  const flat = json.replace(/\s+/g, ' ');
+  return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX - 1)}…` : flat;
+}
+
 function filterIncludes(
   step: Record<string, unknown>,
   includes: string | undefined
@@ -502,8 +534,21 @@ function filterIncludes(
   if (!includes) return step;
   const wanted = new Set(includes.split(',').map((s) => s.trim()));
   const out: Record<string, unknown> = { stepName: step.stepName, status: step.status };
-  if (wanted.has('input')) out.input = step.input;
-  if (wanted.has('output')) out.output = step.output;
+
+  // `input` projects `resolvedConfig` — the step's `with` block AFTER template
+  // resolution, i.e. the actual payload sent to the processor (LLM prompt,
+  // schema, input text already substituted). Was previously projecting
+  // `inputData` (a minimal predecessor-id reference, storage-optimized for
+  // the DB) which surfaced as `{{ steps.parse.output }}` template strings —
+  // useless when you're trying to see what the LLM actually got.
+  //
+  // The minimal reference is still available via `--include inputRef` for
+  // anyone who genuinely wants the predecessor-id shape.
+  if (wanted.has('input') || wanted.has('config') || wanted.has('resolvedConfig')) {
+    out.input = step.resolvedConfig;
+  }
+  if (wanted.has('inputRef') || wanted.has('inputData')) out.inputRef = step.inputData;
+  if (wanted.has('output') || wanted.has('outputData')) out.output = step.outputData;
   if (wanted.has('error')) out.error = step.error;
   if (wanted.has('duration')) out.durationMs = step.durationMs;
   if ('overrideMode' in step) out.overrideMode = step.overrideMode;

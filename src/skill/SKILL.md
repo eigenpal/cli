@@ -227,6 +227,70 @@ eigenpal workflow experiment status <workflow-id> <batch-id>
 eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
 ```
 
+### Long documents — split → chunk → extract
+
+The canonical chain when a document is too long for one `ai.extract` call (loan
+contracts, SaaS agreements, RFPs). Each step preserves source `pageIndex` so
+the final extracted fields trace back to the originating page.
+
+```yaml
+- name: parse
+  type: ai.parse
+  with: { input: "{{ input.document }}" }
+
+# LLM-driven section split — each split carries page_range + confidence
+- name: sections
+  type: ai.split
+  with:
+    input: "{{ steps.parse.output }}"
+    sections:
+      - { name: header,    description: "Title page + parties block" }
+      - { name: priloha2,  description: "Príloha 2 odkladacie podmienky", required: true }
+
+# Optional: chunk a long section before extraction (regex-anchored, keeps page refs)
+- name: chunks
+  type: transform.text-chunker
+  with:
+    input: "{{ steps.sections.output.splits[1] }}"   # priloha2 split
+    maxChars: 8000
+    overlap: 500
+    splitOn: ['(?:^|\\n)\\s*\\d+\\.\\d+\\s+', '\\n\\n+', '\\n']
+
+# Deterministic field extraction — counterpart to ai.extract; matches carry _evidence.pageIndex
+- name: header_fields
+  type: transform.regex-extract
+  with:
+    input: "{{ steps.parse.output }}"
+    fields:
+      contractNumber:
+        pattern: 'č\\.\\s*(\\d{1,4}/\\w+/\\d{4})'
+        normalize: strip-spaces
+      signatureDate:
+        pattern: 'uzavretá\\s+dňa\\s+(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})'
+        format: iso-date
+      currency:
+        pattern: '\\b(EUR|USD|CZK)\\b'
+        default: EUR
+    flags: i
+```
+
+Discovery from the CLI:
+
+```bash
+eigenpal workflow step-type get ai.split | jq '.configSchema.properties'
+eigenpal workflow step-type get transform.text-chunker | jq '.configSchema.properties'
+eigenpal workflow step-type get transform.regex-extract | jq '.configSchema.properties'
+```
+
+Pick the right operator for the job:
+
+| Goal                                     | Operator                  |
+| ---------------------------------------- | ------------------------- |
+| Extract structured data with an LLM      | `ai.extract`              |
+| Pull fields by regex (no LLM)            | `transform.regex-extract` |
+| Split a doc into named sections (LLM)    | `ai.split`                |
+| Cut text by regex boundary + overlap     | `transform.text-chunker`  |
+
 ### Debug a failing workflow
 
 ```bash

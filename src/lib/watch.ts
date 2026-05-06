@@ -22,6 +22,10 @@ export interface StepSnapshot {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped' | string;
   durationMs?: number | null;
   error?: string | null;
+  /** Optional truncated one-liner of the step's output. Populated by
+   *  `execution get` so agents see what each step actually produced without
+   *  reaching for `--json`. Live watch leaves it undefined to keep frames small. */
+  outputPreview?: string | null;
 }
 
 export interface ExecutionSnapshot {
@@ -96,6 +100,9 @@ export function renderFrame(snapshot: ExecutionSnapshot): string {
     lines.push(
       `  ${statusBadge(step.status)} ${step.stepName}${durationSuffix(step.durationMs)}${errSuffix}`
     );
+    if (step.outputPreview) {
+      lines.push(`     ↳ ${step.outputPreview}`);
+    }
   }
   if (snapshot.error && (snapshot.stepExecutions ?? []).length === 0) {
     lines.push(`  err: ${snapshot.error.slice(0, 200)}`);

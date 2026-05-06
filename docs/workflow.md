@@ -35,6 +35,7 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow experiment list [options] <workflow-id>`](#eigenpal-workflow-experiment-list-options-workflow-id)
   - [`eigenpal workflow experiment run [options] <workflow-id>`](#eigenpal-workflow-experiment-run-options-workflow-id)
   - [`eigenpal workflow experiment status [options] <workflow-id> <batchId>`](#eigenpal-workflow-experiment-status-options-workflow-id-batchid)
+  - [`eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`](#eigenpal-workflow-experiment-cancel-options-workflow-id-batchid)
   - [`eigenpal workflow experiment results [options] <workflow-id> [batchId]`](#eigenpal-workflow-experiment-results-options-workflow-id-batchid)
   - [`eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`](#eigenpal-workflow-experiment-compare-options-batchida-batchidb)
   - [`eigenpal workflow execution run [options] <workflow-id> [examples...]`](#eigenpal-workflow-execution-run-options-workflow-id-examples)
@@ -76,6 +77,7 @@ workflow
 │   ├── list <workflow-id>
 │   ├── run <workflow-id>
 │   ├── status <workflow-id> <batchId>
+│   ├── cancel <workflow-id> <batchId>
 │   ├── results <workflow-id> [batchId]
 │   └── compare <batchIdA> <batchIdB>
 ├── execution
@@ -140,6 +142,7 @@ workflow
 | `eigenpal workflow experiment list [options] <workflow-id>`              | List executions for the workflow, newest first.    |
 | `eigenpal workflow experiment run [options] <workflow-id>`               | Start a batch eval against the workflow's dataset. |
 | `eigenpal workflow experiment status [options] <workflow-id> <batchId>`  | Aggregate progress for a batch by `batchId`.       |
+| `eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`  | Cancel every execution in a batch. Idempotent.     |
 | `eigenpal workflow experiment results [options] <workflow-id> [batchId]` | Download eval results in CSV or JSON.              |
 | `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`   | Diff eval scores between two experiment batches.   |
 
@@ -177,9 +180,9 @@ workflow
 
 ### Step
 
-| Command                                        | Description                                                                                                                                                                                                      |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow step exec [options] <type>` | Run one step locally with sample inputs and print its output as JSON. <type> is any value from `workflow step-type list`; only types with a local runner actually execute (today: transform.script, ai.extract). |
+| Command                                        | Description                                                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow execution run` or `workflow experiment run` instead. |
 
 ## Details
 
@@ -505,13 +508,33 @@ Aggregate progress for a batch by `batchId`.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                                                                          |
-| ---------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit |
-| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                             |
-| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                          |
-| `--base-url <url>`     | no       |         | Server base URL                                                                                      |
-| `--json`               | no       |         | Output the raw server response as JSON                                                               |
+| Flag                   | Required | Default | Description                                                                                                            |
+| ---------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit                   |
+| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                                               |
+| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                                            |
+| `--include <kinds>`    | no       | `""`    | Comma-separated extras to attach when --watch terminates: payload (full per-execution snapshot, can be hundreds of KB) |
+| `--base-url <url>`     | no       |         | Server base URL                                                                                                        |
+| `--json`               | no       |         | Output the raw server response as JSON                                                                                 |
+
+### `eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`
+
+Cancel every execution in a batch. Idempotent.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `batchId`     | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                           |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------- |
+| `--yes`            | no       |         | Required for non-TTY shells (CI, pipes). Acts immediately, no prompt. |
+| `--base-url <url>` | no       |         | Server base URL                                                       |
+| `--json`           | no       |         | Output the raw server response as JSON                                |
 
 ### `eigenpal workflow experiment results [options] <workflow-id> [batchId]`
 
@@ -584,12 +607,12 @@ Fetch a single execution payload. Optionally narrow to one step.
 
 ### Options
 
-| Flag                | Required | Default                         | Description                                           |
-| ------------------- | -------- | ------------------------------- | ----------------------------------------------------- |
-| `--step <name>`     | no       |                                 | Show only this step (or comma-separated list)         |
-| `--include <kinds>` | no       | `"input,output,error,duration"` | Comma-separated subset of input,output,error,duration |
-| `--base-url <url>`  | no       |                                 | Server base URL                                       |
-| `--json`            | no       |                                 | Output the raw server response as JSON                |
+| Flag                | Required | Default                         | Description                                                                                                                                                                                                      |
+| ------------------- | -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--step <name>`     | no       |                                 | Show only this step (or comma-separated list)                                                                                                                                                                    |
+| `--include <kinds>` | no       | `"input,output,error,duration"` | Comma-separated subset of input,output,error,duration. `input` projects the resolved templated config (= what the processor actually received). `inputRef` returns the minimal predecessor-id reference instead. |
+| `--base-url <url>`  | no       |                                 | Server base URL                                                                                                                                                                                                  |
+| `--json`            | no       |                                 | Output the raw server response as JSON                                                                                                                                                                           |
 
 ### `eigenpal workflow execution list [options] <workflow-id>`
 
@@ -763,7 +786,7 @@ Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect speci
 
 ### `eigenpal workflow step exec [options] <type>`
 
-Run one step locally with sample inputs and print its output as JSON. <type> is any value from `workflow step-type list`; only types with a local runner actually execute (today: transform.script, ai.extract).
+DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow execution run` or `workflow experiment run` instead.
 
 ### Arguments
 
@@ -773,11 +796,9 @@ Run one step locally with sample inputs and print its output as JSON. <type> is 
 
 ### Options
 
-| Flag                      | Required | Default | Description                                                                                                                                                                                                             |
-| ------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--config-json <json>`    | no       |         | Full step config as a JSON literal. Mutually exclusive with --config-file.                                                                                                                                              |
-| `--config-file <path\|->` | no       |         | Full step config from a JSON file (or `-` for stdin). Mutually exclusive with --config-json.                                                                                                                            |
-| `--inputs <k=v...>`       | no       | `[]`    | Repeatable. Value can be `@path` (file contents, JSON-parsed when applicable) or a literal string. Merges into the config `inputs` map for transform.script; provides the `input` for ai.extract when set as `input=…`. |
-| `--output-schema <path>`  | no       |         | Optional JSON Schema. Validates the step output; defaults to the step type’s built-in `outputSchema` from STEP_SCHEMAS when omitted.                                                                                    |
-| `--timeout-ms <n>`        | no       |         | Override transform.script wall-clock cap (default 5000)                                                                                                                                                                 |
-| `--memory-mb <n>`         | no       |         | Override transform.script heap cap in MB (default 10)                                                                                                                                                                   |
+| Flag                     | Required | Default | Description                            |
+| ------------------------ | -------- | ------- | -------------------------------------- |
+| `--config-json <json>`   | no       |         | (unused; kept for back-compat parsing) |
+| `--config-file <path>`   | no       |         | (unused)                               |
+| `--inputs <pairs...>`    | no       |         | (unused)                               |
+| `--output-schema <path>` | no       |         | (unused)                               |

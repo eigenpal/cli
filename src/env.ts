@@ -16,17 +16,6 @@ export const env = createEnv({
      *  persisted equivalent. */
     EIGENPAL_PROFILE: z.string().optional(),
 
-    // LLM config for `workflow step exec ai.extract`. Mirrors the worker's
-    // WORKER_LLM_* convention so a user with a working worker .env.local
-    // can run the CLI extract command without any new config.
-    WORKER_LLM_PROVIDER: z.string().optional(),
-    WORKER_LLM_API_KEY: z.string().optional(),
-    WORKER_LLM_MODEL: z.string().optional(),
-    WORKER_LLM_BASE_URL: z.string().optional(),
-    /** Fallback API key when WORKER_LLM_API_KEY is unset and provider is
-     *  openai (matches every other tool in the openai ecosystem). */
-    OPENAI_API_KEY: z.string().optional(),
-
     // Standard Node vars — declared for consistency.
     DEBUG: z.string().optional(),
     NO_COLOR: z.string().optional(),

@@ -38,6 +38,8 @@ export {
   TransformCombineOutputSchema,
   TransformMergeConfigSchema,
   TransformMergeOutputSchema,
+  TransformRegexExtractConfigSchema,
+  TransformRegexExtractOutputSchema,
   TransformRemoveConfigSchema,
   TransformRemoveOutputSchema,
   TransformSetConfigSchema,
@@ -46,6 +48,8 @@ export {
   TransformSplitOutputSchema,
   TransformTemplateConfigSchema,
   TransformTemplateOutputSchema,
+  TransformTextChunkerConfigSchema,
+  TransformTextChunkerOutputSchema,
   getAllStepJsonSchemas,
   getRequiredOutputKeys,
   getStepConfigSchema,
@@ -73,10 +77,14 @@ export {
   type StepSchemaDefinition,
   type TransformCombineConfig,
   type TransformMergeConfig,
+  type TransformRegexExtractConfig,
+  type TransformRegexExtractOutput,
   type TransformRemoveConfig,
   type TransformSetConfig,
   type TransformSplitConfig,
   type TransformTemplateConfig,
+  type TransformTextChunkerConfig,
+  type TransformTextChunkerOutput,
 } from './step-configs';
 
 // Action types

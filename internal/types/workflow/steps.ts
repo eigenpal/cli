@@ -11,7 +11,7 @@ import { z } from 'zod';
  */
 
 // AI step types
-export const AI_STEP_TYPES = ['ai.parse', 'ai.extract'] as const;
+export const AI_STEP_TYPES = ['ai.parse', 'ai.extract', 'ai.split'] as const;
 
 // Transform step types
 export const TRANSFORM_STEP_TYPES = [
@@ -24,6 +24,8 @@ export const TRANSFORM_STEP_TYPES = [
   'transform.pdf-embed',
   'transform.xlsx-to-json',
   'transform.script',
+  'transform.text-chunker',
+  'transform.regex-extract',
 ] as const;
 
 // Action step types
@@ -61,6 +63,7 @@ export const StepTypeValue = {
   // AI
   AI_PARSE: 'ai.parse',
   AI_EXTRACT: 'ai.extract',
+  AI_SPLIT: 'ai.split',
   // Transform
   TRANSFORM_SET: 'transform.set',
   TRANSFORM_REMOVE: 'transform.remove',
@@ -71,6 +74,8 @@ export const StepTypeValue = {
   TRANSFORM_PDF_EMBED: 'transform.pdf-embed',
   TRANSFORM_XLSX_TO_JSON: 'transform.xlsx-to-json',
   TRANSFORM_SCRIPT: 'transform.script',
+  TRANSFORM_TEXT_CHUNKER: 'transform.text-chunker',
+  TRANSFORM_REGEX_EXTRACT: 'transform.regex-extract',
   // Action
   ACTION_HTTP: 'action.http',
   ACTION_INVOKE_WORKFLOW: 'action.invoke-workflow',

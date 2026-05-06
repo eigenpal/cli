@@ -226,6 +226,104 @@ on the step execution.
           schema: { type: object, properties: { value: { type: string } } }
 ```
 
+### Split a long doc into named sections, then extract each
+
+For documents that bundle multiple sub-documents (e.g. a contract pack with
+several annexes), use `ai.split` to find section boundaries with an LLM,
+then `control.parallel_map` to run section-specific `ai.extract`. The
+splitter operates on parsed pages, so DOCX / RTF / scans all reduce to the
+same per-page representation.
+
+Description-writing tips (mirrors Reducto's guidance):
+
+- Use the document's own terminology — a Slovak contract calls it `Príloha`,
+  not "annex". List the multilingual variants you've seen.
+- Mention stable visual cues if any — a centered title-page header, a
+  signature line, the start of a specific table.
+- Be specific. "The collateral schedule table at the start of Príloha 2"
+  beats "annex".
+
+```yaml
+- name: parse
+  type: ai.parse
+  with:
+    input: '{{ input.document }}'
+
+- name: split
+  type: ai.split
+  with:
+    input: '{{ steps.parse.output }}'
+    sections:
+      - name: intro
+        description: >-
+          The introductory cover/preamble of the loan pack — borrower details,
+          loan purpose, signature block. Always before any "Príloha".
+      - name: priloha_2
+        description: >-
+          "Príloha č. 2 / Anlage 2 / Załącznik nr 2" — the collateral
+          schedule. Starts with a section header on its own page; contains
+          a table of pledged assets.
+        required: true                  # warn if not found
+        endHints:                       # LLM-judged end cues — phrases the model treats semantically
+          - "PRÍLOHA Č. 3"
+          - "ANLAGE 3"
+      - name: priloha_3
+        description: >-
+          "Príloha č. 3 / Anlage 3" — the repayment schedule. Tabular
+          amortization plan with monthly rows.
+    rules: |
+      End-of-section markers like *Koniec prílohy 2* close the current section.
+      Repeated headers/footers are continuation, not new sections.
+
+- name: extract-each-section
+  type: control.parallel_map
+  items: '{{ steps.split.output.splits }}'
+  as: section
+  steps:
+    - name: extract-section-fields
+      type: ai.extract
+      with:
+        input: '{{ section.text }}'
+        schema:
+          type: object
+          properties:
+            section_name: { type: string }
+            key_facts: { type: array, items: { type: string } }
+```
+
+Each `splits[i]` carries `{ name, page_range, confidence, notes, evidence,
+end_evidence, text, pages, pages_anchored, pages_inferred }`.
+
+- `confidence` is `'low' | 'medium' | 'high'` — coarse enum, not a 0..1
+  number. LLMs cluster numeric scores meaninglessly; the enum is reliable.
+- `evidence.start_heading_text` is the verbatim heading the LLM cited (parse
+  this instead of regexing over `notes`).
+- `end_evidence` is set when the LLM detected a section close (matched
+  against the section's `endHints` or an explicit closing marker like
+  `*Koniec prílohy*`). Carries `{ end_page, confidence, notes }`. Absent
+  when continuity-fill alone closed the section. Pair `evidence.notes` +
+  `end_evidence.notes` for a reconciliation pass that judges whether the
+  section is correctly bounded.
+- `pages[i].source` is `'anchored'` (direct LLM evidence) or `'inferred'`
+  (filled by continuity) — use it to deprioritize inferred content.
+
+Pages that match no section are silently dropped (Reducto-style); add an
+explicit "everything else" section if you need a catch-all.
+
+Per-section knobs:
+
+- `required: true` — log a warn if missing and lean the LLM toward expecting
+  it. Default: false.
+- `endHints: [string]` — natural-language cues the LLM uses to find the
+  section's END. Treated semantically (casing variants, missing diacritics,
+  multilingual phrasings all qualify) — this is NOT a regex match. The LLM
+  emits a structured `end_anchor`; deterministic merge applies it. Replaces
+  the older `endAnchors` line-prefix matcher.
+
+`extract-each-section.output` is `{ items, count, totalIterations }`, not a
+flat array — `items[i]` holds the per-iteration result keyed by the last
+inner step's name (here `{ "extract-section-fields": {...} }`).
+
 ## Validate before pushing
 
 ```bash

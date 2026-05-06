@@ -306,10 +306,12 @@ YAML's \`name:\` field). Both:
   // written under ./dataset/examples/<example>/executions/.
   registerClearLocalCommand(workflow);
 
-  // Local single-step execution (transform.script / ai.extract) for the
-  // sub-1-second iteration loop on script + prompt edits. Sidesteps the
-  // server entirely; see step-exec.ts for why it lives in the CLI rather
-  // than re-using the worker.
+  // Single-step execution. The previous local-runner implementation was
+  // removed (it diverged from production worker behavior and assumed shell
+  // env state real CLI users don't have). Currently a placeholder that
+  // exits 2 with a redirect to `workflow run` / `experiment run`. EIG-104
+  // tracks the server-side redesign that will restore single-step execution
+  // through a thin POST → /api/v1/workflows/step-exec.
   registerStepExecCommands(workflow);
 }
 
@@ -543,18 +545,29 @@ flag would otherwise shadow it. Validation failures come back as
             opts.setVersion && !extractWorkflowVersion(yamlOnDisk)
               ? spliceWorkflowVersion(yamlOnDisk, opts.setVersion)
               : yamlOnDisk;
+          // Server returns { workflow, version, history } from createWorkflowWithVersion.
+          // The earlier shape (result.id / result.version as a string) was never live
+          // here — `[object Object]` slips through if you read result.version directly.
           const result = (await client.post('/api/v1/workflows', { yaml: yamlToSend })) as {
+            workflow?: { id?: string; currentVersion?: { version?: string } };
+            version?: { version?: string };
+            history?: { id?: string };
+            // Older shapes — kept as defensive fallbacks.
             id?: string;
             currentVersion?: { version?: string };
-            version?: string;
             [k: string]: unknown;
           };
           if (opts.json) {
             printJson(result);
             return;
           }
-          const ver = result.currentVersion?.version ?? result.version ?? '?';
-          success(`Created ${ui.bold(result.id ?? '?')} (v${ver})`);
+          const id = result.workflow?.id ?? result.id ?? '?';
+          const ver =
+            result.version?.version ??
+            result.workflow?.currentVersion?.version ??
+            result.currentVersion?.version ??
+            '?';
+          success(`Created ${ui.bold(id)} (v${ver})`);
         }
       }
     )
@@ -1214,6 +1227,54 @@ function renderExampleHuman(row: FullExampleRow): void {
 // workflow experiment
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve `--example-id <id>` values to canonical `evx_…` ids. Accepts either
+ * the id directly or a human slug (e.g. `ex-01-koifer-97zf`); only fetches the
+ * dataset list when at least one value isn't already an id. Exits 2 with a
+ * pointer to `dataset list` if any slug fails to resolve.
+ */
+async function resolveExampleIds(
+  client: ApiClient,
+  workflowId: string,
+  raw: string[]
+): Promise<string[]> {
+  if (raw.every((v) => v.startsWith('evx_'))) return raw;
+  // Paginate through every example. Server defaults to limit=50; without
+  // explicit pagination a workflow with >50 examples would silently miss
+  // slugs beyond the first page and we'd exit 2 with a "no example with
+  // name X" error even though the example exists.
+  const PAGE_SIZE = 200;
+  const bySlug = new Map<string, string>();
+  let offset = 0;
+  while (true) {
+    const list = (await client.get(`/api/v1/workflows/${workflowId}/eval-examples`, {
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    })) as { data?: Array<{ id: string; name?: string | null }> };
+    const rows = list.data ?? [];
+    for (const row of rows) {
+      if (row.name) bySlug.set(row.name, row.id);
+    }
+    if (rows.length < PAGE_SIZE) break;
+    offset += rows.length;
+  }
+  const unresolved: string[] = [];
+  const resolved = raw.map((v) => {
+    if (v.startsWith('evx_')) return v;
+    const id = bySlug.get(v);
+    if (!id) unresolved.push(v);
+    return id ?? v;
+  });
+  if (unresolved.length > 0) {
+    error(
+      `--example-id: no example with name "${unresolved.join('", "')}" in workflow ${workflowId}.\n` +
+        `   Run \`eigenpal workflow dataset list ${workflowId}\` to see available names.`
+    );
+    process.exit(2);
+  }
+  return resolved;
+}
+
 function registerExperimentCommands(parent: Command): void {
   const experiment = parent
     .command('experiment')
@@ -1303,8 +1364,12 @@ returns immediately with \`{ batchId, total }\`; poll
         }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const examples =
+          opts.exampleId.length > 0
+            ? await resolveExampleIds(client, workflowId, opts.exampleId)
+            : undefined;
         const start = (await client.post(`/api/v1/workflows/${workflowId}/evals/run`, {
-          examples: opts.exampleId.length > 0 ? opts.exampleId : undefined,
+          examples,
         })) as { batchId: string; total: number };
         if (!opts.wait) {
           if (opts.json) {
@@ -1367,6 +1432,11 @@ returns immediately with \`{ batchId, total }\`; poll
       'Hard ceiling for --watch in seconds (default 1800 = 30 min)',
       intArg,
       30 * 60
+    )
+    .option(
+      '--include <kinds>',
+      'Comma-separated extras to attach when --watch terminates: payload (full per-execution snapshot, can be hundreds of KB)',
+      ''
     );
   addJsonFlag(withBaseUrl(statusCmd)).action(
     action(
@@ -1377,9 +1447,17 @@ returns immediately with \`{ batchId, total }\`; poll
           watch: boolean;
           interval: number;
           maxWait: number;
+          include?: string;
           json?: boolean;
         }
       ) => {
+        const includes = new Set(
+          (opts.include ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        );
+        const includePayload = includes.has('payload');
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const url = `/api/v1/workflows/${workflowId}/experiments/${batchId}`;
 
@@ -1437,16 +1515,28 @@ returns immediately with \`{ batchId, total }\`; poll
             }
             lastSummary = line;
           }
+          // Default: terse one-line summary already printed via the watch
+          // loop. Full per-execution payload (which can be hundreds of KB
+          // including parsed contract text — privacy concern in screen-share
+          // pipelines) only on --include payload OR --json.
+          const wantPayload = opts.json || includePayload;
           if (summary.done) {
             if (process.stderr.isTTY) process.stderr.write('\n');
             const failed = summary.counts.failed ?? 0;
             const cancelled = summary.counts.cancelled ?? 0;
             const rejected = summary.counts.rejected ?? 0;
-            if (failed + cancelled + rejected > 0) {
+            const badCount = failed + cancelled + rejected;
+            if (badCount > 0) {
               renderExperimentFailures(execs, summary.total);
             }
-            printJson(result);
-            if (failed + cancelled + rejected > 0) process.exit(1);
+            if (wantPayload) {
+              printJson(result);
+            } else {
+              process.stderr.write(
+                `${ui.dim(`use --include payload (or --json) for the full per-execution snapshot`)}\n`
+              );
+            }
+            if (badCount > 0) process.exit(1);
             return;
           }
           if (Date.now() >= deadline) {
@@ -1454,11 +1544,79 @@ returns immediately with \`{ batchId, total }\`; poll
             error(
               `Timed out after ${opts.maxWait}s with ${summary.total - summary.terminal} non-terminal execution(s). Re-run to keep watching.`
             );
-            printJson(result);
+            if (wantPayload) printJson(result);
             process.exit(2);
           }
           await new Promise((r) => setTimeout(r, opts.interval * 1000));
         }
+      }
+    )
+  );
+
+  // Aggregate batch cancel — fans out one cancel request per execution in
+  // the batch. Idempotent. Mirrors the per-execution cancel semantics
+  // (created/pending → cancelled, running/waiting → cancellation-requested,
+  // terminal → no-op). Saves the workaround of `dataset list --json | xargs
+  // execution cancel` for stuck experiments.
+  const cancelCmd = experiment
+    .command('cancel <workflow-id> <batchId>')
+    .description('Cancel every execution in a batch. Idempotent.')
+    .option('--yes', 'Required for non-TTY shells (CI, pipes). Acts immediately, no prompt.')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow experiment cancel wf_abc123 evb_xyz789
+  $ eigenpal workflow experiment cancel wf_abc123 evb_xyz789 --yes      # required in CI
+  $ eigenpal workflow experiment cancel wf_abc123 evb_xyz789 --json     # raw server payload
+
+Behavior:
+  - created/pending  → cancelled (worker never picked it up).
+  - running/waiting  → cancellation-requested (worker observes between steps).
+  - already terminal → no-op (kept in the outcomes list with status='already-terminal').
+  - Returns aggregate counts + per-execution outcomes.
+`
+    );
+  addJsonFlag(withBaseUrl(cancelCmd)).action(
+    action(
+      async (
+        workflow: string,
+        batchId: string,
+        opts: WorkflowCommandConfig & { yes?: boolean; json?: boolean }
+      ) => {
+        if (!opts.yes && !process.stdout.isTTY) {
+          error(
+            'experiment cancel is destructive (touches every execution in the batch) and requires --yes when run non-interactively'
+          );
+          process.exit(2);
+        }
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const result = (await client.post(
+          `/api/v1/workflows/${workflowId}/experiments/${batchId}/cancel`
+        )) as {
+          batchId: string;
+          total: number;
+          counts: {
+            cancelled: number;
+            cancellationRequested: number;
+            alreadyTerminal: number;
+          };
+          outcomes: Array<{ executionId: string; status: string; wasStatus: string }>;
+        };
+        if (opts.json) {
+          printJson(result);
+          return;
+        }
+        const c = result.counts;
+        const parts: string[] = [];
+        if (c.cancelled > 0) parts.push(`${c.cancelled} cancelled`);
+        if (c.cancellationRequested > 0) parts.push(`${c.cancellationRequested} requested`);
+        if (c.alreadyTerminal > 0) parts.push(`${c.alreadyTerminal} already terminal`);
+        const summary = parts.length > 0 ? parts.join(', ') : 'no-op';
+        const plural = result.total === 1 ? '' : 's';
+        success(
+          `${ui.bold(batchId)}  ${result.total} execution${plural} ${ui.dim(`(${summary})`)}`
+        );
       }
     )
   );

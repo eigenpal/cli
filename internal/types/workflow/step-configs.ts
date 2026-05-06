@@ -67,7 +67,12 @@ export const AiParseOutputSchema = z.object({
     .array(
       z.object({
         pageIndex: z.number().describe('0-based page index'),
-        content: z.string().describe('Extracted content for this page'),
+        // Field is `text`, NOT `content` — matches the runtime PageResult
+        // shape produced by the worker. The earlier `content` declaration
+        // was a long-standing lie: workflows using
+        // `{{ steps.parse.output.pages[0].content }}` always got undefined
+        // because the actual data is on `.text`.
+        text: z.string().describe('Extracted text for this page'),
         pageName: z.string().optional().describe('Page/sheet name (e.g., Excel sheet name)'),
         confidence: z.number().optional().describe('Overall page confidence'),
       })
@@ -118,6 +123,147 @@ export const AiExtractConfigSchema = z.object({
 export const AiExtractOutputSchema = z
   .record(z.string(), z.unknown())
   .describe('Extracted structured data matching the provided schema');
+
+/**
+ * ai.split - Split a parsed document into named sections using an LLM.
+ *
+ * Consumes the output of ai.parse (per-page text). Pages are chunked into
+ * windows under a token budget; for each window the LLM identifies anchor
+ * pages where each named section begins. Anchor merge + continuity fill
+ * produces the final page ranges. Inspired by Reducto's /split.
+ */
+export const AiSplitConfigSchema = z.object({
+  input: z
+    .string()
+    .describe('Template expression resolving to ai.parse output, e.g. "{{ steps.parse.output }}"'),
+  sections: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .min(1)
+          .describe('Stable id, used as the key in output and template references'),
+        description: z
+          .string()
+          .min(1)
+          .describe(
+            'What this section looks like in the document. Use the document\'s own terminology (e.g. "Príloha 2 / Anlage 2") and visual cues. Multilingual variants belong here.'
+          ),
+        required: z
+          .boolean()
+          .optional()
+          .describe(
+            'If true, log a warn when this section is not found, and lean the LLM toward expecting it. Default: false (sections may be absent).'
+          ),
+        endHints: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Natural-language hints fed to the LLM about what marks the END of this section (e.g. ["PRÍPAD PORUŠENIA ZMLUVY", "*Koniec prílohy*"]). The LLM uses these as guidance — not a regex match — so casing variants, missing diacritics, and multilingual phrasings all close the section correctly.'
+          ),
+      })
+    )
+    .min(1)
+    .describe('Named sections to find in the document'),
+  rules: z
+    .string()
+    .optional()
+    .describe(
+      'Optional natural-language rules appended to the system prompt. E.g. "End-of-section markers like *Koniec prílohy 2* close the current section."'
+    ),
+  provider: z
+    .string()
+    .optional()
+    .describe(
+      'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted.'
+    ),
+  windowTokenBudget: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count.'
+    ),
+});
+
+export const AiSplitOutputSchema = z.object({
+  splits: z
+    .array(
+      z.object({
+        name: z.string().describe('Section name from the config'),
+        page_range: z
+          .tuple([z.number().int(), z.number().int()])
+          .describe('[startIndex, endIndex] inclusive, 0-based page indices'),
+        confidence: z
+          .enum(['low', 'medium', 'high'])
+          .describe(
+            'LLM confidence at the anchor page. Coarse enum (low | medium | high) — numeric scores cluster meaninglessly at 0.85-0.95.'
+          ),
+        notes: z.string().describe("LLM's justification for the anchor — useful for debugging"),
+        evidence: z
+          .object({
+            // .nullable() is defensive — the operator strips nulls in
+            // mergeAnchors, but if one slips through we accept it rather
+            // than abort the run. LLMs sometimes emit `null` here for
+            // sections they can't anchor (despite prompt saying to omit).
+            start_heading_text: z
+              .string()
+              .nullable()
+              .optional()
+              .describe('Verbatim heading text the LLM cited as the section start'),
+            start_page: z
+              .number()
+              .int()
+              .nullable()
+              .optional()
+              .describe('Page where start_heading_text appears'),
+          })
+          .optional()
+          .describe(
+            'Structured start-anchor evidence — parse this instead of regexing over `notes`.'
+          ),
+        end_evidence: z
+          .object({
+            end_page: z.number().int().describe('LAST page of the section (inclusive)'),
+            confidence: z.enum(['low', 'medium', 'high']),
+            notes: z
+              .string()
+              .describe(
+                "LLM's justification for the end. Pair with start `notes` for reconciliation."
+              ),
+          })
+          .optional()
+          .describe(
+            "Set when the LLM detected an end-of-section cue (matched against the section's `endHints` or an explicit closing marker). Absent when the section was closed by continuity-fill alone."
+          ),
+        text: z
+          .string()
+          .describe('Joined per-page content for this section, ready for downstream ai.extract'),
+        pages: z
+          .array(
+            z.object({
+              pageIndex: z.number().int(),
+              text: z.string(),
+              pageName: z.string().optional(),
+              source: z
+                .enum(['anchored', 'inferred'])
+                .describe(
+                  'Whether this page is direct LLM evidence (anchored) or continuity-filled (inferred)'
+                ),
+            })
+          )
+          .describe(
+            'Raw per-page records covered by this split (in page order). Iterate when downstream needs per-page context (e.g. control.parallel_map over section pages).'
+          ),
+        pages_anchored: z.array(z.number().int()).describe('Pages with direct LLM evidence'),
+        pages_inferred: z
+          .array(z.number().int())
+          .describe('Pages assigned by deterministic continuity fill'),
+      })
+    )
+    .describe('Sections found in the document, in page order. Absent sections are omitted.'),
+});
 
 // ============================================================================
 // Transform Step Schemas
@@ -368,6 +514,205 @@ export const TransformScriptOutputSchema = z
   .unknown()
   .describe('Value returned from script (validated against outputSchema if provided)');
 
+/**
+ * Deterministic text chunker. Replaces hand-rolled `transform.script` chunking
+ * (clause-aligned splits, paragraph fallback, header preservation, max-cap).
+ *
+ * Input: either a raw string OR a parsed-document shape `{ pages: [{ pageIndex, text }] }`.
+ * When pages are provided each output chunk carries the source `pages: number[]`
+ * (page indexes that contributed text). For raw-string input `pages` is empty.
+ */
+const ParsedDocPageSchema = z.object({
+  pageIndex: z.number().int().nonnegative(),
+  text: z.string(),
+});
+
+export const TransformTextChunkerConfigSchema = z.object({
+  input: z
+    .union([z.string(), z.object({ pages: z.array(ParsedDocPageSchema).min(1) }).passthrough()])
+    .describe(
+      'Either raw text or a parsed-document object `{ pages: [{ pageIndex, text }] }` (e.g. `{{ steps.parse.output }}`). Pages preserve per-chunk page provenance.'
+    ),
+  maxChars: z
+    .number()
+    .int()
+    .min(100)
+    .max(100_000)
+    .describe('Target chunk size in characters. Hard ceiling per chunk is 1.5×.'),
+  overlap: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Characters duplicated at chunk boundaries (default 0). Must be < maxChars / 2.'),
+  splitOn: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Ordered list of regexes; the first that matches near the chunk boundary wins. Falls back to char-cut when none match. Tip: list narrowest first (e.g. /\\d+\\.\\d+\\s+/ before /\\n\\n+/).'
+    ),
+  maxChunks: z
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(64)
+    .describe('Safety cap; later chunks are dropped and `summary.truncated` flips to true.'),
+  preserveHeader: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe(
+      'Prepend the first N characters of the input to every chunk (good for "always include the contract title").'
+    ),
+  minChunkChars: z
+    .number()
+    .int()
+    .nonnegative()
+    .default(0)
+    .describe('Trailing chunks shorter than this are merged into the previous chunk.'),
+});
+
+export const TransformTextChunkerOutputSchema = z.object({
+  chunks: z.array(
+    z.object({
+      text: z.string(),
+      index: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+      startOffset: z.number().int().nonnegative(),
+      endOffset: z.number().int().nonnegative(),
+      pages: z
+        .array(z.number().int().nonnegative())
+        .describe('Page indexes that contributed text to this chunk (empty for raw-string input).'),
+    })
+  ),
+  summary: z.object({
+    inputChars: z.number().int().nonnegative(),
+    totalChunks: z.number().int().nonnegative(),
+    avgChunkChars: z.number().int().nonnegative(),
+    maxChunkChars: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+  }),
+});
+
+/**
+ * Deterministic field extraction by named regex patterns. The deterministic
+ * counterpart to ai.extract — pulls a few fields (contract numbers, dates,
+ * IDs) without an LLM round-trip.
+ *
+ * Input mirrors text-chunker: raw string OR `{ pages: [{ pageIndex, text }] }`.
+ * When pages are provided each match's source `pageIndex` is recorded in the
+ * `_evidence` envelope so callers can trace which page yielded which value.
+ */
+const RegexNormalizerSchema = z.enum([
+  'strip-spaces',
+  'strip-punct',
+  'collapse-whitespace',
+  'lower',
+  'upper',
+  'trim',
+]);
+
+const RegexFormatSchema = z.enum(['iso-date', 'iso-number', 'lower', 'upper', 'trim']);
+
+/**
+ * Validate a regex flag string is a subset of `gimsuy` with no duplicates.
+ * Caught at parse/push time so a typo like `flags: "ix"` is a config error,
+ * not a runtime worker explosion.
+ */
+const REGEX_FLAGS = /^(?!.*(.).*\1)[gimsuy]*$/;
+
+const RegexFieldSchema = z
+  .object({
+    pattern: z
+      .string()
+      .min(1)
+      .refine(
+        (p) => {
+          try {
+            new RegExp(p);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { message: 'Invalid regex — pattern fails RegExp() compilation.' }
+      )
+      .describe('Regex source. Must contain at least one capturing group.'),
+    flags: z
+      .string()
+      .regex(REGEX_FLAGS, 'flags must be a unique subset of "gimsuy"')
+      .optional()
+      .describe('Per-field regex flags (overrides the step-level `flags`). Subset of "gimsuy".'),
+    max: z
+      .union([z.literal(1), z.literal('all'), z.number().int().positive()])
+      .default(1)
+      .describe(
+        'Max matches to keep. Default 1. Use "all" plus `select` to combine multiple hits.'
+      ),
+    select: z
+      .enum(['first', 'last', 'min', 'max', 'all'])
+      .optional()
+      .describe(
+        'When max ≠ 1: which match to surface. "first" (default), "last", "min", "max", or "all" — `all` returns the full array of matches AND a parallel array of evidence entries.'
+      ),
+    normalize: RegexNormalizerSchema.optional(),
+    format: RegexFormatSchema.optional().describe(
+      'Post-processing. iso-date accepts DD.MM.YYYY (1 group) or DD/MM/YYYY split across 3 groups → "YYYY-MM-DD".'
+    ),
+    exclude: z
+      .array(z.string())
+      .optional()
+      .describe('Post-normalize values to skip (known wrong matches).'),
+    default: z.string().optional().describe('Value when nothing matches.'),
+    contextChars: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(2000)
+      .optional()
+      .describe(
+        'When > 0, evidence entries gain `contextBefore` and `contextAfter` snippets of N characters surrounding the match. Useful for UI/debug display.'
+      ),
+  })
+  // `select: 'all'` is incompatible with `max: 1` — the loop would break after
+  // the first match and silently emit a single-element array. Force `max` to
+  // 'all' (or any explicit number ≥ 2) when `select === 'all'`.
+  .refine((v) => !(v.select === 'all' && v.max === 1), {
+    message:
+      "select: 'all' requires max: 'all' or a number ≥ 2 (otherwise only the first match is collected).",
+    path: ['max'],
+  });
+
+export const TransformRegexExtractConfigSchema = z.object({
+  input: z
+    .union([z.string(), z.object({ pages: z.array(ParsedDocPageSchema).min(1) }).passthrough()])
+    .describe(
+      'Either raw text or a parsed-document object `{ pages: [{ pageIndex, text }] }`. Pages enable per-match `_evidence.pageIndex`.'
+    ),
+  fields: z.record(z.string(), RegexFieldSchema).describe('Named field → pattern mapping.'),
+  flags: z
+    .string()
+    .regex(REGEX_FLAGS, 'flags must be a unique subset of "gimsuy"')
+    .optional()
+    .describe(
+      'Default regex flags applied when a field omits its own `flags`. Subset of "gimsuy".'
+    ),
+  searchWindow: z
+    .number()
+    .int()
+    .min(100)
+    .optional()
+    .describe('Only search the first N characters of input (perf). Omit for full search.'),
+});
+
+export const TransformRegexExtractOutputSchema = z
+  .record(z.string(), z.unknown())
+  .describe(
+    'Field name → extracted value (or default), plus `_evidence: { [field]: { pageIndex, matchOffset, raw } }` and `_unmatched: string[]`.'
+  );
+
 // ============================================================================
 // Action Step Schemas
 // ============================================================================
@@ -603,6 +948,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: AiExtractOutputSchema,
     configInWith: true,
   },
+  'ai.split': {
+    type: 'ai.split',
+    category: 'ai',
+    name: 'Split Document',
+    description:
+      'Split a parsed document into named sections using an LLM. Consumes ai.parse output; emits per-section page ranges and text ready for downstream ai.extract via control.parallel_map.',
+    configSchema: AiSplitConfigSchema,
+    outputSchema: AiSplitOutputSchema,
+    configInWith: true,
+  },
 
   // Transform Steps
   'transform.set': {
@@ -687,6 +1042,26 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Execute JavaScript code in a secure sandbox. Input keys become TOP-LEVEL variables (use "items" not "inputs.items"). Must return a value.',
     configSchema: TransformScriptConfigSchema,
     outputSchema: TransformScriptOutputSchema,
+    configInWith: true,
+  },
+  'transform.text-chunker': {
+    type: 'transform.text-chunker',
+    category: 'transform',
+    name: 'Text Chunker',
+    description:
+      'Split long text into chunks with regex-anchored boundaries, overlap, and header preservation. Accepts raw text or a parsed-document object; chunks carry source page indexes when pages are provided.',
+    configSchema: TransformTextChunkerConfigSchema,
+    outputSchema: TransformTextChunkerOutputSchema,
+    configInWith: true,
+  },
+  'transform.regex-extract': {
+    type: 'transform.regex-extract',
+    category: 'transform',
+    name: 'Regex Extract',
+    description:
+      'Pull named fields from text via regex patterns (deterministic counterpart to ai.extract). Accepts raw text or a parsed-document object; matches carry `_evidence.pageIndex` when pages are provided.',
+    configSchema: TransformRegexExtractConfigSchema,
+    outputSchema: TransformRegexExtractOutputSchema,
     configInWith: true,
   },
 
@@ -927,6 +1302,8 @@ export type AiParseConfig = z.infer<typeof AiParseConfigSchema>;
 export type AiParseOutput = z.infer<typeof AiParseOutputSchema>;
 export type AiExtractConfig = z.infer<typeof AiExtractConfigSchema>;
 export type AiExtractOutput = z.infer<typeof AiExtractOutputSchema>;
+export type AiSplitConfig = z.infer<typeof AiSplitConfigSchema>;
+export type AiSplitOutput = z.infer<typeof AiSplitOutputSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
 export type TransformRemoveConfig = z.infer<typeof TransformRemoveConfigSchema>;
 export type TransformCombineConfig = z.infer<typeof TransformCombineConfigSchema>;
@@ -936,6 +1313,10 @@ export type TransformTemplateConfig = z.infer<typeof TransformTemplateConfigSche
 export type TransformPdfEmbedConfig = z.infer<typeof TransformPdfEmbedConfigSchema>;
 export type TransformPdfEmbedOutput = z.infer<typeof TransformPdfEmbedOutputSchema>;
 export type TransformScriptConfig = z.infer<typeof TransformScriptConfigSchema>;
+export type TransformTextChunkerConfig = z.infer<typeof TransformTextChunkerConfigSchema>;
+export type TransformTextChunkerOutput = z.infer<typeof TransformTextChunkerOutputSchema>;
+export type TransformRegexExtractConfig = z.infer<typeof TransformRegexExtractConfigSchema>;
+export type TransformRegexExtractOutput = z.infer<typeof TransformRegexExtractOutputSchema>;
 export type ActionHttpConfig = z.infer<typeof ActionHttpConfigSchema>;
 export type ActionInvokeWorkflowConfig = z.infer<typeof ActionInvokeWorkflowConfigSchema>;
 export type ActionWebsiteReaderConfig = z.infer<typeof ActionWebsiteReaderConfigSchema>;

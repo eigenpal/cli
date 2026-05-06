@@ -63,6 +63,9 @@ export {
   // Step execution statuses
   STEP_EXECUTION_STATUSES,
   SpanKind,
+  SplitConfigSchema,
+  SplitInputSchema,
+  SplitOutputSchema,
   StepExecutionStatusSchema,
   StepExecutionStatusValue,
   // Trigger types (how workflow is invoked)
@@ -116,6 +119,9 @@ export {
   type SpanAttributes,
   type SpanOptions,
   type SpanType,
+  type SplitConfig,
+  type SplitInput,
+  type SplitOutput,
   type StepExecutionStatus,
   type TemplateConfig,
   type TemplateInput,

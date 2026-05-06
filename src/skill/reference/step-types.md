@@ -160,6 +160,26 @@ Extract structured data from text using AI with a JSON schema
 
 > Extracted structured data matching the provided schema
 
+#### `ai.split` — Split Document
+
+Split a parsed document into named sections using an LLM. Consumes ai.parse output; emits per-section page ranges and text ready for downstream ai.extract via control.parallel_map.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | Template expression resolving to ai.parse output, e.g. "{{ steps.parse.output }}" |
+| `sections` | array<object> | yes |  | Named sections to find in the document |
+| `rules` | string | no |  | Optional natural-language rules appended to the system prompt. E.g. "End-of-section markers like *Koniec prílohy 2* close the current section." |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted. |
+| `windowTokenBudget` | integer | no |  | Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `splits` | array<object> | yes |  | Sections found in the document, in page order. Absent sections are omitted. |
+
 ### Transform steps — deterministic data transforms
 
 #### `transform.set` — Set Value
@@ -325,6 +345,46 @@ Execute JavaScript code in a secure sandbox. Input keys become TOP-LEVEL variabl
 **Output:** `unknown`
 
 > Value returned from script (validated against outputSchema if provided)
+
+#### `transform.text-chunker` — Text Chunker
+
+Split long text into chunks with regex-anchored boundaries, overlap, and header preservation. Accepts raw text or a parsed-document object; chunks carry source page indexes when pages are provided.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string \| record<string, unknown> | yes |  | Either raw text or a parsed-document object `{ pages: [{ pageIndex, text }] }` (e.g. `{{ steps.parse.output }}`). Pages preserve per-chunk page provenance. |
+| `maxChars` | integer | yes |  | Target chunk size in characters. Hard ceiling per chunk is 1.5×. |
+| `overlap` | integer | no | `0` | Characters duplicated at chunk boundaries (default 0). Must be < maxChars / 2. |
+| `splitOn` | array<string> | no |  | Ordered list of regexes; the first that matches near the chunk boundary wins. Falls back to char-cut when none match. Tip: list narrowest first (e.g. /\d+\.\d+\s+/ before /\n\n+/). |
+| `maxChunks` | integer | no | `64` | Safety cap; later chunks are dropped and `summary.truncated` flips to true. |
+| `preserveHeader` | integer | no | `0` | Prepend the first N characters of the input to every chunk (good for "always include the contract title"). |
+| `minChunkChars` | integer | no | `0` | Trailing chunks shorter than this are merged into the previous chunk. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `chunks` | array<object> | yes |  |  |
+| `summary` | object | yes |  |  |
+
+#### `transform.regex-extract` — Regex Extract
+
+Pull named fields from text via regex patterns (deterministic counterpart to ai.extract). Accepts raw text or a parsed-document object; matches carry `_evidence.pageIndex` when pages are provided.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string \| record<string, unknown> | yes |  | Either raw text or a parsed-document object `{ pages: [{ pageIndex, text }] }`. Pages enable per-match `_evidence.pageIndex`. |
+| `fields` | record<string, object> | yes |  | Named field → pattern mapping. |
+| `flags` | string | no |  | Default regex flags applied when a field omits its own `flags`. Subset of "gimsuy". |
+| `searchWindow` | integer | no |  | Only search the first N characters of input (perf). Omit for full search. |
+
+**Output:** `record<string, unknown>`
+
+> Field name → extracted value (or default), plus `_evidence: { [field]: { pageIndex, matchOffset, raw } }` and `_unmatched: string[]`.
 
 ### Action steps — external side effects
 
