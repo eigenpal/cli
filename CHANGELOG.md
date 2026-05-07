@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.7
+## 0.4.8
 
 ### Major Changes
 
