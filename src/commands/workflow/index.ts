@@ -1380,7 +1380,7 @@ returns immediately with \`{ batchId, total }\`; poll
             `Started experiment ${ui.bold(start.batchId)} ${ui.dim(`(${start.total} execution${start.total === 1 ? '' : 's'} queued)`)}`
           );
           process.stderr.write(
-            `   ${ui.dim(`Watch: eigenpal workflow experiment status ${workflowId} ${start.batchId} --watch`)}\n`
+            `   ${ui.dim(`Watch + auto-pull: eigenpal workflow experiment watch ${workflowId} ${start.batchId}`)}\n`
           );
           return;
         }
@@ -1422,6 +1422,11 @@ returns immediately with \`{ batchId, total }\`; poll
       false
     )
     .option(
+      '--short',
+      'Single-line plain-text summary on stdout (e.g. `6/6 done failed=0 cancelled=0 rejected=0`). Pipe-friendly for monitoring loops; mutually exclusive with --watch.',
+      false
+    )
+    .option(
       '--interval <seconds>',
       'Poll interval in seconds when --watch is set (default 5)',
       intArg,
@@ -1445,12 +1450,17 @@ returns immediately with \`{ batchId, total }\`; poll
         batchId: string,
         opts: WorkflowCommandConfig & {
           watch: boolean;
+          short: boolean;
           interval: number;
           maxWait: number;
           include?: string;
           json?: boolean;
         }
       ) => {
+        if (opts.short && opts.watch) {
+          error('--short and --watch are mutually exclusive (short is for spot-check polling).');
+          process.exit(2);
+        }
         const includes = new Set(
           (opts.include ?? '')
             .split(',')
@@ -1466,12 +1476,20 @@ returns immediately with \`{ batchId, total }\`; poll
             executions?: Array<{ status?: string }>;
             [k: string]: unknown;
           };
-          if (opts.json) {
-            printJson(result);
-            return;
-          }
           const execs = result.executions ?? [];
           const summary = summarizeExperimentExecutions(execs);
+          if (opts.json) {
+            printJson({ ...result, summary: rollupForJson(summary) });
+            return;
+          }
+          if (opts.short) {
+            // Single line on stdout — `awk '{print $1}'` → "N/N", grep for "done", etc.
+            console.log(formatShortStatus(summary));
+            const failed = summary.counts.failed ?? 0;
+            const cancelled = summary.counts.cancelled ?? 0;
+            if (summary.done && failed + cancelled > 0) process.exit(1);
+            return;
+          }
           const counts = Object.entries(summary.counts)
             .map(([k, v]) => `${k}=${v}`)
             .sort()
@@ -1495,60 +1513,29 @@ returns immediately with \`{ batchId, total }\`; poll
         }
 
         // Watch mode: poll until terminal, exit non-zero on any failures.
-        const deadline = Date.now() + opts.maxWait * 1000;
-        let lastSummary = '';
-
-        while (true) {
-          const result = (await client.get(url)) as { executions?: Array<{ status?: string }> };
-          const execs = result.executions ?? [];
-          const summary = summarizeExperimentExecutions(execs);
-          const counts = Object.entries(summary.counts)
-            .map(([k, v]) => `${k}=${v}`)
-            .sort()
-            .join(' ');
-          const line = `${summary.terminal}/${summary.total} terminal  ${ui.dim(`(${counts || 'no executions'})`)}`;
-          if (line !== lastSummary) {
-            if (process.stderr.isTTY) {
-              process.stderr.write(`\r\x1b[K${line}`);
-            } else {
-              process.stderr.write(`${line}\n`);
-            }
-            lastSummary = line;
-          }
-          // Default: terse one-line summary already printed via the watch
-          // loop. Full per-execution payload (which can be hundreds of KB
-          // including parsed contract text — privacy concern in screen-share
-          // pipelines) only on --include payload OR --json.
-          const wantPayload = opts.json || includePayload;
-          if (summary.done) {
-            if (process.stderr.isTTY) process.stderr.write('\n');
-            const failed = summary.counts.failed ?? 0;
-            const cancelled = summary.counts.cancelled ?? 0;
-            const rejected = summary.counts.rejected ?? 0;
-            const badCount = failed + cancelled + rejected;
-            if (badCount > 0) {
-              renderExperimentFailures(execs, summary.total);
-            }
+        // Default: terse one-line summary printed by the watch loop. Full
+        // per-execution payload (which can be hundreds of KB including
+        // parsed contract text — privacy concern in screen-share pipelines)
+        // only on --include payload OR --json.
+        const wantPayload = opts.json || includePayload;
+        await pollExperimentUntilTerminal({
+          client,
+          url,
+          interval: opts.interval,
+          maxWait: opts.maxWait,
+          onTerminal: (result, summary) => {
             if (wantPayload) {
-              printJson(result);
+              printJson({ ...result, summary: rollupForJson(summary) });
             } else {
               process.stderr.write(
                 `${ui.dim(`use --include payload (or --json) for the full per-execution snapshot`)}\n`
               );
             }
-            if (badCount > 0) process.exit(1);
-            return;
-          }
-          if (Date.now() >= deadline) {
-            if (process.stderr.isTTY) process.stderr.write('\n');
-            error(
-              `Timed out after ${opts.maxWait}s with ${summary.total - summary.terminal} non-terminal execution(s). Re-run to keep watching.`
-            );
-            if (wantPayload) printJson(result);
-            process.exit(2);
-          }
-          await new Promise((r) => setTimeout(r, opts.interval * 1000));
-        }
+          },
+          onDeadline: (result, summary) => {
+            if (wantPayload) printJson({ ...result, summary: rollupForJson(summary) });
+          },
+        });
       }
     )
   );
@@ -1732,6 +1719,128 @@ batches must belong to the same workflow within the caller's tenant.
       }
     )
   );
+
+  // `experiment watch` — kick-and-leave wrapper. Polls the same endpoint as
+  // `status --watch`, then on terminal auto-pulls the eval-results export so
+  // a script never has to chain `status --watch` + `results --out`. Default
+  // destination is `./results-<batchId>.<format>` so a bare invocation works
+  // out of the box; `--pull-on-complete <path>` overrides, `--no-pull` opts
+  // out for users who only want the watch UI.
+  const watchCmd = experiment
+    .command('watch <workflow-id> <batchId>')
+    .description(
+      'Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`.'
+    )
+    .option('--interval <seconds>', 'Poll interval in seconds (default 5)', intArg, 5)
+    .option(
+      '--max-wait <seconds>',
+      'Hard ceiling in seconds (default 1800 = 30 min)',
+      intArg,
+      30 * 60
+    )
+    .option(
+      '--pull-on-complete <path>',
+      'Destination for the results file. Default: ./results-<batchId>.<format>'
+    )
+    .option(
+      '--format <csv|json>',
+      'Results export format (default json)',
+      parseExportFormat,
+      'json'
+    )
+    .option('--no-pull', 'Skip auto-pulling results on terminal (just watch)')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow experiment watch wf_abc123 evb_xyz789
+  $ eigenpal workflow experiment watch wf_abc123 evb_xyz789 --format csv
+  $ eigenpal workflow experiment watch wf_abc123 evb_xyz789 --pull-on-complete ./out/r.json
+  $ eigenpal workflow experiment watch wf_abc123 evb_xyz789 --no-pull
+
+Behavior:
+  - Polls every --interval seconds; redraws a one-line tick on a TTY,
+    appends a new line per tick when piped.
+  - On terminal: renders the failed-execution detail block (if any), then
+    downloads results to ./results-<batchId>.<format> unless --no-pull
+    or --pull-on-complete <path> says otherwise.
+  - 4xx errors (e.g. unknown batch id) abort immediately rather than spin.
+  - Pre-flight check: the destination directory must exist before the
+    poll loop starts, so a typo doesn't waste a 30-min wait.
+  - Exit codes (matching \`experiment status --watch\`):
+      0  every execution succeeded (or pull skipped via --no-pull on a clean batch)
+      1  at least one execution ended in failed/cancelled/rejected,
+         OR the export download failed after a clean batch
+      2  --max-wait deadline reached — re-run to keep watching;
+         OR misuse (e.g. --no-pull combined with --pull-on-complete)
+`
+    );
+  withBaseUrl(watchCmd).action(
+    action(
+      async (
+        workflow: string,
+        batchId: string,
+        opts: WorkflowCommandConfig & {
+          interval: number;
+          maxWait: number;
+          pullOnComplete?: string;
+          format: 'csv' | 'json';
+          pull: boolean;
+        }
+      ) => {
+        // Reject a contradictory invocation up front — silently dropping one
+        // flag is the kind of bug that surfaces 30 minutes later as a missing
+        // file. Match the --short/--watch mutex on `status` for consistency.
+        if (!opts.pull && opts.pullOnComplete) {
+          error('--no-pull and --pull-on-complete are mutually exclusive — pass one or the other.');
+          process.exit(2);
+        }
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const url = `/api/v1/workflows/${workflowId}/experiments/${batchId}`;
+        const dest = opts.pull
+          ? (opts.pullOnComplete ?? `./results-${batchId}.${opts.format}`)
+          : null;
+        // Pre-flight: fail before the poll loop if the destination dir is
+        // missing. fs.writeFile would throw at the end of a long wait;
+        // catching it here keeps the ENOENT close to the typo.
+        if (dest) {
+          const dir = path.dirname(dest);
+          if (!existsSync(dir)) {
+            error(
+              `Destination directory does not exist: ${dir}. Create it first or pass a path under an existing directory.`
+            );
+            process.exit(2);
+          }
+        }
+        await pollExperimentUntilTerminal({
+          client,
+          url,
+          interval: opts.interval,
+          maxWait: opts.maxWait,
+          onTerminal: async () => {
+            if (!dest) return;
+            const params = new URLSearchParams({ format: opts.format, batchId });
+            try {
+              await downloadStreamToFile(
+                client,
+                `/api/v1/workflows/${workflowId}/eval-results/export?${params.toString()}`,
+                dest
+              );
+            } catch (err) {
+              // The batch finished cleanly but the export endpoint failed —
+              // propagate as a runtime error (exit 1) instead of silently
+              // succeeding. Without this, a 5xx on the export would mask
+              // the real failure under a successful-looking exit 0.
+              error(
+                `Watch finished but pulling results failed: ${err instanceof Error ? err.message : String(err)}. Re-run \`experiment results <wf> <batch>\` to retry.`
+              );
+              process.exit(1);
+            }
+          },
+        });
+      }
+    )
+  );
 }
 
 /**
@@ -1791,6 +1900,137 @@ export function summarizeExperimentExecutions(execs: Array<{ status?: string }>)
     counts,
     done: execs.length > 0 && terminal === execs.length,
   };
+}
+
+/**
+ * Rolled-up shape attached as `summary` on `experiment status --json`.
+ * Lets polling scripts read `.summary.complete` / `.summary.failedCount`
+ * directly instead of folding `executions[].status` themselves.
+ */
+export function rollupForJson(summary: ReturnType<typeof summarizeExperimentExecutions>): {
+  total: number;
+  terminal: number;
+  complete: boolean;
+  completedCount: number;
+  failedCount: number;
+  cancelledCount: number;
+  rejectedCount: number;
+  runningCount: number;
+  pendingCount: number;
+} {
+  return {
+    total: summary.total,
+    terminal: summary.terminal,
+    complete: summary.done,
+    completedCount: summary.counts.completed ?? 0,
+    failedCount: summary.counts.failed ?? 0,
+    cancelledCount: summary.counts.cancelled ?? 0,
+    rejectedCount: summary.counts.rejected ?? 0,
+    runningCount: summary.counts.running ?? 0,
+    pendingCount: summary.counts.pending ?? 0,
+  };
+}
+
+/**
+ * `experiment status --short` formatter — single line, no ANSI, awk-friendly.
+ * Format: `<terminal>/<total> done|in-progress failed=N cancelled=N rejected=N`.
+ * "done" iff every execution reached a terminal state; "in-progress" otherwise.
+ */
+export function formatShortStatus(
+  summary: ReturnType<typeof summarizeExperimentExecutions>
+): string {
+  const state = summary.done ? 'done' : 'in-progress';
+  return [
+    `${summary.terminal}/${summary.total}`,
+    state,
+    `failed=${summary.counts.failed ?? 0}`,
+    `cancelled=${summary.counts.cancelled ?? 0}`,
+    `rejected=${summary.counts.rejected ?? 0}`,
+  ].join(' ');
+}
+
+/**
+ * Tick-line shown by the watch loops on every poll: terminal/total plus a
+ * sorted `key=N` count breakdown. Pure formatter — no I/O — so it can be
+ * unit-tested and reused by both `experiment status --watch` and
+ * `experiment watch`.
+ */
+export function renderTickLine(summary: ReturnType<typeof summarizeExperimentExecutions>): string {
+  const counts = Object.entries(summary.counts)
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join(' ');
+  return `${summary.terminal}/${summary.total} terminal  ${ui.dim(`(${counts || 'no executions'})`)}`;
+}
+
+/**
+ * Shared poll loop for `experiment status --watch` and `experiment watch`.
+ * Owns the GET cadence, tick rendering (`\r\x1b[K` on TTY, newline-separated
+ * when piped), dedup, and deadline. Action-specific behavior on terminal /
+ * deadline lives in the callbacks; the helper runs them, then exits with
+ * the canonical code (1 if any failed/cancelled/rejected, 2 on deadline).
+ */
+async function pollExperimentUntilTerminal({
+  client,
+  url,
+  interval,
+  maxWait,
+  onTerminal,
+  onDeadline,
+}: {
+  client: ApiClient;
+  url: string;
+  interval: number;
+  maxWait: number;
+  onTerminal: (
+    result: { executions?: Array<{ status?: string }>; [k: string]: unknown },
+    summary: ReturnType<typeof summarizeExperimentExecutions>
+  ) => Promise<void> | void;
+  onDeadline?: (
+    result: { executions?: Array<{ status?: string }>; [k: string]: unknown },
+    summary: ReturnType<typeof summarizeExperimentExecutions>
+  ) => void;
+}): Promise<void> {
+  const deadline = Date.now() + maxWait * 1000;
+  let lastSummary = '';
+
+  while (true) {
+    const result = (await client.get(url)) as {
+      executions?: Array<{ status?: string }>;
+      [k: string]: unknown;
+    };
+    const execs = result.executions ?? [];
+    const summary = summarizeExperimentExecutions(execs);
+    const line = renderTickLine(summary);
+    if (line !== lastSummary) {
+      if (process.stderr.isTTY) {
+        process.stderr.write(`\r\x1b[K${line}`);
+      } else {
+        process.stderr.write(`${line}\n`);
+      }
+      lastSummary = line;
+    }
+    if (summary.done) {
+      if (process.stderr.isTTY) process.stderr.write('\n');
+      const failed = summary.counts.failed ?? 0;
+      const cancelled = summary.counts.cancelled ?? 0;
+      const rejected = summary.counts.rejected ?? 0;
+      const badCount = failed + cancelled + rejected;
+      if (badCount > 0) renderExperimentFailures(execs, summary.total);
+      await onTerminal(result, summary);
+      if (badCount > 0) process.exit(1);
+      return;
+    }
+    if (Date.now() >= deadline) {
+      if (process.stderr.isTTY) process.stderr.write('\n');
+      error(
+        `Timed out after ${maxWait}s with ${summary.total - summary.terminal} non-terminal execution(s). Re-run to keep watching.`
+      );
+      onDeadline?.(result, summary);
+      process.exit(2);
+    }
+    await new Promise((r) => setTimeout(r, interval * 1000));
+  }
 }
 
 // ---------------------------------------------------------------------------

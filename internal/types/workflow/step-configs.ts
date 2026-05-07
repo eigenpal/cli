@@ -104,13 +104,10 @@ export const AiExtractConfigSchema = z.object({
   prompt: z.string().optional().describe('Custom prompt template for extraction'),
   provider: z.string().optional().describe('Provider ID (e.g., "openai-gpt4o")'),
   model: z.string().optional().describe('Model override'),
-  temperature: z
-    .number()
-    .min(0)
-    .max(2)
-    .default(0)
-    .optional()
-    .describe('Model temperature (0 = deterministic)'),
+  // temperature is intentionally NOT user-controllable — Eigenpal is a
+  // deterministic framework so the worker hardcodes `temperature: 0` on
+  // every LLM call. Older YAMLs with `temperature: …` parse cleanly
+  // (Zod strips unknown keys); the value is silently ignored.
   maxInputTokens: z
     .number()
     .int()

@@ -30,6 +30,12 @@ export const ExtractOutputSchema = z
   .record(z.string(), z.unknown())
   .describe('Extracted structured data matching the provided schema');
 
+/**
+ * `temperature` is intentionally NOT exposed here — Eigenpal is a
+ * deterministic framework, so the worker hardcodes `temperature: 0` on every
+ * LLM call. Older YAMLs that include `temperature: …` parse cleanly because
+ * Zod strips unknown keys by default; the value is silently ignored.
+ */
 export const ExtractConfigSchema = z.object({
   schema: z
     .record(z.string(), z.unknown())
@@ -40,12 +46,6 @@ export const ExtractConfigSchema = z.object({
     .optional()
     .describe('Provider ID to use (e.g., "openai-gpt4o", "anthropic-claude")'),
   model: z.string().optional().describe('Model to use (overrides provider default)'),
-  temperature: z
-    .number()
-    .min(0)
-    .max(2)
-    .default(0)
-    .describe('Model temperature (0 = deterministic)'),
   maxInputTokens: z
     .number()
     .int()

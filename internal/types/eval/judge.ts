@@ -121,7 +121,6 @@ export async function judgeScoreJson(params: JudgeJsonBaseParams): Promise<Judge
     schema: SCORE_SCHEMA,
     prompt: systemPrompt,
     model,
-    temperature: 0,
   });
 
   const rawScore = response.data.score;
@@ -161,7 +160,6 @@ export async function judgeLabelJson(
     schema: buildLabelSchema(labels),
     prompt: systemPrompt,
     model,
-    temperature: 0,
   });
 
   const label = typeof response.data.label === 'string' ? response.data.label.trim() : '';

@@ -57,6 +57,10 @@ export interface ExtractResponse {
 
 /**
  * Options for extraction
+ *
+ * `temperature` is intentionally NOT here — Eigenpal is a deterministic
+ * framework, so every LLM call uses the shared `DETERMINISTIC_TEMPERATURE`
+ * constant inside the client. Callers cannot override it.
  */
 export interface ExtractOptions {
   /** JSON Schema describing the expected output structure */
@@ -65,8 +69,6 @@ export interface ExtractOptions {
   prompt?: string;
   /** Model to use (overrides default) */
   model?: string;
-  /** Temperature (0-2) */
-  temperature?: number;
   /**
    * Best-effort reproducibility seed. OpenAI documents seed as "mostly
    * deterministic" given the same `system_fingerprint`. openai-compatible

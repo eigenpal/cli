@@ -196,6 +196,19 @@ export const WorkflowDefinitionSchema = z.object({
 
   /** Global workflow settings */
   settings: WorkflowSettingsSchema.optional(),
+
+  /**
+   * Default LLM provider id for AI steps (`ai.parse` / `ai.extract` /
+   * `ai.split`). The id refers to a provider configured in the workspace's
+   * `eigenpal.config.yaml`.
+   *
+   * Resolution chain (most specific wins):
+   *   step.with.model  >  workflow.defaultModel  >  tenant.defaultLlmProvider  >  worker default
+   *
+   * Per-step `model:` continues to take precedence; this only fills in the
+   * gap when a step doesn't specify one.
+   */
+  defaultModel: z.string().optional(),
 });
 
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;

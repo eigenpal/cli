@@ -241,6 +241,9 @@ export {
   type TerminalExecutionStatus,
 } from './execution-row';
 
+// Single source of truth for the LLM temperature on every model call.
+export { DETERMINISTIC_TEMPERATURE } from './llm-determinism';
+
 // Workflow types (YAML-based sequential execution)
 export * from './workflow';
 

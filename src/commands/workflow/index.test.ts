@@ -5,8 +5,10 @@ import { join } from 'node:path';
 
 import {
   bumpSemver,
+  formatShortStatus,
   readJsonInput,
   renderExperimentFailures,
+  rollupForJson,
   spliceWorkflowVersion,
   summarizeExperimentExecutions,
 } from './index';
@@ -86,6 +88,76 @@ describe('summarizeExperimentExecutions', () => {
     const result = summarizeExperimentExecutions([]);
     expect(result.total).toBe(0);
     expect(result.done).toBe(false);
+  });
+});
+
+describe('rollupForJson', () => {
+  test('lifts every status counter to a top-level field — no missing keys', () => {
+    const summary = summarizeExperimentExecutions([
+      { status: 'completed' },
+      { status: 'completed' },
+      { status: 'failed' },
+      { status: 'cancelled' },
+      { status: 'rejected' },
+      { status: 'running' },
+      { status: 'pending' },
+    ]);
+    expect(rollupForJson(summary)).toEqual({
+      total: 7,
+      terminal: 5,
+      complete: false,
+      completedCount: 2,
+      failedCount: 1,
+      cancelledCount: 1,
+      rejectedCount: 1,
+      runningCount: 1,
+      pendingCount: 1,
+    });
+  });
+
+  test('zero-fills counters for statuses that do not appear', () => {
+    const summary = summarizeExperimentExecutions([
+      { status: 'completed' },
+      { status: 'completed' },
+    ]);
+    const rollup = rollupForJson(summary);
+    expect(rollup.complete).toBe(true);
+    expect(rollup.failedCount).toBe(0);
+    expect(rollup.cancelledCount).toBe(0);
+    expect(rollup.rejectedCount).toBe(0);
+    expect(rollup.runningCount).toBe(0);
+    expect(rollup.pendingCount).toBe(0);
+  });
+
+  test('complete=false on an empty result so polling does not stop on a race', () => {
+    expect(rollupForJson(summarizeExperimentExecutions([])).complete).toBe(false);
+  });
+});
+
+describe('formatShortStatus', () => {
+  test('renders done state when every execution is terminal', () => {
+    const summary = summarizeExperimentExecutions([
+      { status: 'completed' },
+      { status: 'completed' },
+      { status: 'failed' },
+    ]);
+    expect(formatShortStatus(summary)).toBe('3/3 done failed=1 cancelled=0 rejected=0');
+  });
+
+  test('renders in-progress when any execution is non-terminal', () => {
+    const summary = summarizeExperimentExecutions([{ status: 'completed' }, { status: 'running' }]);
+    expect(formatShortStatus(summary)).toBe('1/2 in-progress failed=0 cancelled=0 rejected=0');
+  });
+
+  test('parseable with awk: first token is N/N, second is the state', () => {
+    const summary = summarizeExperimentExecutions([
+      { status: 'completed' },
+      { status: 'cancelled' },
+    ]);
+    const parts = formatShortStatus(summary).split(' ');
+    expect(parts[0]).toBe('2/2');
+    expect(parts[1]).toBe('done');
+    expect(parts.slice(2)).toEqual(['failed=0', 'cancelled=1', 'rejected=0']);
   });
 });
 

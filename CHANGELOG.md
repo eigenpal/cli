@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.8
+## 0.4.9
 
 ### Major Changes
 
@@ -140,6 +140,16 @@
   - `--workflow-id <id>` — required; eval-results is workflow-scoped.
 
   Non-overlapping examples are listed in dedicated `only in A` / `only in B` blocks before the table so |Δ| sort stays meaningful.
+
+- 9dc84b9: CLI: agent-friendly experiment polling, watching, and comparison.
+
+  Four small additions so agents (and humans writing monitoring scripts) don't have to roll their own bash pollers, JSON parsers, or aggregators on top of `experiment status`.
+  - **`experiment status --json` now includes a top-level `summary` rollup** — `{ total, terminal, complete, completedCount, failedCount, cancelledCount, rejectedCount, runningCount, pendingCount }`. Polling scripts can read `.summary.complete` / `.summary.failedCount` directly instead of folding `executions[].status` themselves. `executions[]` stays as-is for backwards compat.
+  - **`experiment status --short`** — single-line, awk-friendly stdout summary (e.g. `6/6 done failed=0 cancelled=0 rejected=0`). Mutually exclusive with `--watch`. Drops the failure detail block + closing tip so monitoring loops stay clean.
+  - **New `experiment watch <workflow-id> <batchId>`** — polls until terminal, then auto-pulls eval results to `./results-<batchId>.<format>` in one command. Replaces the old "monitor + status + pull + score" recipe. Flags: `--interval`, `--max-wait`, `--format csv|json`, `--pull-on-complete <path>` to override destination, `--no-pull` to opt out. Exit codes match `experiment status --watch` (0 clean, 1 any failure, 2 deadline).
+  - **`experiment compare` adds a per-evaluator aggregate** — a "Per-evaluator deltas" table renders above the existing per-row table with rows, mean Δ, regressions, and improvements per evaluator (sorted by |meanΔ| desc). `--json` exposes it at `summary.byEvaluator[]`.
+
+  Updated SKILL.md so the canonical "run an experiment + collect results" recipe uses `experiment watch` and adds a "monitoring scripts" section that calls out `--short` and `summary.complete`.
 
 - 3da0612: CLI: pretty default rendering for `list`, `get`, and mutating commands; `--json` toggle for piping.
   - `workflow definition/dataset/experiment/version/step-type list` and `workflow execution list` render aligned ASCII tables. `--json` restores the legacy raw payload.

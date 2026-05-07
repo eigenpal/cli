@@ -38,6 +38,7 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`](#eigenpal-workflow-experiment-cancel-options-workflow-id-batchid)
   - [`eigenpal workflow experiment results [options] <workflow-id> [batchId]`](#eigenpal-workflow-experiment-results-options-workflow-id-batchid)
   - [`eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`](#eigenpal-workflow-experiment-compare-options-batchida-batchidb)
+  - [`eigenpal workflow experiment watch [options] <workflow-id> <batchId>`](#eigenpal-workflow-experiment-watch-options-workflow-id-batchid)
   - [`eigenpal workflow execution run [options] <workflow-id> [examples...]`](#eigenpal-workflow-execution-run-options-workflow-id-examples)
   - [`eigenpal workflow execution get [options] <executionId>`](#eigenpal-workflow-execution-get-options-executionid)
   - [`eigenpal workflow execution list [options] <workflow-id>`](#eigenpal-workflow-execution-list-options-workflow-id)
@@ -79,7 +80,8 @@ workflow
 │   ├── status <workflow-id> <batchId>
 │   ├── cancel <workflow-id> <batchId>
 │   ├── results <workflow-id> [batchId]
-│   └── compare <batchIdA> <batchIdB>
+│   ├── compare <batchIdA> <batchIdB>
+│   └── watch <workflow-id> <batchId>
 ├── execution
 │   ├── run <workflow-id> [examples...]
 │   ├── get <executionId>
@@ -137,14 +139,15 @@ workflow
 
 ### Experiment
 
-| Command                                                                  | Description                                        |
-| ------------------------------------------------------------------------ | -------------------------------------------------- |
-| `eigenpal workflow experiment list [options] <workflow-id>`              | List executions for the workflow, newest first.    |
-| `eigenpal workflow experiment run [options] <workflow-id>`               | Start a batch eval against the workflow's dataset. |
-| `eigenpal workflow experiment status [options] <workflow-id> <batchId>`  | Aggregate progress for a batch by `batchId`.       |
-| `eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`  | Cancel every execution in a batch. Idempotent.     |
-| `eigenpal workflow experiment results [options] <workflow-id> [batchId]` | Download eval results in CSV or JSON.              |
-| `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`   | Diff eval scores between two experiment batches.   |
+| Command                                                                  | Description                                                                                |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `eigenpal workflow experiment list [options] <workflow-id>`              | List executions for the workflow, newest first.                                            |
+| `eigenpal workflow experiment run [options] <workflow-id>`               | Start a batch eval against the workflow's dataset.                                         |
+| `eigenpal workflow experiment status [options] <workflow-id> <batchId>`  | Aggregate progress for a batch by `batchId`.                                               |
+| `eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`  | Cancel every execution in a batch. Idempotent.                                             |
+| `eigenpal workflow experiment results [options] <workflow-id> [batchId]` | Download eval results in CSV or JSON.                                                      |
+| `eigenpal workflow experiment compare [options] <batchIdA> <batchIdB>`   | Diff eval scores between two experiment batches.                                           |
+| `eigenpal workflow experiment watch [options] <workflow-id> <batchId>`   | Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`. |
 
 ### Execution
 
@@ -508,14 +511,15 @@ Aggregate progress for a batch by `batchId`.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                                                                                            |
-| ---------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit                   |
-| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                                               |
-| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                                            |
-| `--include <kinds>`    | no       | `""`    | Comma-separated extras to attach when --watch terminates: payload (full per-execution snapshot, can be hundreds of KB) |
-| `--base-url <url>`     | no       |         | Server base URL                                                                                                        |
-| `--json`               | no       |         | Output the raw server response as JSON                                                                                 |
+| Flag                   | Required | Default | Description                                                                                                                                                      |
+| ---------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--watch`              | no       | `false` | Poll until every execution reaches a terminal state (completed/failed/cancelled/rejected), then exit                                                             |
+| `--short`              | no       | `false` | Single-line plain-text summary on stdout (e.g. `6/6 done failed=0 cancelled=0 rejected=0`). Pipe-friendly for monitoring loops; mutually exclusive with --watch. |
+| `--interval <seconds>` | no       | `5`     | Poll interval in seconds when --watch is set (default 5)                                                                                                         |
+| `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                                                                                      |
+| `--include <kinds>`    | no       | `""`    | Comma-separated extras to attach when --watch terminates: payload (full per-execution snapshot, can be hundreds of KB)                                           |
+| `--base-url <url>`     | no       |         | Server base URL                                                                                                                                                  |
+| `--json`               | no       |         | Output the raw server response as JSON                                                                                                                           |
 
 ### `eigenpal workflow experiment cancel [options] <workflow-id> <batchId>`
 
@@ -574,6 +578,28 @@ Diff eval scores between two experiment batches.
 | `--regression-threshold <n>`                           | no       | `0.05`             | Δ below this is flagged as a regression (default 0.05) |
 | `--base-url <url>`                                     | no       |                    | Server base URL                                        |
 | `--json`                                               | no       |                    | Output the raw server response as JSON                 |
+
+### `eigenpal workflow experiment watch [options] <workflow-id> <batchId>`
+
+Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `batchId`     | yes      | no       |             |
+
+### Options
+
+| Flag                        | Required | Default  | Description                                                             |
+| --------------------------- | -------- | -------- | ----------------------------------------------------------------------- |
+| `--interval <seconds>`      | no       | `5`      | Poll interval in seconds (default 5)                                    |
+| `--max-wait <seconds>`      | no       | `1800`   | Hard ceiling in seconds (default 1800 = 30 min)                         |
+| `--pull-on-complete <path>` | no       |          | Destination for the results file. Default: ./results-<batchId>.<format> |
+| `--format <csv\|json>`      | no       | `"json"` | Results export format (default json)                                    |
+| `--no-pull`                 | no       |          | Skip auto-pulling results on terminal (just watch)                      |
+| `--base-url <url>`          | no       |          | Server base URL                                                         |
 
 ### `eigenpal workflow execution run [options] <workflow-id> [examples...]`
 

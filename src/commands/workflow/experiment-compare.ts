@@ -51,6 +51,24 @@ interface BatchDiffSummary {
   onlyInB: string[];
   /** The threshold used to classify regressions/improvements. */
   regressionThreshold: number;
+  /**
+   * Per-evaluator rollup so users don't have to fold the per-row table
+   * themselves. Sorted by mean |Δ| desc (incomparable last), tiebreak alphabetical.
+   */
+  byEvaluator: BatchDiffEvaluatorAggregate[];
+}
+
+interface BatchDiffEvaluatorAggregate {
+  evaluator: string;
+  /** Comparable rows (both A and B had numeric scores) for this evaluator. */
+  comparable: number;
+  /** Mean Δ across the comparable rows. `null` when zero comparable rows. */
+  meanDelta: number | null;
+  regressions: number;
+  improvements: number;
+  unchanged: number;
+  // Index signature so this row is compatible with `table<T extends Record<string, unknown>>`.
+  [k: string]: unknown;
 }
 
 interface BatchDiffResult {
@@ -189,8 +207,53 @@ export function buildBatchDiff(args: {
       onlyInA,
       onlyInB,
       regressionThreshold,
+      byEvaluator: aggregateByEvaluator(rows),
     },
   };
+}
+
+/**
+ * Group `rows` by evaluator, fold deltas. Replaces the Python one-liner
+ * users were writing on every iteration. Sorted by mean |Δ| desc; evaluators
+ * with no comparable rows sort last under their own alphabetical tiebreak.
+ */
+export function aggregateByEvaluator(rows: BatchDiffRow[]): BatchDiffEvaluatorAggregate[] {
+  const buckets = new Map<string, BatchDiffRow[]>();
+  for (const r of rows) {
+    const list = buckets.get(r.evaluator);
+    if (list) list.push(r);
+    else buckets.set(r.evaluator, [r]);
+  }
+  const aggregates: BatchDiffEvaluatorAggregate[] = [];
+  for (const [evaluator, group] of buckets) {
+    const comparable = group.filter((r) => r.delta != null) as Array<
+      BatchDiffRow & { delta: number }
+    >;
+    const meanDelta =
+      comparable.length === 0
+        ? null
+        : comparable.reduce((sum, r) => sum + r.delta, 0) / comparable.length;
+    aggregates.push({
+      evaluator,
+      comparable: comparable.length,
+      meanDelta,
+      regressions: group.filter((r) => r.status === 'regression').length,
+      improvements: group.filter((r) => r.status === 'improvement').length,
+      unchanged: group.filter((r) => r.status === 'unchanged').length,
+    });
+  }
+  aggregates.sort((a, b) => {
+    // null-meanDelta evaluators sort last regardless of magnitude — using a
+    // numeric sentinel like -1 collides when scores aren't bounded to [0, 1]
+    // (an evaluator with mean Δ < -1.0 would sort behind a no-data bucket).
+    if (a.meanDelta == null && b.meanDelta == null) return a.evaluator.localeCompare(b.evaluator);
+    if (a.meanDelta == null) return 1;
+    if (b.meanDelta == null) return -1;
+    const diff = Math.abs(b.meanDelta) - Math.abs(a.meanDelta);
+    if (diff !== 0) return diff;
+    return a.evaluator.localeCompare(b.evaluator);
+  });
+  return aggregates;
 }
 
 function sortDiffRows(rows: BatchDiffRow[], sort: CompareSort): void {
@@ -283,9 +346,29 @@ export function renderBatchDiffHuman(diff: BatchDiffResult): void {
   }
   process.stderr.write('\n');
 
+  if (diff.summary.byEvaluator.length > 0) {
+    process.stderr.write(`${ui.bold('Per-evaluator deltas')} ${ui.dim('(B − A):')}\n`);
+    console.log(
+      table(diff.summary.byEvaluator, [
+        { key: 'evaluator', header: 'evaluator' },
+        { key: 'comparable', header: 'rows', align: 'right' },
+        {
+          key: 'meanDelta',
+          header: 'mean Δ',
+          align: 'right',
+          format: (v) => formatDelta(v as number | null),
+        },
+        { key: 'regressions', header: 'regressions', align: 'right' },
+        { key: 'improvements', header: 'improvements', align: 'right' },
+      ])
+    );
+    process.stderr.write('\n');
+  }
+
   if (diff.rows.length === 0) {
     process.stderr.write(`${ui.dim('No shared (example, evaluator) pairs to compare.')}\n`);
   } else {
+    process.stderr.write(`${ui.bold('Per-row deltas:')}\n`);
     console.log(
       table(diff.rows, [
         { key: 'example', header: 'example' },

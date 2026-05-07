@@ -153,7 +153,6 @@ Extract structured data from text using AI with a JSON schema
 | `prompt` | string | no |  | Custom prompt template for extraction |
 | `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
 | `model` | string | no |  | Model override |
-| `temperature` | number | no | `0` | Model temperature (0 = deterministic) |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
 
 **Output:** `record<string, unknown>`

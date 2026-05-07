@@ -387,6 +387,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `steps` | array<unknown> | yes |  |  |
 | `output` | record<string, string> | no |  |  |
 | `settings` | object | no |  |  |
+| `defaultModel` | string | no |  |  |
 
 
 ## Per-input fields

@@ -145,6 +145,17 @@ to retry.
 eigenpal workflow experiment compare evb_old evb_new --regression-threshold 0.05
 ```
 
+Output is two stacked tables: a per-evaluator aggregate (rows per evaluator
+with mean Δ, regressions, improvements — sorted biggest mover first) followed
+by a per-(example, evaluator) detail table. No need to write a Python
+aggregator on top.
+
+```bash
+# JSON exposes both layers — `summary.byEvaluator` for the rollup,
+# `rows` for the full per-example detail.
+eigenpal workflow experiment compare evb_old evb_new --json | jq '.summary.byEvaluator'
+```
+
 Unlike its siblings, `compare` takes no `<workflow-id>` — the server resolves
 the owning workflow from each batch id. Both batches must live in the
 same workflow within your tenant. See [`reference/debugging.md`](reference/debugging.md#6-compare-two-experiment-batches)
@@ -218,12 +229,64 @@ eigenpal workflow experiment run <workflow-id>                       # → { bat
 
 # Or restrict to one example:
 eigenpal workflow experiment run <workflow-id> --example-id evx_…
+```
 
-# Poll until done. `experiment status` auto-detaches after 30 min; just re-run.
-eigenpal workflow experiment status <workflow-id> <batch-id>
+**Recommended:** use `experiment watch` — it polls until terminal AND auto-pulls
+results to disk in one command. Replaces the old "run → status (poll) → results"
+chain so agents don't have to write a custom poller, parse `executions[].status`,
+or chain `monitor + status + pull + score` shell logic.
 
-# Pull results — `--out` writes the file directly from the server's signed-URL
-# storage, so large CSVs don't go through the CLI process.
+```bash
+# One command: watch until terminal, then write ./results-<batchId>.json on completion.
+eigenpal workflow experiment watch <workflow-id> <batch-id>
+
+# CSV output:
+eigenpal workflow experiment watch <workflow-id> <batch-id> --format csv
+
+# Custom destination (overrides the default ./results-<batchId>.<format>):
+eigenpal workflow experiment watch <workflow-id> <batch-id> --pull-on-complete ./out/r.json
+
+# Just watch, skip the pull (e.g. you only need the live tick + exit code):
+eigenpal workflow experiment watch <workflow-id> <batch-id> --no-pull
+```
+
+Exit codes match `experiment status --watch`: `0` clean, `1` any
+failed/cancelled/rejected execution, `2` `--max-wait` deadline reached
+(30 min default — re-run to keep watching).
+
+### Monitoring scripts — use `--short` and the JSON rollup
+
+When a script needs to spot-check a batch (no waiting), prefer one of the two
+machine-readable paths instead of folding `executions[].status` yourself.
+
+```bash
+# Single line on stdout, awk-friendly:
+eigenpal workflow experiment status <wf> <batch> --short
+# → 6/6 done failed=0 cancelled=0 rejected=0   (or "in-progress" while pending)
+
+# Parse with awk:
+DONE_STATE=$(eigenpal workflow experiment status <wf> <batch> --short | awk '{print $2}')
+[ "$DONE_STATE" = "done" ] || exit 0   # not terminal yet, try again later
+```
+
+```bash
+# JSON includes a top-level `summary` rollup so you don't count statuses by hand:
+eigenpal workflow experiment status <wf> <batch> --json | jq '.summary'
+# → { total: 6, terminal: 6, complete: true,
+#     completedCount: 5, failedCount: 1,
+#     cancelledCount: 0, rejectedCount: 0,
+#     runningCount: 0, pendingCount: 0 }
+
+# `summary.complete` is the canonical poll-completion flag.
+```
+
+`--short` and `--json` are mutually exclusive with `--watch` — for live
+streaming use `experiment watch` instead.
+
+If you need the raw eval-results export after watching with `--no-pull`, or
+to refetch results outside a watch loop, fall back to:
+
+```bash
 eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
 ```
 
@@ -433,10 +496,11 @@ eigenpal workflow clear-local                 # delete local execution artifacts
 
 # Experiments (batch eval runs)
 eigenpal workflow experiment run     <workflow-id> [--example-id <id> ...]
-eigenpal workflow experiment status  <workflow-id> <batch-id> [--watch]    # exit 1 on terminal w/ failures, 2 on --max-wait
+eigenpal workflow experiment status  <workflow-id> <batch-id> [--watch] [--short] [--json]    # exit 1 on terminal w/ failures, 2 on --max-wait. --json includes top-level `summary` rollup.
+eigenpal workflow experiment watch   <workflow-id> <batch-id> [--format csv|json] [--pull-on-complete <path>] [--no-pull]    # poll + auto-pull results in one shot
 eigenpal workflow experiment results <workflow-id> [batch-id] --format {csv|json} --out r.csv
 eigenpal workflow experiment list    <workflow-id>
-eigenpal workflow experiment compare <batch-a> <batch-b> [--regression-threshold] [--sort]   # no --workflow-id
+eigenpal workflow experiment compare <batch-a> <batch-b> [--regression-threshold] [--sort]   # no --workflow-id; prints per-evaluator aggregate + per-row table
 
 # Step-type / evaluator-type introspection
 eigenpal workflow step-type      list

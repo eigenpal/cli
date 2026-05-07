@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  aggregateByEvaluator,
   buildBatchDiff,
   formatDelta,
   normalizeCompareSort,
@@ -271,6 +272,117 @@ describe('buildBatchDiff', () => {
   });
 });
 
+describe('byEvaluator aggregate', () => {
+  test('groups per-evaluator with mean Δ, regressions, improvements, unchanged', () => {
+    const diff = buildBatchDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [
+        row('ex-1', 'recall', 0.5),
+        row('ex-2', 'recall', 0.6),
+        row('ex-1', 'precision', 0.9),
+        row('ex-2', 'precision', 0.9),
+      ],
+      rowsB: [
+        row('ex-1', 'recall', 0.7),
+        row('ex-2', 'recall', 0.8),
+        row('ex-1', 'precision', 0.4),
+        row('ex-2', 'precision', 0.5),
+      ],
+      sort: 'abs-delta-desc',
+      regressionThreshold: 0.05,
+    });
+    const byEval = diff.summary.byEvaluator;
+    expect(byEval).toHaveLength(2);
+
+    const recall = byEval.find((e) => e.evaluator === 'recall')!;
+    const precision = byEval.find((e) => e.evaluator === 'precision')!;
+    expect(recall).toMatchObject({
+      comparable: 2,
+      improvements: 2,
+      regressions: 0,
+      unchanged: 0,
+    });
+    expect(recall.meanDelta).toBeCloseTo(0.2, 5);
+    expect(precision).toMatchObject({
+      comparable: 2,
+      improvements: 0,
+      regressions: 2,
+      unchanged: 0,
+    });
+    expect(precision.meanDelta).toBeCloseTo(-0.45, 5);
+  });
+
+  test('sorted by |meanDelta| desc; biggest movers first', () => {
+    const diff = buildBatchDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [row('ex-1', 'small-shift', 0.5), row('ex-1', 'big-shift', 0.5)],
+      rowsB: [row('ex-1', 'small-shift', 0.55), row('ex-1', 'big-shift', 0.95)],
+      sort: 'abs-delta-desc',
+      regressionThreshold: 0.05,
+    });
+    expect(diff.summary.byEvaluator.map((e) => e.evaluator)).toEqual(['big-shift', 'small-shift']);
+  });
+
+  test('evaluator with no comparable rows: meanDelta=null, sorts last', () => {
+    const diff = buildBatchDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [row('ex-1', 'has-data', 0.4), row('ex-1', 'all-null', null)],
+      rowsB: [row('ex-1', 'has-data', 0.7), row('ex-1', 'all-null', null)],
+      sort: 'abs-delta-desc',
+      regressionThreshold: 0.05,
+    });
+    const byEval = diff.summary.byEvaluator;
+    expect(byEval[0].evaluator).toBe('has-data');
+    expect(byEval[1]).toMatchObject({ evaluator: 'all-null', comparable: 0, meanDelta: null });
+  });
+
+  test('aggregateByEvaluator: empty input → empty output', () => {
+    expect(aggregateByEvaluator([])).toEqual([]);
+  });
+
+  test('null-meanDelta evaluators sort last even when other |Δ| exceeds 1.0', () => {
+    // Regression: an earlier sort used `-1` as the null sentinel, which would
+    // mis-rank an evaluator with |Δ| > 1.0 against a no-data bucket if scores
+    // ever escape the [0, 1] range (e.g. a custom regression-margin evaluator).
+    const aggregates = aggregateByEvaluator([
+      // mock rows reproducing the diff shape `aggregateByEvaluator` consumes
+      {
+        example: 'ex',
+        evaluator: 'big-delta',
+        scoreA: 0,
+        scoreB: 5,
+        delta: 5,
+        status: 'improvement',
+      },
+      {
+        example: 'ex',
+        evaluator: 'no-data',
+        scoreA: null,
+        scoreB: null,
+        delta: null,
+        status: 'incomparable',
+      },
+    ]);
+    expect(aggregates.map((a) => a.evaluator)).toEqual(['big-delta', 'no-data']);
+    expect(aggregates[1].meanDelta).toBeNull();
+  });
+
+  test('byEvaluator empty when there are no shared examples', () => {
+    const diff = buildBatchDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [row('only-a', 'ev', 0.5)],
+      rowsB: [row('only-b', 'ev', 0.5)],
+      sort: 'abs-delta-desc',
+      regressionThreshold: 0.05,
+    });
+    expect(diff.summary.byEvaluator).toEqual([]);
+  });
+});
+
 describe('renderBatchDiffHuman', () => {
   test('writes table to stdout, framing + summary to stderr; piping stays clean', () => {
     const diff = buildBatchDiff({
@@ -289,6 +401,8 @@ describe('renderBatchDiffHuman', () => {
 
     expect(stripAnsi(captured.stderr)).toContain('A = evb_a');
     expect(stripAnsi(captured.stderr)).toContain('B = evb_b');
+    expect(stripAnsi(captured.stderr)).toContain('Per-evaluator deltas');
+    expect(stripAnsi(captured.stderr)).toContain('Per-row deltas:');
     expect(stripAnsi(captured.stderr)).toContain('regressions: 1');
     expect(stripAnsi(captured.stderr)).toContain('improvements: 0');
     expect(stripAnsi(captured.stderr)).toContain('examples shared: 1');
