@@ -1,5 +1,6 @@
 evaluators:
   - name: exact-match
+    description: Checks the extracted fields match the expected output exactly.
     type: exact-diff
     config:
       passThreshold: 1.0

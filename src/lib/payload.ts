@@ -1,24 +1,38 @@
 /**
  * Build payloads for `eigenpal workflow execution run` from local dataset
- * folders.  The only supported layout is the flat one that
+ * folders. The only supported layout is the flat one that
  * `eigenpal init workflow` scaffolds and `dataset push --mode replace`
  * round-trips:
  *
  *   ./dataset/examples/<name>/input/arguments.json    REQUIRED — scalar args
- *   ./dataset/examples/<name>/input/<arg-name>/<file> file-arg folders (auto-inlined)
+ *   ./dataset/examples/<name>/input/<arg-name>/<file> file-arg folders (uploaded via multipart)
  *   ./dataset/examples/<name>/expected/output.json    OPTIONAL — for evals
  *   ./dataset/examples/<name>/meta.json               OPTIONAL { rowOrder, annotation, overrides }
- *
- * No legacy `workflows/<slug>/eval/...` support — that layout was removed.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { guessMimeType } from './fs-helpers';
 
+/**
+ * Local file descriptor read from a dataset example folder. The CLI
+ * separates these from scalar inputs and uploads them as multipart form
+ * fields (`-F` style) when invoking the run endpoint — no base64.
+ */
+export interface ExampleFile {
+  /** Argument name (the folder under `<example>/input/`). */
+  argument: string;
+  filename: string;
+  content: Buffer;
+  mimeType?: string;
+}
+
 export interface ExamplePayload {
-  input?: Record<string, unknown>;
-  overrides?: { steps: Record<string, Record<string, unknown>> } | null;
+  /** Scalar args from `arguments.json`. File-args are NOT included here. */
+  scalars: Record<string, unknown>;
+  /** File uploads, in stable per-argument order. */
+  files: ExampleFile[];
+  overrides: { steps: Record<string, Record<string, unknown>> } | null;
 }
 
 const DATASET_EXAMPLES_DIR = ['dataset', 'examples'];
@@ -57,34 +71,28 @@ export function getExampleNames(dir: string, exampleNamesFilter?: string[]): str
   return all.filter((n) => exampleNamesFilter.includes(n));
 }
 
-/**
- * Read scalar args from `arguments.json` and merge in inlined file folders
- * sitting alongside them.  Each subfolder of `inputDir` becomes one file-arg —
- * single-file folder → object, multi-file folder → array.
- */
-function readInput(exampleDir: string): Record<string, unknown> {
+/** Read scalar args from `arguments.json` and gather file-arg folders. */
+function readInput(exampleDir: string): { scalars: Record<string, unknown>; files: ExampleFile[] } {
   const argsPath = join(exampleDir, 'input', 'arguments.json');
   const inputDir = join(exampleDir, 'input');
-  const merged: Record<string, unknown> = JSON.parse(readFileSync(argsPath, 'utf-8'));
+  const scalars: Record<string, unknown> = JSON.parse(readFileSync(argsPath, 'utf-8'));
+  const files: ExampleFile[] = [];
   for (const entry of readdirSync(inputDir)) {
     const full = join(inputDir, entry);
     if (!statSync(full).isDirectory()) continue;
-    const files = readdirSync(full)
+    const filenames = readdirSync(full)
       .filter((f) => statSync(join(full, f)).isFile())
       .sort();
-    if (files.length === 0) continue;
-    const inlined = files.map((filename) => {
-      const buf = readFileSync(join(full, filename));
-      const mime = guessMimeType(filename);
-      return {
-        _inline: buf.toString('base64'),
+    for (const filename of filenames) {
+      files.push({
+        argument: entry,
         filename,
-        ...(mime ? { mimeType: mime } : {}),
-      };
-    });
-    merged[entry] = files.length === 1 ? inlined[0] : inlined;
+        content: readFileSync(join(full, filename)),
+        mimeType: guessMimeType(filename),
+      });
+    }
   }
-  return merged;
+  return { scalars, files };
 }
 
 /** Read `meta.json`'s `overrides.steps` if present, else null. */
@@ -106,10 +114,12 @@ function readOverrides(
   return null;
 }
 
-/** Build input + overrides for one example dir. */
+/** Build scalar input + file uploads + overrides for one example dir. */
 export function buildExamplePayload(exampleDir: string): ExamplePayload {
+  const { scalars, files } = readInput(exampleDir);
   return {
-    input: readInput(exampleDir),
+    scalars,
+    files,
     overrides: readOverrides(exampleDir),
   };
 }

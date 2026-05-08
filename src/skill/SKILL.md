@@ -174,6 +174,12 @@ eigenpal workflow evaluators validate ./evaluators.yaml
 eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
 ```
 
+Always set `description:` on every evaluator entry. It's a short, plain-language
+sentence (≤500 chars; aim for one line) explaining what the evaluator measures
+and why it matters, written for a non-technical reviewer in the dashboard.
+Skip model names, thresholds, and dot-paths; those belong in `config`. See
+[`reference/evaluators.md`](reference/evaluators.md#writing-descriptions-for-stakeholders).
+
 ### Build + validate + upload a dataset
 
 ```bash

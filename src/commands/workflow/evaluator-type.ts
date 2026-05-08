@@ -11,6 +11,7 @@
 
 import {
   CustomScriptConfigSchema,
+  EvaluatorBaseEntrySchema,
   EvaluatorTypeSchema,
   ExactDiffConfigSchema,
   LlmJudgeConfigSchema,
@@ -64,7 +65,7 @@ const EVALUATOR_REGISTRY: Record<string, EvaluatorTypeDef> = {
     type: 'custom-script',
     name: 'Custom Script',
     description:
-      'Run sandboxed JavaScript that returns { score, label? }. Receives `actual`, `expected`, `input`.',
+      'Score the workflow output with sandboxed JavaScript. Authors a `function scoreScript(expected, actual) { ... }` declaration that returns a number in [0, 1].',
     configSchema: CustomScriptConfigSchema,
   },
 };
@@ -153,6 +154,9 @@ export function registerEvaluatorTypeCommands(parent: Command): void {
         type: def.type,
         name: def.name,
         description: def.description,
+        // Shared entry-level fields (`name`, `description`, `weight`) so an agent
+        // introspecting one type sees the full entry shape, not just `config`.
+        entrySchema: z.toJSONSchema(EvaluatorBaseEntrySchema, { target: 'draft-7' }),
         configSchema: z.toJSONSchema(def.configSchema, { target: 'draft-7' }),
       };
       const text = JSON.stringify(result, null, 2);

@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.9
+## 0.4.10
 
 ### Major Changes
 
@@ -211,6 +211,25 @@
 
   `@` path syntax (`--code @file.js`, `--inputs items=@arr.json`) matches `curl -d @file` / `gh --body-file -`. Bare paths and `-` (stdin) work too.
 
+- 4137eb8: custom-script evaluator: the YAML now carries the entire
+  `function scoreScript(expected, actual) { ... }` declaration in a single
+  `function` field. Previous formats (`code`, then `body`) wrapped the
+  text implicitly; the new shape stores the function declaration verbatim
+  so the YAML matches the dashboard editor 1-for-1.
+
+  `workflow validate` and `workflow evaluators validate` flag YAML where
+  the function fails to parse, the signature does not match
+  `function scoreScript(expected, actual)` exactly, or the body contains
+  neither `return` nor `throw` — same checks the dashboard runs at form
+  save. The function must return a number in [0, 1]; throws are caught
+  and scored as 0.
+
+  Existing evaluator YAML must be ported by hand: rename `body` (or
+  `code`) to `function`, and add the `function scoreScript(expected,
+actual) { ... }` declaration around your statements. Parameter order is
+  load-bearing — swapping `expected` and `actual` would silently invert
+  every score.
+
 - 3da0612: All list commands now support `--limit` / `--offset` pagination consistently.
   - CLI: `workflow execution list`, `workflow version list`, and `workflow step-type list` previously had no `--offset` (or no pagination at all). All six list commands now accept `--limit`/`--offset` with defaults of 50/0.
   - Server: `GET /api/workflows/:id/versions` now reads `?limit=` and `?offset=` query params (defaults 50/0; max limit 100). The `listVersions` repo method gained an optional `{ limit, offset }` argument.
@@ -282,6 +301,11 @@
   - **On-prem:** set both `EIGENPAL_API_KEY=…` and `EIGENPAL_BASE_URL=https://eigenpal.example.com`.
 
   Interactive profiles are unchanged: when you log in via `eigenpal auth login`, the profile stores both apiKey and baseUrl, and every subsequent command derives baseUrl from that profile. Set `EIGENPAL_PROFILE=<name>` to switch profiles per-shell without modifying state.
+
+- 542fe0e: CLI: surface evaluator entry-level fields (`name`, `description`, `weight`) so agents and humans can discover the optional `description` field on every evaluator.
+  - `workflow evaluator-type get <type>` now emits `entrySchema` alongside `configSchema`. Inspect with `eigenpal workflow evaluator-type get llm-judge | jq '.entrySchema'`.
+  - The skill reference now renders a "Common entry fields" table per type and a "Writing descriptions for stakeholders" section explaining the convention: each evaluator's `description` should be a one-sentence, plain-language summary aimed at non-technical reviewers in the dashboard.
+  - `init` templates `pdf-extraction` and `text-classification` now ship a `description:` line on their evaluator entries.
 
 - d41ee8b: CLI: fix `eigenpal status` error UX + harden `formatCliError` for real-world connection failures.
   - `eigenpal status` against an unreachable base URL no longer mis-diagnoses the failure as an auth problem. Previously, `EIGENPAL_BASE_URL=http://localhost:9999 eigenpal status` printed "Authentication check failed; try `eigenpal auth login`" — the wrong rabbit hole. The status command now rethrows non-auth errors (connection refused, DNS NXDOMAIN, timeout, HTML responses, 5xx) so `formatCliError` upstream can surface the right hint: `Could not connect to the server at <url> ... Set EIGENPAL_BASE_URL or pass --base-url <url>.` Only real 401/403 responses are treated as auth failures.

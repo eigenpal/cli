@@ -15,6 +15,7 @@
 import {
   CustomScriptConfigSchema,
   EvalConfigYamlSchema,
+  EvaluatorBaseEntrySchema,
   ExactDiffConfigSchema,
   LlmJudgeConfigSchema,
   STEP_SCHEMAS,
@@ -193,6 +194,11 @@ function renderEvaluatorCatalog(): string {
   lines.push('### Top-level `evaluators.yaml`');
   lines.push('');
   lines.push(renderObjectFields(top));
+
+  const baseEntry = toJsonSchema(EvaluatorBaseEntrySchema);
+  lines.push('### Common entry fields (every evaluator type)');
+  lines.push('');
+  lines.push(renderObjectFields(baseEntry));
 
   const evaluators: Array<{ name: string; type: string; schema: ZodType }> = [
     {

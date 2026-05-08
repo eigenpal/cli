@@ -11,16 +11,41 @@ this is the agent-facing summary.
 ```yaml
 evaluators: # array of evaluator definitions, ≥1 entry
   - name: ... # required, unique within this file, [a-z0-9][a-z0-9-_]*
+    description: ... # optional, ≤500 chars; one-sentence business explanation (see below)
     type: ... # required, one of: exact-diff | llm-judge | custom-script
     config: # required, shape depends on `type`
       passThreshold: 0.95 # 0..1, optional (default 1.0)
       ...
 
-# OPTIONAL global config
-concurrency: 4 # max examples in parallel during `experiment run` (default 1)
-judge: # optional shared model defaults for llm-judge evaluators
-  model: gpt-4o
-  temperature: 0
+# OPTIONAL workflow-level pass threshold. A run passes when its weighted-mean
+# score across evaluators clears this number. Defaults to 0.7.
+passThreshold: 0.7
+```
+
+## Writing descriptions for stakeholders
+
+Every evaluator entry takes an optional `description`. Always set it. The
+dashboard surfaces this string to non-technical reviewers (legal, ops,
+finance) who never see the YAML or the judge prompt. Write it for them:
+
+- One short sentence, plain language.
+- Name what the evaluator measures and why a business reader should care.
+- Skip implementation detail (model names, thresholds, dot-paths). Those
+  belong in `config`.
+- Keep it under ~120 characters when you can; the schema caps it at 500.
+
+```yaml
+# Good. A non-technical reviewer immediately grasps the intent.
+- name: covenants-recall
+  description: Checks every covenant from the contract appears in the extraction.
+  type: llm-judge
+  config: ...
+
+# Bad. Restates the config; teaches a stakeholder nothing.
+- name: covenants-recall
+  description: llm-judge with passThreshold 0.85 over the covenants array.
+  type: llm-judge
+  config: ...
 ```
 
 ## Evaluator types
@@ -47,23 +72,34 @@ judge: # optional shared model defaults for llm-judge evaluators
 - name: covenants-recall
   type: llm-judge
   config:
-    model: gpt-4o # string — the OpenAI model id
-    temperature: 0 # number — for reproducibility
+    model: gpt-4o # OPTIONAL — falls back to the workspace default LLM provider
+    mode: continuous # continuous | discrete (default: continuous)
     passThreshold: 0.85
-    prompt: |
+    docLabel: extraction # what the judge calls the workflow output (default: "output")
+    promptExtension: |
       Score how well the actual output captures every covenant in the
-      expected output, on a scale of 0..1. Penalise missing covenants;
-      do not penalise over-extraction. Return JSON { score, rationale }.
+      expected output. Penalise missing covenants; do not penalise
+      over-extraction. Be strict on covenants that change loan economics.
+
+# discrete mode — the judge picks a label and the score table maps to a number
+- name: tone-check
+  type: llm-judge
+  config:
+    mode: discrete
+    passThreshold: 0.7
+    labels:
+      excellent: 1.0
+      acceptable: 0.7
+      off-tone: 0.0
+    promptExtension: |
+      Pick the label that best matches the tone of the response.
 ```
 
-The harness wraps your `prompt` and feeds:
-
-- `actual` — the workflow's output
-- `expected` — the example's `expected/output.json`
-- `meta` — example metadata
-
-It expects the model to return JSON with at least `score` (0..1) and
-`rationale` (string). The fixed harness handles parse failures + retries.
+`promptExtension` is the only required field — it's appended to the harness
+prompt and tells the judge what "good" looks like for this workflow. The
+harness handles JSON parsing, retries, and feeds the judge `actual`,
+`expected`, and example metadata. In `discrete` mode the judge MUST return
+one of the keys in `labels`; the harness then looks up the score.
 
 ### `custom-script` — JavaScript in the sandbox
 
@@ -72,16 +108,38 @@ It expects the model to return JSON with at least `score` (0..1) and
   type: custom-script
   config:
     passThreshold: 1.0
-    code: |
-      const a = actual.totalAmount ?? 0;
-      const e = expected.totalAmount ?? 0;
-      const score = Math.abs(a - e) <= 0.01 ? 1 : 0;
-      return { score, rationale: `actual=${a}, expected=${e}` };
+    function: |
+      /**
+       * @param {Expected} expected the example's expected output
+       * @param {Actual} actual the workflow's actual output
+       * @returns {number} a score in [0, 1]; throws are caught and scored as 0
+       */
+      function scoreScript(expected, actual) {
+        const a = actual.totalAmount ?? 0;
+        const e = expected.totalAmount ?? 0;
+        return Math.abs(a - e) <= 0.01 ? 1 : 0;
+      }
 ```
 
 Same WASM sandbox as `transform.script` (5s wall clock, 10 MB heap, no
-network). Receives `actual`, `expected`, `meta` in scope. Returns
-`{ score: number, label?: string, rationale?: string }`.
+network). The YAML stores the **whole** `function scoreScript(expected,
+actual) { ... }` declaration verbatim — same text the dashboard editor
+shows. The JSDoc preamble is optional but recommended: it pulls the
+workflow's output schema into IntelliSense for `expected.…` /
+`actual.…` in the dashboard.
+
+The signature shape is **locked**:
+
+- Function name MUST be `scoreScript`.
+- Parameters MUST be `(expected, actual)` in that order. Swapping them
+  would silently invert every score.
+- Body MUST `return` a number in `[0, 1]`, or `throw` (which is caught
+  and scored as 0).
+
+`workflow validate` and `workflow evaluators validate` flag YAML where
+the function fails to parse, the signature doesn't match, or the body
+contains neither `return` nor `throw` — so a hand-edited config errors
+before it reaches the worker.
 
 ## Pass / fail vs score
 
@@ -160,9 +218,11 @@ process — `--out` writes the file directly from the server's storage.
 LLM-judge scores have variance. To reduce flake:
 
 - Pin a specific model id (`gpt-4o-2024-08-06` rather than `gpt-4o`).
-- Set `temperature: 0`.
-- Keep the prompt narrow — score one dimension per evaluator. Use
+- Keep `promptExtension` narrow — score one dimension per evaluator. Use
   multiple judges instead of one omnibus prompt.
+- Prefer `mode: discrete` with a small label set when the judgement is
+  categorical (good / acceptable / bad) — it eliminates the model's
+  free-form numeric drift.
 - For high-stakes thresholds, run the experiment ≥3 times and average.
 
 <!-- GENERATED:EVALUATOR_CATALOG START -->
@@ -176,6 +236,14 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | --- | --- | --- | --- | --- |
 | `evaluators` | array<object> | no | `[]` |  |
 | `passThreshold` | number | no | `0.7` |  |
+
+### Common entry fields (every evaluator type)
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | string | yes |  | Identifier used in eval results and the weighted-mean formula. Use a short kebab-case slug like header-exact or covenants-recall. |
+| `description` | string | no |  | One-sentence explanation, in business language, of what this evaluator measures and why a stakeholder should care. Shown in the dashboard to non-technical reviewers (legal, ops, finance) who never see the YAML or judge prompt. Skip implementation detail (model names, thresholds, dot-paths); those live in `config`. |
+| `weight` | number | no | `1` | Relative importance in the weighted mean. The overall score is Σ(weightᵢ × scoreᵢ) / Σweight. Set to 0 to score-only without affecting overall. |
 
 ### `exact-diff` — JSON deep-diff against expected output
 
@@ -203,7 +271,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `code` | string | yes |  | Sandboxed JavaScript. Receives `actual`, `expected`, `input` as variables and must return { score, label? } where score is in [0, 1]. |
+| `function` | string | yes |  | Full JavaScript declaration of `function scoreScript(expected, actual) { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1]. Throws are caught and scored as 0. |
 | `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it's killed and the run is marked failed. |
 | `memoryLimitMb` | integer | no | `10` | Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings. |
 | `passThreshold` | number | no | `1` | Minimum script score this evaluator must reach for a run to pass. |

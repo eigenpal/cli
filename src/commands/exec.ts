@@ -104,11 +104,29 @@ export async function runExec(
         if (interactive) progress.setRunning(index);
         else console.log(`${ui.dim('→')} ${name}`);
 
-        const res = (await client.post(`/api/v1/workflows/${workflowId}/run`, {
-          input: example.input,
-          overrides: example.overrides ?? undefined,
-          trigger: 'cli',
-        })) as { executionId?: string };
+        // Always go through the multipart path so file uploads stream
+        // straight to storage — no base64 round-trip. Scalar inputs ride
+        // along in the canonical `_json` sidecar field.
+        const form = new FormData();
+        const sidecar: Record<string, unknown> = { trigger: 'cli' };
+        if (Object.keys(example.scalars).length > 0) sidecar.input = example.scalars;
+        if (example.overrides) sidecar.overrides = example.overrides;
+        form.append('_json', JSON.stringify(sidecar));
+        for (const file of example.files) {
+          // Buffer is a Uint8Array subclass — Bun/Node FormData accept the
+          // buffer directly when wrapped as a Blob with a filename.
+          form.append(
+            file.argument,
+            new Blob([file.content as unknown as ArrayBuffer], {
+              type: file.mimeType ?? 'application/octet-stream',
+            }),
+            file.filename
+          );
+        }
+
+        const res = (await client.postFormData(`/api/v1/workflows/${workflowId}/run`, form)) as {
+          executionId?: string;
+        };
         if (typeof res?.executionId !== 'string') {
           throw new Error('Run API did not return executionId');
         }

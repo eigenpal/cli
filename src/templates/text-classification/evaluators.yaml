@@ -1,5 +1,6 @@
 evaluators:
   - name: label-match
+    description: Checks the predicted label matches the expected label.
     type: exact-diff
     config:
       passThreshold: 1.0

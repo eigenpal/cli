@@ -16,5 +16,7 @@ export {
 
 export { needsUpgrade, upgradeWorkflow } from './upgrades';
 
+export { spliceWorkflowVersion, stripWorkflowVersion } from './version-field';
+
 // Re-export workflow types for convenience
 export type { Step, TriggerMethod, TriggerType, WorkflowDefinition } from '@eigenpal/types';

@@ -35,4 +35,26 @@ describe('registerEvaluatorTypeCommands', () => {
     const flagNames = getCmd.options.map((o) => o.long ?? o.short);
     expect(flagNames).toContain('--out');
   });
+
+  test('get action emits entrySchema with name / description / weight alongside configSchema', async () => {
+    const root = new Command();
+    root.exitOverride();
+    registerEvaluatorTypeCommands(root);
+    const captured: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      captured.push(args.map((a) => String(a)).join(' '));
+    };
+    try {
+      await root.parseAsync(['evaluator-type', 'get', 'exact-diff'], { from: 'user' });
+    } finally {
+      console.log = origLog;
+    }
+    const payload = JSON.parse(captured.join('\n'));
+    expect(payload.entrySchema).toBeDefined();
+    expect(payload.entrySchema.properties.name).toBeDefined();
+    expect(payload.entrySchema.properties.description).toBeDefined();
+    expect(payload.entrySchema.properties.weight).toBeDefined();
+    expect(payload.configSchema).toBeDefined();
+  });
 });
