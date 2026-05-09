@@ -14,6 +14,14 @@
 
 import { z } from 'zod';
 import { toJsonSchema, type JsonSchema7Type } from '../core/common';
+import {
+  extractScriptFunctionBody,
+  getScriptFunctionRuntimeIssue,
+  hasValidScriptSignature,
+  isParseableScriptFunction,
+  SCRIPT_FN_MAX_BYTES,
+  stripCommentsAndStrings,
+} from './script-function';
 import type { StepType } from './steps';
 import { STEP_TYPES } from './steps';
 
@@ -467,45 +475,156 @@ const JsonSchemaSchema = z
   .passthrough();
 
 /**
- * transform.script - Execute JavaScript in sandbox
- * Config goes in step.with
+ * transform.script — Execute JavaScript in a QuickJS sandbox.
  *
- * IMPORTANT: Each key in `inputs` becomes a TOP-LEVEL variable in the code.
- * If you have `inputs: { items: "..." }`, use `items` directly in code, NOT `inputs.items`.
+ * The user provides a function declaration of the shape
+ * `function script(arg1, arg2, …) { … }`, where the parameter list MUST
+ * equal `Object.keys(inputs)` in declaration order. The worker extracts
+ * the body, re-wraps with that exact signature (defence-in-depth), and
+ * calls `script(input1, input2, …)`.
+ *
+ * Legacy `code:` (a bare statement body, with input keys leaking in as
+ * globals) is still accepted for backwards compatibility — the worker
+ * wraps it via `wrapBodyAsScriptFunction` at handler entry. The
+ * dashboard migrates `code:` to `function:` on the next save, so new
+ * authoring is exclusively the function shape.
  */
-export const TransformScriptConfigSchema = z.object({
-  inputs: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe(
-      'Named inputs mapped from template expressions. IMPORTANT: Keys become TOP-LEVEL variables in code (e.g., if key is "items", use "items" not "inputs.items").'
+export const TransformScriptConfigSchema = z
+  .object({
+    inputs: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        'Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`.'
+      ),
+
+    function: z
+      .string()
+      .max(
+        SCRIPT_FN_MAX_BYTES,
+        `script function is too long (max ${(SCRIPT_FN_MAX_BYTES / 1000).toFixed(0)}k characters)`
+      )
+      .optional()
+      .describe(
+        'JavaScript function declaration. Must be `function script(arg1, arg2, …) { … }` where the parameter list equals `Object.keys(inputs)` in declaration order. Must `return` (or `throw`) a value.'
+      ),
+
+    code: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Deprecated. Internal BC adapter for legacy YAML on disk — the worker auto-wraps a bare body and the dashboard migrates it to `function:` on next save. Do not use in new workflows.'
+      ),
+
+    outputSchema: JsonSchemaSchema.optional().describe(
+      'JSON Schema describing the expected return value. Used for validation and type hints.'
     ),
 
-  code: z
-    .string()
-    .min(1, 'Script code is required')
-    .describe(
-      'JavaScript code. Input keys are available as top-level variables (NOT as inputs.key). Must return a value.'
-    ),
+    timeout: z
+      .number()
+      .positive()
+      .default(5000)
+      .optional()
+      .describe('Max execution time in milliseconds (default: 5000)'),
 
-  outputSchema: JsonSchemaSchema.optional().describe(
-    'JSON Schema describing the expected return value. Used for validation and type hints.'
-  ),
+    memoryLimit: z
+      .number()
+      .positive()
+      .default(10 * 1024 * 1024)
+      .optional()
+      .describe('Max memory in bytes (default: 10MB)'),
+  })
+  .superRefine((cfg, ctx) => {
+    const hasFn = typeof cfg.function === 'string' && cfg.function.length > 0;
+    const hasCode = typeof cfg.code === 'string' && cfg.code.length > 0;
+    if (hasFn && hasCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Specify either `function` (preferred) or `code` (legacy), not both.',
+        path: ['function'],
+      });
+      return;
+    }
+    if (!hasFn && !hasCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Script `function` is required.',
+        path: ['function'],
+      });
+      return;
+    }
+    if (!hasFn) return; // legacy `code:` skips the per-field refines below
 
-  timeout: z
-    .number()
-    .positive()
-    .default(5000)
-    .optional()
-    .describe('Max execution time in milliseconds (default: 5000)'),
+    const fn = cfg.function as string;
+    const paramNames = Object.keys(cfg.inputs ?? {});
 
-  memoryLimit: z
-    .number()
-    .positive()
-    .default(10 * 1024 * 1024)
-    .optional()
-    .describe('Max memory in bytes (default: 10MB)'),
-});
+    if (!isParseableScriptFunction(fn)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '`function` does not parse as JavaScript.',
+        path: ['function'],
+      });
+      return;
+    }
+    if (!hasValidScriptSignature(fn, paramNames)) {
+      // Diagnose the specific signature problem so the user knows what to
+      // change. Three buckets: arrow form, wrong function name, wrong
+      // parameter list. Falls back to the generic message if the source
+      // doesn't match any of them.
+      const expected = `function script(${paramNames.join(', ')})`;
+      const isArrow = /=>/.test(fn) && !/\bfunction\s+\w+\s*\(/.test(fn);
+      const namedFnMatch = fn.match(/\bfunction\s+(\w+)\s*\(/);
+      let message: string;
+      if (isArrow) {
+        message = `\`function\` must be a function declaration (\`${expected} { … }\`), not an arrow form.`;
+      } else if (namedFnMatch && namedFnMatch[1] !== 'script') {
+        message = `\`function\` must be named \`script\` (got \`${namedFnMatch[1]}\`). Expected: \`${expected}\`.`;
+      } else {
+        message = `\`function\` parameter list must equal \`Object.keys(inputs)\` in order. Expected: \`${expected}\`.`;
+      }
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ['function'] });
+      return;
+    }
+    const { body, wrapperOk, trailing } = extractScriptFunctionBody(fn);
+    if (!wrapperOk) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Could not extract function body — check braces and quotes.',
+        path: ['function'],
+      });
+      return;
+    }
+    if (trailing.length > 0) {
+      // Anything outside the declaration would be silently dropped by the
+      // worker's defence-in-depth re-wrap. Reject loudly so the user moves
+      // it inside the function (or sees that it can't run).
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Code outside `function script(…) { … }` would be dropped at runtime — move it inside the function.',
+        path: ['function'],
+      });
+      return;
+    }
+    // Check for an actual `return` or `throw` statement, not a token
+    // hiding in a comment or string literal.
+    if (!/\b(return|throw)\b/.test(stripCommentsAndStrings(body))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '`script` must `return` (or `throw`) a value.',
+        path: ['function'],
+      });
+    }
+    const runtimeIssue = getScriptFunctionRuntimeIssue(fn);
+    if (runtimeIssue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: runtimeIssue,
+        path: ['function'],
+      });
+    }
+  });
 
 export const TransformScriptOutputSchema = z
   .unknown()
@@ -1036,7 +1155,7 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     category: 'transform',
     name: 'Script',
     description:
-      'Execute JavaScript code in a secure sandbox. Input keys become TOP-LEVEL variables (use "items" not "inputs.items"). Must return a value.',
+      "Execute a JavaScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. Must `return` (or `throw`) a value.",
     configSchema: TransformScriptConfigSchema,
     outputSchema: TransformScriptOutputSchema,
     configInWith: true,

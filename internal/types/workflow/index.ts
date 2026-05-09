@@ -42,6 +42,8 @@ export {
   TransformRegexExtractOutputSchema,
   TransformRemoveConfigSchema,
   TransformRemoveOutputSchema,
+  TransformScriptConfigSchema,
+  TransformScriptOutputSchema,
   TransformSetConfigSchema,
   TransformSetOutputSchema,
   TransformSplitConfigSchema,
@@ -80,6 +82,7 @@ export {
   type TransformRegexExtractConfig,
   type TransformRegexExtractOutput,
   type TransformRemoveConfig,
+  type TransformScriptConfig,
   type TransformSetConfig,
   type TransformSplitConfig,
   type TransformTemplateConfig,
@@ -212,6 +215,19 @@ export {
   type AliasReplyConfig,
   type WorkflowTriggerConfig,
 } from './email-trigger';
+
+// transform.script function-shape helpers
+export {
+  SCRIPT_FN_MAX_BYTES,
+  defaultScriptFunction,
+  extractScriptFunctionBody,
+  getScriptFunctionRuntimeIssue,
+  hasValidScriptSignature,
+  isParseableScriptFunction,
+  scriptParamTypeAlias,
+  stripCommentsAndStrings,
+  wrapBodyAsScriptFunction,
+} from './script-function';
 
 // Execution types
 export {

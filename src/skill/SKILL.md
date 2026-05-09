@@ -118,7 +118,7 @@ fall back to `workflow execution run` against the server.
 
 ```bash
 eigenpal workflow step exec transform.script \
-  --config-json '{"code":"return items.reduce((s,i)=>s+i.v,0)"}' \
+  --config-json '{"function":"function script(items) { return items.reduce((s,i)=>s+i.v,0); }"}' \
   --inputs items=@items.json
 # 3
 ```

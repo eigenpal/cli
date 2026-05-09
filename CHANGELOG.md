@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.10
+## 0.4.11
 
 ### Major Changes
 
@@ -34,6 +34,7 @@
 
 ### Minor Changes
 
+- c15ce88: Add the `eigenpal agent` command tree for managing agents, triggers, datasets, executions, experiments, and sessions from the terminal.
 - c82a215: `eigenpal auth login` now shows an interactive server picker when no `--base-url` flag or `EIGENPAL_BASE_URL` env is set:
   - **Cloud** (`https://studio.eigenpal.com`) is the default highlighted option.
   - Any on-prem URLs already in your credentials file are surfaced as separate options labelled with the profile names that use them — re-login against an existing on-prem deployment without retyping the URL.
@@ -252,6 +253,36 @@ actual) { ... }` declaration around your statements. Parameter order is
   Document the CLI exit-code contract (0 = success, 1 = runtime error,
   2 = misuse / recoverable failure) in `packages/cli/CLAUDE.md`.
 
+- 4b1f81c: `transform.script` now accepts a full function declaration via
+  `with.function:`, mirroring the custom-script evaluator. Parameter
+  names and order must equal `Object.keys(inputs)`:
+
+  ```yaml
+  - type: transform.script
+    with:
+      inputs:
+        items: '{{ steps.x.output }}'
+        taxRate: '{{ input.rate }}'
+      function: |
+        function script(items, taxRate) {
+          return items.length * taxRate;
+        }
+  ```
+
+  Authoring is now Monaco-backed in the dashboard, with input keys
+  surfaced as typed declarations so `items.` autocompletes against the
+  upstream step's output schema.
+
+  The legacy `with.code:` shape (a bare statement body, with input keys
+  leaking in as globals) still loads — the worker auto-wraps it via
+  `wrapBodyAsScriptFunction` at handler entry, and the dashboard
+  migrates `code:` to `function:` on the next save. New workflows
+  should use `function:`. The schema rejects:
+  - function names other than `script`
+  - parameter lists that don't match `Object.keys(inputs)` in order
+  - `async` / `import()` / `require()` (sandbox-incompatible)
+  - bodies with no `return` or `throw`
+
 - 3da0612: CLI: cleaner workflow command tree + matching `--json` shape.
 
   **Tree restructure** — the `workflow definition` namespace is gone. Its three verbs are core operations on the workflow itself, so they move up one level:
@@ -275,6 +306,7 @@ actual) { ... }` declaration around your statements. Parameter order is
 
 ### Patch Changes
 
+- c15ce88: Rename agent API calls to `/v1/agents` and scope execution helpers under their owning workflow or agent.
 - 71361fd: `auth login`: simplified flow. Removed the dead localhost-callback server (the
   dashboard never POSTed to it — every login fell through to copy-paste anyway).
   The browser now opens to `/developers/api-keys?from=cli` with a clearer prompt

@@ -158,10 +158,12 @@ arithmetic, regex) goes in `transform.script`:
     inputs: # explicit data deps — visible to the validator
       lineItems: '{{ steps.extract.output.lineItems }}'
       taxRate: '{{ input.taxRate }}'
-    code: |
-      const subtotal = lineItems.reduce((s, i) => s + i.price * i.qty, 0);
-      const tax = subtotal * taxRate;
-      return { subtotal, tax, total: subtotal + tax };
+    function: |
+      function script(lineItems, taxRate) {
+        const subtotal = lineItems.reduce((s, i) => s + i.price * i.qty, 0);
+        const tax = subtotal * taxRate;
+        return { subtotal, tax, total: subtotal + tax };
+      }
     outputSchema: # optional but recommended — runtime-validated
       type: object
       properties:

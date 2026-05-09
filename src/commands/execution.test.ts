@@ -94,7 +94,7 @@ describe('cancelExecution', () => {
       cap.restore();
     }
     expect(calls).toHaveLength(1);
-    expect(calls[0].path).toBe('/api/v1/executions/exec_abc/cancel');
+    expect(calls[0].path).toBe('/api/v1/workflows/executions/exec_abc/cancel');
     expect(stripAnsi(cap.stderr())).toContain('✓ cancellation requested');
     expect(cap.stdout()).toBe(''); // human mode — nothing on stdout
   });

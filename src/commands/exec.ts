@@ -21,7 +21,9 @@ interface ExecutionStatus {
 async function pollExecution(client: ApiClient, executionId: string): Promise<ExecutionStatus> {
   const start = Date.now();
   while (Date.now() - start < MAX_POLL_MS) {
-    const res = (await client.get(`/api/v1/executions/${executionId}`)) as ExecutionStatus;
+    const res = (await client.get(
+      `/api/v1/workflows/executions/${executionId}`
+    )) as ExecutionStatus;
     if (['completed', 'failed', 'cancelled', 'rejected'].includes(res.status)) return res;
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
@@ -152,7 +154,7 @@ export async function runExec(
         // Failure here doesn't change pass/fail — surface a warning only.
         try {
           const artifact = (await client.get(
-            `/api/v1/executions/${executionId}?includeSteps=true`
+            `/api/v1/workflows/executions/${executionId}?includeSteps=true`
           )) as ExecutionArtifactPayload;
           const artifactDir = await writeExecutionArtifacts(client, exampleDir, artifact);
           if (!interactive) console.log(ui.dim(`  Artifacts: ${artifactDir}`));

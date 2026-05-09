@@ -260,3 +260,20 @@ export {
   stripTenantPrefix,
   type ParsedKey,
 } from './storage/paths';
+
+// Canonical typed S3/R2 path grammar and recursive builder
+export {
+  S3_PATH_GRAMMAR,
+  buildS3Path,
+  rootS3Path,
+  type RootS3PathBuilder,
+  type RootS3PathParams,
+  type S3PathBuilder,
+  type S3PathGrammar,
+  type S3PathNodeAfter,
+  type S3PathParams,
+  type S3PathTemplate,
+  type S3PathTemplateNode,
+  type S3PathTemplateParams,
+  type TenantS3PathBuilder,
+} from './storage/s3-path-grammar';

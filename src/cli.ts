@@ -4,6 +4,7 @@ import { realpathSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pkg from '../package.json' with { type: 'json' };
+import { registerAgentCommands } from './commands/agent';
 import { authList, authLogin, authLogout, authUse } from './commands/auth';
 import { completion } from './commands/completion';
 import { init } from './commands/init';
@@ -105,15 +106,15 @@ initCmd
     }
   });
 
-// Reserved sibling — agent scaffolding lands when the agent CLI surface does.
+// Reserved sibling — agent scaffolding lands after the core agent surface.
 initCmd
   .command('agent <name>')
   .description(
-    'Scaffold a new agent (agentic process) project — coming soon. The namespace is reserved so the workflow / agent split is visible from day one.'
+    'Scaffold a new agent project — coming soon. Use `eigenpal agent push` with an existing agent project for now.'
   )
   .action(() => {
     process.stderr.write(
-      'Agent scaffolding is not available yet. Use `eigenpal init workflow <name>` for now.\n'
+      'Agent scaffolding is not available yet. Use `eigenpal agent push --dir <dir>` with an existing agent project for now.\n'
     );
     // Exit 2 (POSIX "command exists but isn't usable as invoked") so a CI
     // script that misroutes through this placeholder fails loudly instead of
@@ -176,24 +177,7 @@ authCmd
   });
 
 registerWorkflowCommands(program);
-
-// Reserved noun namespace for agent (agentic process) operations. Agent
-// workflows live on the server today but the CLI doesn't expose any
-// commands yet. Surface the namespace so users see it's coming.
-program
-  .command('agent')
-  .description(
-    'Agent (agentic process) operations — coming soon. Agent workflows live on the server today; CLI surface is reserved for future commands.'
-  )
-  .action(() => {
-    process.stderr.write(
-      'Agent CLI commands are not available yet. The namespace is reserved for future agent operations.\n'
-    );
-    // Exit 2 (POSIX "command exists but isn't usable as invoked") so a CI
-    // script that misroutes through this placeholder fails loudly instead of
-    // silently no-opping with exit 0.
-    process.exit(2);
-  });
+registerAgentCommands(program);
 
 program
   .command('completion <shell>')

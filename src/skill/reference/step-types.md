@@ -70,21 +70,10 @@ the catalog tells you what fields it takes.
 - Real JS — `Array.prototype.reduce`, `JSON.parse`, etc.
 - Sandbox limits prevent infinite loops from blowing up an execution
 
-> **Common gotcha — TDZ on shadowed input names.** Each entry in `inputs`
-> becomes a top-level `const` binding inside your script. Re-declaring the
-> same name in the body shadows the binding and triggers a `ReferenceError:
-> Cannot access 'X' before initialization` (Temporal Dead Zone). For example:
->
-> ```js
-> // ✗ TDZ — `located` is the input AND the inner const
-> const located = located || [];
->
-> // ✓ Rename the inner variable
-> const safeLocated = located ?? [];
-> ```
->
-> If you need a default, use `??` / `||` against the binding directly without
-> redeclaring, or rename the local. The same applies to `let` redeclarations.
+> Each entry in `inputs:` becomes a parameter of `function script(...)`
+> in declaration order. `inputs: { items, taxRate }` ⇒
+> `function script(items, taxRate) { … }`. The function must `return`
+> (or `throw`) a value.
 
 ## Reference / output paths
 
@@ -329,14 +318,14 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 
 #### `transform.script` — Script
 
-Execute JavaScript code in a secure sandbox. Input keys become TOP-LEVEL variables (use "items" not "inputs.items"). Must return a value.
+Execute a JavaScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. Must `return` (or `throw`) a value.
 
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `inputs` | record<string, string> | no |  | Named inputs mapped from template expressions. IMPORTANT: Keys become TOP-LEVEL variables in code (e.g., if key is "items", use "items" not "inputs.items"). |
-| `code` | string | yes |  | JavaScript code. Input keys are available as top-level variables (NOT as inputs.key). Must return a value. |
+| `inputs` | record<string, string> | no |  | Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. |
+| `function` | string | no |  | JavaScript function declaration. Must be `function script(arg1, arg2, …) { … }` where the parameter list equals `Object.keys(inputs)` in declaration order. Must `return` (or `throw`) a value. |
 | `outputSchema` | record<string, unknown> | no |  | JSON Schema describing the expected return value. Used for validation and type hints. |
 | `timeout` | number | no | `5000` | Max execution time in milliseconds (default: 5000) |
 | `memoryLimit` | number | no | `10485760` | Max memory in bytes (default: 10MB) |

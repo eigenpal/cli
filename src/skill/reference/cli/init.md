@@ -26,7 +26,7 @@ init
 | Command                                   | Description                                                                                                                                                             |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eigenpal init workflow [options] <name>` | Alias of `eigenpal init <name>`. Kept so the `init {workflow,agent}` namespace stays visible — once the agent surface lights up, both kinds will live as siblings here. |
-| `eigenpal init agent [options] <name>`    | Scaffold a new agent (agentic process) project — coming soon. The namespace is reserved so the workflow / agent split is visible from day one.                          |
+| `eigenpal init agent [options] <name>`    | Scaffold a new agent project — coming soon. Use `eigenpal agent push` with an existing agent project for now.                                                           |
 
 ## Details
 
@@ -50,7 +50,7 @@ Alias of `eigenpal init <name>`. Kept so the `init {workflow,agent}` namespace s
 
 ### `eigenpal init agent [options] <name>`
 
-Scaffold a new agent (agentic process) project — coming soon. The namespace is reserved so the workflow / agent split is visible from day one.
+Scaffold a new agent project — coming soon. Use `eigenpal agent push` with an existing agent project for now.
 
 ### Arguments
 

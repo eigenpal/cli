@@ -196,7 +196,9 @@ export async function cancelExecution(
     throw new Error('cancel is destructive and requires --yes when run non-interactively');
   }
 
-  const result = (await client.post(`/api/v1/executions/${executionId}/cancel`)) as CancelResponse;
+  const result = (await client.post(
+    `/api/v1/workflows/executions/${executionId}/cancel`
+  )) as CancelResponse;
 
   if (opts.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -231,7 +233,9 @@ async function getExecution(executionId: string, opts: GetOpts): Promise<void> {
   const client = new ApiClient(config);
 
   try {
-    const result = (await client.get(`/api/v1/executions/${executionId}?includeSteps=true`)) as {
+    const result = (await client.get(
+      `/api/v1/workflows/executions/${executionId}?includeSteps=true`
+    )) as {
       executionId?: string;
       id?: string;
       status?: string;
@@ -342,7 +346,7 @@ async function listExecutions(workflow: string, opts: ListOpts): Promise<void> {
   if (opts.status) params.status = opts.status;
 
   try {
-    const raw = await client.get('/api/v1/executions', params);
+    const raw = await client.get(`/api/v1/workflows/${workflowId}/executions`, params);
     renderListResult<ExecutionListRow>(
       raw,
       [
@@ -378,7 +382,7 @@ async function watchCommand(executionId: string, opts: WatchOpts): Promise<void>
     const result = await watchExecution({
       fetch: () =>
         client.get(
-          `/api/v1/executions/${executionId}?includeSteps=true`
+          `/api/v1/workflows/executions/${executionId}?includeSteps=true`
         ) as Promise<ExecutionSnapshot>,
       maxMs: opts.maxWait * 1000,
     });
@@ -426,8 +430,8 @@ async function compareExecutions(idA: string, idB: string, opts: CompareOpts): P
 
   try {
     const [a, b] = await Promise.all([
-      client.get(`/api/v1/executions/${idA}?includeSteps=true`) as Promise<ExecutionRow>,
-      client.get(`/api/v1/executions/${idB}?includeSteps=true`) as Promise<ExecutionRow>,
+      client.get(`/api/v1/workflows/executions/${idA}?includeSteps=true`) as Promise<ExecutionRow>,
+      client.get(`/api/v1/workflows/executions/${idB}?includeSteps=true`) as Promise<ExecutionRow>,
     ]);
 
     const stepNames = new Set<string>();

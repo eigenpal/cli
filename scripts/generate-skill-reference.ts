@@ -102,6 +102,12 @@ function renderObjectFields(schema: JsonSchemaLike): string {
   rows.push('| Field | Type | Required | Default | Description |');
   rows.push('| --- | --- | --- | --- | --- |');
   for (const [name, field] of Object.entries(props)) {
+    // Hide fields whose description marks them deprecated. They stay in
+    // the schema for backward-compatible YAML on disk (the worker still
+    // accepts them via a BC adapter) but the skill catalog should only
+    // surface the canonical shape — agents reading the docs shouldn't
+    // see legacy options as a current authoring choice.
+    if (/^deprecated\b/i.test(field.description ?? '')) continue;
     // Fields with a default are effectively optional from the user's POV — they
     // can omit the value and the default is applied. v4's `z.toJSONSchema` lists
     // them in `required` (correct per JSON Schema semantics), but the docs read

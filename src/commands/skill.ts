@@ -474,6 +474,9 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
   if (opts.all && hasToolIds) {
     throw new Error('`--all` removes every installed tool; pass tool ids OR `--all`, not both.');
   }
+  if (opts.toolIds && opts.toolIds.length > 0) {
+    assertKnownToolIds(opts.toolIds);
+  }
 
   if (opts.target) {
     await uninstallSkill({ target: opts.target, yes: opts.yes });
@@ -494,7 +497,6 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
     targets = installedTools;
   } else if (opts.toolIds && opts.toolIds.length > 0) {
     const ids = opts.toolIds;
-    assertKnownToolIds(ids);
     const installedIds = new Set(installedTools.map((t) => t.id));
     targets = TOOLS.filter((t) => ids.includes(t.id));
     const notInstalled = ids.filter((id) => !installedIds.has(id));

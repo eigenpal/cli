@@ -15,8 +15,10 @@ steps:
     with:
       inputs:
         text: '{{ input.text }}'
-      code: |
-        return { length: text.length, original: text };
+      function: |
+        function script(text) {
+          return { length: text.length, original: text };
+        }
       outputSchema:
         type: object
         properties:
