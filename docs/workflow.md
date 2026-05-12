@@ -19,6 +19,7 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow list [options]`](#eigenpal-workflow-list-options)
   - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
+  - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
   - [`eigenpal workflow validate [options]`](#eigenpal-workflow-validate-options)
   - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
   - [`eigenpal workflow evaluators pull [options] <workflow-id>`](#eigenpal-workflow-evaluators-pull-options-workflow-id)
@@ -60,6 +61,7 @@ workflow
 ├── list
 ├── pull <workflow-id>
 ├── push
+├── move <workflow-id>
 ├── evaluators
 │   ├── pull <workflow-id>
 │   ├── push <workflow-id>
@@ -113,6 +115,7 @@ workflow
 | `eigenpal workflow list [options]`                      | List workflows the caller can read.                                                                                                                                                    |
 | `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                   |
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                          |
+| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                           |
 | `eigenpal workflow validate [options]`                  | Local-only validation against the templated project layout: ./workflow.yaml + ./evaluators.yaml + ./dataset/. For targeted validation use `evaluators validate` or `dataset validate`. |
 | `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                               |
 
@@ -234,6 +237,24 @@ Create or update a workflow from a YAML file.
 | `--set-version <semver>` | no       |         | Push at this exact semver (e.g. 1.4.0). Mutually exclusive with `--bump` and with a top-level `version:` in the YAML. (Named `--set-version` to avoid the global `-v, --version` flag.) |
 | `--base-url <url>`       | no       |         | Server base URL                                                                                                                                                                         |
 | `--json`                 | no       |         | Output the raw server response as JSON                                                                                                                                                  |
+
+### `eigenpal workflow move [options] <workflow-id>`
+
+Move a workflow to a folder path, creating folders as needed
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--folder <path>`  | yes      |         | Target folder path (`/` for root)      |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
 
 ### `eigenpal workflow validate [options]`
 

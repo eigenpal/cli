@@ -6,6 +6,10 @@ attach to a workflow via `workflow evaluators push` and run in batch via
 `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-config.ts`;
 this is the agent-facing summary.
 
+Evaluator config does not control dashboard folder placement. Workflow
+organization is managed with `workflow move --folder`;
+`workflow evaluators push` leaves the workflow's folder unchanged.
+
 ## Top-level shape
 
 ```yaml

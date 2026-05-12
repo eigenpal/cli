@@ -11,6 +11,10 @@ on the server, the canonical per-row surface is
 `dataset list` for a table view) — the local folder is a pre-push
 staging area, not a synced mirror.
 
+Dataset folders are unrelated to workflow organization folders. To place
+the workflow itself under dashboard folders, use `workflow move --folder`;
+dataset push/pull never changes folder placement.
+
 ## Required layout
 
 ```

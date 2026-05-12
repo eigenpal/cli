@@ -134,6 +134,20 @@ The error envelope tells you exactly where:
 Follow the hint — every field path is dotted into the YAML so you can
 jump straight to the broken line.
 
+### Workflow appears in the wrong folder
+
+Folder placement is controlled by server folder state, not by
+`workflow.yaml`. Move by explicit folder path:
+
+```bash
+eigenpal workflow move <workflow-id> --folder billing/invoices
+eigenpal workflow move <workflow-id> --folder /
+```
+
+`--folder /` moves the workflow back to root. `workflow push` and
+`workflow pull` do not change folder placement. Missing folders in the
+path are created automatically.
+
 ## 4. Compare two executions
 
 ```bash

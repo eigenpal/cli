@@ -26,6 +26,14 @@ output: {...} # object — the workflow's return shape
 version with the same `name` and a different `version` appends to history;
 re-using the same `version` is rejected.
 
+Folder placement is not part of `workflow.yaml`; it lives in the server
+database. Use `workflow move <workflow-id> --folder <path>` to move a
+workflow between dashboard folders. Missing folders in the path are
+created automatically. Use `--folder /` for root. New workflows should stay
+at the top level unless the user specifically asks to place them in a
+folder.
+
+
 ### `triggerMethods`
 
 Required. Each entry adds an invocation surface:

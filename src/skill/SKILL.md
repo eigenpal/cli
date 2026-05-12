@@ -110,6 +110,22 @@ The validator emits structured field-path errors with a hint pointing at
 Version bumping rules (`--bump` vs `--set-version` vs YAML `version:`)
 live in [`reference/workflow-yaml.md`](reference/workflow-yaml.md#validate-before-pushing).
 
+### Organize workflows into folders
+
+Folders live on the server, not in `workflow.yaml`. `workflow push` and
+`workflow pull` do not read or write folder placement. Use `workflow move`
+to move workflows between dashboard folders:
+
+```bash
+eigenpal workflow move <workflow-id> --folder billing/invoices
+eigenpal workflow move <workflow-id> --folder /
+```
+
+`--folder /` means root.
+Missing folders in the path are created automatically.
+Default to creating workflows at the top level. Do not move a workflow into
+a folder unless the user specifically asks for that placement.
+
 ### Iterate fast on one step (no server, no DAG)
 
 Tightest possible loop — local sandbox, milliseconds per run. Today
@@ -478,6 +494,7 @@ eigenpal workflow list
 eigenpal workflow push --file workflow.yaml [--workflow-id <workflow-id>]
 eigenpal workflow pull <workflow-id>
 eigenpal workflow validate [path]
+eigenpal workflow move <wf-id> --folder billing/invoices  # use --folder / for root
 
 # Evaluators
 eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml

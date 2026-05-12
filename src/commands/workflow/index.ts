@@ -373,7 +373,8 @@ function registerWorkflowCoreCommands(parent: Command): void {
       const result = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
         currentVersion?: { yamlContent?: string };
       };
-      await writeOrPrint(opts.out, result?.currentVersion?.yamlContent ?? '');
+      const yaml = result?.currentVersion?.yamlContent ?? '';
+      await writeOrPrint(opts.out, yaml);
     })
   );
 
@@ -545,10 +546,14 @@ flag would otherwise shadow it. Validation failures come back as
             opts.setVersion && !extractWorkflowVersion(yamlOnDisk)
               ? spliceWorkflowVersion(yamlOnDisk, opts.setVersion)
               : yamlOnDisk;
+          const createVersion = opts.setVersion ?? extractWorkflowVersion(yamlToSend) ?? undefined;
           // Server returns { workflow, version, history } from createWorkflowWithVersion.
           // The earlier shape (result.id / result.version as a string) was never live
           // here — `[object Object]` slips through if you read result.version directly.
-          const result = (await client.post('/api/v1/workflows', { yaml: yamlToSend })) as {
+          const result = (await client.post('/api/v1/workflows', {
+            yaml: yamlToSend,
+            ...(createVersion ? { version: createVersion } : {}),
+          })) as {
             workflow?: { id?: string; currentVersion?: { version?: string } };
             version?: { version?: string };
             history?: { id?: string };
@@ -569,6 +574,33 @@ flag would otherwise shadow it. Validation failures come back as
             '?';
           success(`Created ${ui.bold(id)} (v${ver})`);
         }
+      }
+    )
+  );
+
+  const moveCmd = parent
+    .command('move <workflow-id>')
+    .description('Move a workflow to a folder path, creating folders as needed')
+    .requiredOption('--folder <path>', 'Target folder path (`/` for root)');
+  addJsonFlag(withBaseUrl(moveCmd)).action(
+    action(
+      async (
+        workflow: string,
+        opts: WorkflowCommandConfig & {
+          folder: string;
+          json?: boolean;
+        }
+      ) => {
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const result = await client.patch(`/api/v1/workflows/${workflowId}`, {
+          folderPath: opts.folder,
+        });
+        if (opts.json) {
+          printJson(result);
+          return;
+        }
+        const target = opts.folder.trim() === '/' ? 'root' : opts.folder;
+        success(`Moved ${ui.bold(workflowId)} to ${ui.bold(target)}`);
       }
     )
   );
