@@ -250,6 +250,9 @@ export * from './workflow';
 // Eval primitives (shared by app + worker)
 export * from './eval';
 
+// Typed-TS function compile pipeline (transform.script + custom-script eval)
+export * from './typed-script';
+
 // Canonical S3/R2 key constructors for workflow-scoped files
 export {
   evalExpectedKey,

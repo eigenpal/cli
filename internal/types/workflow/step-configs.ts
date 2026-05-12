@@ -14,14 +14,8 @@
 
 import { z } from 'zod';
 import { toJsonSchema, type JsonSchema7Type } from '../core/common';
-import {
-  extractScriptFunctionBody,
-  getScriptFunctionRuntimeIssue,
-  hasValidScriptSignature,
-  isParseableScriptFunction,
-  SCRIPT_FN_MAX_BYTES,
-  stripCommentsAndStrings,
-} from './script-function';
+import { compileTypedScript } from '../typed-script';
+import { SCRIPT_FN_MAX_BYTES } from './script-function';
 import type { StepType } from './steps';
 import { STEP_TYPES } from './steps';
 
@@ -462,32 +456,23 @@ export const TransformXlsxToJsonOutputSchema = z.object({
 });
 
 /**
- * JSON Schema for output validation (subset of JSON Schema)
- */
-const JsonSchemaSchema = z
-  .object({
-    type: z.enum(['object', 'array', 'string', 'number', 'boolean', 'null']),
-    properties: z.record(z.string(), z.unknown()).optional(),
-    items: z.unknown().optional(),
-    required: z.array(z.string()).optional(),
-    description: z.string().optional(),
-  })
-  .passthrough();
-
-/**
- * transform.script — Execute JavaScript in a QuickJS sandbox.
+ * transform.script — Execute a TypeScript function in a QuickJS sandbox.
  *
- * The user provides a function declaration of the shape
- * `function script(arg1, arg2, …) { … }`, where the parameter list MUST
- * equal `Object.keys(inputs)` in declaration order. The worker extracts
- * the body, re-wraps with that exact signature (defence-in-depth), and
- * calls `script(input1, input2, …)`.
+ * The user provides a typed function declaration:
+ *   `function script(p1: T1, p2: T2): R { … }`
  *
- * Legacy `code:` (a bare statement body, with input keys leaking in as
- * globals) is still accepted for backwards compatibility — the worker
- * wraps it via `wrapBodyAsScriptFunction` at handler entry. The
- * dashboard migrates `code:` to `function:` on the next save, so new
- * authoring is exclusively the function shape.
+ * Three rules, all enforced at YAML push time and edit time:
+ *   1. Function name MUST be `script`.
+ *   2. Parameter list MUST equal `Object.keys(inputs)` in order.
+ *   3. **Return type annotation `: R` is required.** R becomes this step's
+ *      output schema (no separate `outputSchema:` field exists). R drives
+ *      both downstream autocomplete and runtime AJV validation of the
+ *      sandbox's actual return value.
+ *
+ * The worker compiles the TS source through sucrase before the sandbox
+ * runs (sub-millisecond on small functions). Babel parses the same source
+ * to walk the return-type AST and derive the JSON Schema. Both happen
+ * once per push and once per worker run.
  */
 export const TransformScriptConfigSchema = z
   .object({
@@ -495,31 +480,19 @@ export const TransformScriptConfigSchema = z
       .record(z.string(), z.string())
       .optional()
       .describe(
-        'Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`.'
+        'Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.'
       ),
 
     function: z
       .string()
+      .min(1)
       .max(
         SCRIPT_FN_MAX_BYTES,
         `script function is too long (max ${(SCRIPT_FN_MAX_BYTES / 1000).toFixed(0)}k characters)`
       )
-      .optional()
       .describe(
-        'JavaScript function declaration. Must be `function script(arg1, arg2, …) { … }` where the parameter list equals `Object.keys(inputs)` in declaration order. Must `return` (or `throw`) a value.'
+        "TypeScript function declaration. Must be `function script(args): R { … }` where the parameter list equals `Object.keys(inputs)` in order and `R` is a return type annotation. The annotation IS this step's output schema."
       ),
-
-    code: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        'Deprecated. Internal BC adapter for legacy YAML on disk — the worker auto-wraps a bare body and the dashboard migrates it to `function:` on next save. Do not use in new workflows.'
-      ),
-
-    outputSchema: JsonSchemaSchema.optional().describe(
-      'JSON Schema describing the expected return value. Used for validation and type hints.'
-    ),
 
     timeout: z
       .number()
@@ -536,91 +509,28 @@ export const TransformScriptConfigSchema = z
       .describe('Max memory in bytes (default: 10MB)'),
   })
   .superRefine((cfg, ctx) => {
-    const hasFn = typeof cfg.function === 'string' && cfg.function.length > 0;
-    const hasCode = typeof cfg.code === 'string' && cfg.code.length > 0;
-    if (hasFn && hasCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Specify either `function` (preferred) or `code` (legacy), not both.',
-        path: ['function'],
-      });
-      return;
-    }
-    if (!hasFn && !hasCode) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Script `function` is required.',
-        path: ['function'],
-      });
-      return;
-    }
-    if (!hasFn) return; // legacy `code:` skips the per-field refines below
-
-    const fn = cfg.function as string;
-    const paramNames = Object.keys(cfg.inputs ?? {});
-
-    if (!isParseableScriptFunction(fn)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '`function` does not parse as JavaScript.',
-        path: ['function'],
-      });
-      return;
-    }
-    if (!hasValidScriptSignature(fn, paramNames)) {
-      // Diagnose the specific signature problem so the user knows what to
-      // change. Three buckets: arrow form, wrong function name, wrong
-      // parameter list. Falls back to the generic message if the source
-      // doesn't match any of them.
-      const expected = `function script(${paramNames.join(', ')})`;
-      const isArrow = /=>/.test(fn) && !/\bfunction\s+\w+\s*\(/.test(fn);
-      const namedFnMatch = fn.match(/\bfunction\s+(\w+)\s*\(/);
-      let message: string;
-      if (isArrow) {
-        message = `\`function\` must be a function declaration (\`${expected} { … }\`), not an arrow form.`;
-      } else if (namedFnMatch && namedFnMatch[1] !== 'script') {
-        message = `\`function\` must be named \`script\` (got \`${namedFnMatch[1]}\`). Expected: \`${expected}\`.`;
-      } else {
-        message = `\`function\` parameter list must equal \`Object.keys(inputs)\` in order. Expected: \`${expected}\`.`;
+    // Input keys become function parameter names, so they must be valid JS
+    // identifiers. Catch this here with a clear, field-targeted error
+    // rather than letting it surface as a confusing param-list mismatch.
+    for (const key of Object.keys(cfg.inputs ?? {})) {
+      if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `input key \`${key}\` is not a valid JavaScript identifier; it becomes a function parameter name, so use letters, digits, \`_\`, or \`$\` (and don't start with a digit)`,
+          path: ['inputs', key],
+        });
       }
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: ['function'] });
-      return;
     }
-    const { body, wrapperOk, trailing } = extractScriptFunctionBody(fn);
-    if (!wrapperOk) {
+    const result = compileTypedScript({
+      kind: 'transform',
+      source: cfg.function,
+      paramNames: Object.keys(cfg.inputs ?? {}),
+    });
+    if (result.ok) return;
+    for (const issue of result.issues) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Could not extract function body — check braces and quotes.',
-        path: ['function'],
-      });
-      return;
-    }
-    if (trailing.length > 0) {
-      // Anything outside the declaration would be silently dropped by the
-      // worker's defence-in-depth re-wrap. Reject loudly so the user moves
-      // it inside the function (or sees that it can't run).
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'Code outside `function script(…) { … }` would be dropped at runtime — move it inside the function.',
-        path: ['function'],
-      });
-      return;
-    }
-    // Check for an actual `return` or `throw` statement, not a token
-    // hiding in a comment or string literal.
-    if (!/\b(return|throw)\b/.test(stripCommentsAndStrings(body))) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '`script` must `return` (or `throw`) a value.',
-        path: ['function'],
-      });
-    }
-    const runtimeIssue = getScriptFunctionRuntimeIssue(fn);
-    if (runtimeIssue) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: runtimeIssue,
+        message: issue.message,
         path: ['function'],
       });
     }
@@ -628,7 +538,9 @@ export const TransformScriptConfigSchema = z
 
 export const TransformScriptOutputSchema = z
   .unknown()
-  .describe('Value returned from script (validated against outputSchema if provided)');
+  .describe(
+    "Value returned from script. Validated at runtime against the JSON Schema derived from the function's return type annotation."
+  );
 
 /**
  * Deterministic text chunker. Replaces hand-rolled `transform.script` chunking
@@ -1155,7 +1067,7 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     category: 'transform',
     name: 'Script',
     description:
-      "Execute a JavaScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. Must `return` (or `throw`) a value.",
+      "Execute a TypeScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.",
     configSchema: TransformScriptConfigSchema,
     outputSchema: TransformScriptOutputSchema,
     configInWith: true,

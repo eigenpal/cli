@@ -25,15 +25,13 @@ steps:
     with:
       inputs:
         text: '{{ input.text }}'
+      # The `: { length: number; original: string }` return-type annotation
+      # IS this step's output schema. Downstream steps autocomplete against
+      # it; the worker AJV-validates the return value against it at runtime.
       function: |
-        function script(text) {
+        function script(text: string): { length: number; original: string } {
           return { length: text.length, original: text };
         }
-      outputSchema:
-        type: object
-        properties:
-          length: { type: number }
-          original: { type: string }
 
 # `output` shapes the final return value. References any step's output.
 output:

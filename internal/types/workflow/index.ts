@@ -220,13 +220,7 @@ export {
 export {
   SCRIPT_FN_MAX_BYTES,
   defaultScriptFunction,
-  extractScriptFunctionBody,
-  getScriptFunctionRuntimeIssue,
-  hasValidScriptSignature,
-  isParseableScriptFunction,
   scriptParamTypeAlias,
-  stripCommentsAndStrings,
-  wrapBodyAsScriptFunction,
 } from './script-function';
 
 // Execution types

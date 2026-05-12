@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import {
-  extractScoreFunctionBody,
-  getScoreFunctionRuntimeIssue,
-  hasValidScoreSignature,
-  isParseableScoreFunction,
-} from './score-function';
+import { compileTypedScript } from '../typed-script';
 
 /**
  * Evaluator configuration — stored in `workflows.evalConfigYaml` as YAML, parsed into this shape.
@@ -120,7 +115,7 @@ export type LlmJudgeConfig = z.infer<typeof LlmJudgeConfigSchema>;
 export const CUSTOM_SCRIPT_CONTRACT = {
   expected: "the example's expected output",
   actual: "the workflow's actual output",
-  returns: 'a number in [0, 1]',
+  returns: 'a number in [0, 1] (the `: number` annotation is required)',
   throws: 'caught and scored as 0',
 } as const;
 
@@ -142,20 +137,19 @@ export const CUSTOM_SCRIPT_MAX_TIMEOUT_MS = 30_000;
 export const CUSTOM_SCRIPT_MAX_MEMORY_MB = 50;
 
 const CUSTOM_SCRIPT_FUNCTION_DESCRIPTION =
-  `Full JavaScript declaration of \`function scoreScript(expected, actual) { ... }\`. ` +
+  `Full TypeScript declaration of \`function scoreScript(expected, actual): number { ... }\`. ` +
   `Receives \`expected\` (${CUSTOM_SCRIPT_CONTRACT.expected}) ` +
   `and \`actual\` (${CUSTOM_SCRIPT_CONTRACT.actual}), returns ${CUSTOM_SCRIPT_CONTRACT.returns}. ` +
+  `The \`: number\` return-type annotation is required and enforced at parse time. ` +
   `Throws are ${CUSTOM_SCRIPT_CONTRACT.throws}.`;
 
 export const CustomScriptConfigSchema = z.object({
-  // Stored as the full `function scoreScript(expected, actual) { ... }`
-  // declaration — including signature — so the YAML reads the same as the
-  // dashboard editor (no implicit wrapping). Three layered checks: (a) the
-  // text actually parses as JS, (b) the `function scoreScript(expected,
-  // actual)` signature is present at the top level, (c) the body contains
-  // a `return` or `throw`. Each fires server-side at YAML-parse time AND
-  // client-side at form-save time so hand-edited configs surface errors
-  // before they hit the worker.
+  // Stored as the full `function scoreScript(expected, actual): number { ... }`
+  // declaration. Compiled via the shared `compileTypedScript({ kind: 'evaluator' })`
+  // pipeline — same module the worker uses at runtime, so push-time and
+  // run-time enforcement are byte-identical. Wrong name, wrong params,
+  // missing or non-`number` return annotation, async/import/require, all
+  // rejected here.
   function: z
     .string()
     .min(1, { message: 'required' })
@@ -163,28 +157,12 @@ export const CustomScriptConfigSchema = z.object({
       message: `must be ≤ ${CUSTOM_SCRIPT_MAX_BYTES} bytes`,
     })
     .describe(CUSTOM_SCRIPT_FUNCTION_DESCRIPTION)
-    .refine(isParseableScoreFunction, {
-      message: 'must parse as JavaScript',
-    })
-    .refine(hasValidScoreSignature, {
-      message:
-        'must declare `function scoreScript(expected, actual) { ... }` (parameter names + order matter)',
-    })
-    .refine(
-      (fn) => {
-        const { body, wrapperOk } = extractScoreFunctionBody(fn);
-        return wrapperOk && /\b(return|throw)\b/.test(body);
-      },
-      {
-        message: 'function body must `return` a number in [0, 1] (or `throw` to score 0)',
-      }
-    )
-    // Catch sandbox-incompatible patterns (async, dynamic import, require) so
-    // authors get a clear validation message instead of a confused score=0
-    // with a runtime "X is not a function" / unresolved-promise error.
     .superRefine((fn, ctx) => {
-      const issue = getScoreFunctionRuntimeIssue(fn);
-      if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
+      const result = compileTypedScript({ kind: 'evaluator', source: fn });
+      if (result.ok) return;
+      for (const issue of result.issues) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message });
+      }
     }),
   timeoutMs: z
     .number()

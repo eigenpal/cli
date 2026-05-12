@@ -15,15 +15,12 @@ steps:
     with:
       inputs:
         text: '{{ input.text }}'
+      # Return-type annotation (`: { length: number; original: string }`)
+      # is mandatory and becomes this step's output schema.
       function: |
-        function script(text) {
+        function script(text: string): { length: number; original: string } {
           return { length: text.length, original: text };
         }
-      outputSchema:
-        type: object
-        properties:
-          length: { type: number }
-          original: { type: string }
 
 output:
   length: '{{ steps.echo.output.length }}'

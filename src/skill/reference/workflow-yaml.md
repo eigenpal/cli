@@ -149,7 +149,9 @@ Use Liquid `{{ ... }}` for one-liners:
 | Simple math   | `{{ price \| times: quantity }}` |
 
 Anything more complex (array reduce/filter, multi-step calc, date
-arithmetic, regex) goes in `transform.script`:
+arithmetic, regex) goes in `transform.script`. The function is
+TypeScript; the return-type annotation IS this step's output schema
+(there is no separate `outputSchema:` field):
 
 ```yaml
 - name: total
@@ -159,18 +161,23 @@ arithmetic, regex) goes in `transform.script`:
       lineItems: '{{ steps.extract.output.lineItems }}'
       taxRate: '{{ input.taxRate }}'
     function: |
-      function script(lineItems, taxRate) {
+      function script(
+        lineItems: { price: number; qty: number }[],
+        taxRate: number,
+      ): { subtotal: number; tax: number; total: number } {
         const subtotal = lineItems.reduce((s, i) => s + i.price * i.qty, 0);
         const tax = subtotal * taxRate;
         return { subtotal, tax, total: subtotal + tax };
       }
-    outputSchema: # optional but recommended — runtime-validated
-      type: object
-      properties:
-        subtotal: { type: number }
-        tax: { type: number }
-        total: { type: number }
 ```
+
+The `): { subtotal: number; tax: number; total: number }` annotation is
+required and IS this step's output schema. Downstream steps autocomplete
+against it and reference its fields via `{{ steps.<this>.output.<field> }}`,
+and the worker validates the actual return value against it. Describe what
+the function really returns: a too-loose annotation like `unknown` produces
+an empty schema, which makes downstream `output.<field>` references
+unresolvable and trips "field not found" warnings.
 
 The script runs in a WASM sandbox: 5s wall clock, 10 MB heap, no network,
 no filesystem. Trips show up as `script_timeout` / `script_memory_limit`

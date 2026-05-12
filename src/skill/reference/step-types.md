@@ -65,15 +65,20 @@ the catalog tells you what fields it takes.
 
 `transform.script` advantages over Liquid:
 
-- Explicit `inputs:` declaration → the validator knows the data deps
-- `outputSchema:` enforces the return shape at runtime
-- Real JS — `Array.prototype.reduce`, `JSON.parse`, etc.
+- Explicit `inputs:` declaration; the validator knows the data deps
+- Typed return annotation drives downstream autocomplete + runtime validation
+- Real JS/TS (`Array.prototype.reduce`, `JSON.parse`, etc.)
 - Sandbox limits prevent infinite loops from blowing up an execution
 
-> Each entry in `inputs:` becomes a parameter of `function script(...)`
-> in declaration order. `inputs: { items, taxRate }` ⇒
-> `function script(items, taxRate) { … }`. The function must `return`
-> (or `throw`) a value.
+> The function is **TypeScript**. Each `inputs:` key becomes a parameter
+> in declaration order: `inputs: { items, taxRate }` ⇒
+> `function script(items: ..., taxRate: ...): R { ... }`. The return-type
+> annotation `R` is **required** and IS this step's output schema; there
+> is no separate `outputSchema:` field. Describe what your function
+> actually returns: downstream steps reference its fields via
+> `{{ steps.<this>.output.<field> }}`, so a too-loose annotation (e.g.
+> `unknown`) makes those references unresolvable. The function must
+> `return` (or `throw`) a value.
 
 ## Reference / output paths
 
@@ -318,21 +323,20 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 
 #### `transform.script` — Script
 
-Execute a JavaScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. Must `return` (or `throw`) a value.
+Execute a TypeScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.
 
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `inputs` | record<string, string> | no |  | Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items, taxRate) { … }`. |
-| `function` | string | no |  | JavaScript function declaration. Must be `function script(arg1, arg2, …) { … }` where the parameter list equals `Object.keys(inputs)` in declaration order. Must `return` (or `throw`) a value. |
-| `outputSchema` | record<string, unknown> | no |  | JSON Schema describing the expected return value. Used for validation and type hints. |
+| `inputs` | record<string, string> | no |  | Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`. |
+| `function` | string | yes |  | TypeScript function declaration. Must be `function script(args): R { … }` where the parameter list equals `Object.keys(inputs)` in order and `R` is a return type annotation. The annotation IS this step's output schema. |
 | `timeout` | number | no | `5000` | Max execution time in milliseconds (default: 5000) |
 | `memoryLimit` | number | no | `10485760` | Max memory in bytes (default: 10MB) |
 
 **Output:** `unknown`
 
-> Value returned from script (validated against outputSchema if provided)
+> Value returned from script. Validated at runtime against the JSON Schema derived from the function's return type annotation.
 
 #### `transform.text-chunker` — Text Chunker
 
