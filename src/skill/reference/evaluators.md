@@ -109,7 +109,13 @@ one of the keys in `labels`; the harness then looks up the score.
   config:
     passThreshold: 1.0
     function: |
-      function scoreScript(expected: Expected, actual: Actual): number {
+      type WorkflowOutput = {
+        totalAmount: number;
+      };
+      type Expected = WorkflowOutput;
+      type Actual = WorkflowOutput;
+
+      function scoreScript(expected: WorkflowOutput, actual: WorkflowOutput): number {
         const a = actual.totalAmount ?? 0;
         const e = expected.totalAmount ?? 0;
         return Math.abs(a - e) <= 0.01 ? 1 : 0;
@@ -117,12 +123,13 @@ one of the keys in `labels`; the harness then looks up the score.
 ```
 
 Same WASM sandbox as `transform.script` (5s wall clock, 10 MB heap, no
-network). The YAML stores the **whole** `function scoreScript(expected,
-actual): number { ... }` declaration verbatim, same text the dashboard
-editor shows. The `: number` return-type annotation is required and
-enforced at parse time. `Expected` / `Actual` are in-scope type aliases
-in the dashboard editor (both are the workflow's output shape); plain
-`unknown` works too if you don't want them.
+network). The YAML stores the **whole** typed score source (optional
+`type` aliases plus `function scoreScript(expected, actual): number { ... }`)
+verbatim, same text the dashboard editor shows. The `: number` return-type annotation is required and
+enforced at parse time. The dashboard seeds new evaluators with a
+`WorkflowOutput` type alias derived from the workflow's `output:`
+declaration, plus `Expected` / `Actual` aliases for compatibility. Plain
+`unknown` works too if you don't want a typed signature.
 
 The signature shape is **locked**:
 
@@ -267,7 +274,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `function` | string | yes |  | Full TypeScript declaration of `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
+| `function` | string | yes |  | Full TypeScript source for optional `type` aliases plus `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
 | `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it's killed and the run is marked failed. |
 | `memoryLimitMb` | integer | no | `10` | Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings. |
 | `passThreshold` | number | no | `1` | Minimum script score this evaluator must reach for a run to pass. |

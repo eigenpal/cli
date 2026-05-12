@@ -137,19 +137,19 @@ export const CUSTOM_SCRIPT_MAX_TIMEOUT_MS = 30_000;
 export const CUSTOM_SCRIPT_MAX_MEMORY_MB = 50;
 
 const CUSTOM_SCRIPT_FUNCTION_DESCRIPTION =
-  `Full TypeScript declaration of \`function scoreScript(expected, actual): number { ... }\`. ` +
+  `Full TypeScript source for optional \`type\` aliases plus \`function scoreScript(expected, actual): number { ... }\`. ` +
   `Receives \`expected\` (${CUSTOM_SCRIPT_CONTRACT.expected}) ` +
   `and \`actual\` (${CUSTOM_SCRIPT_CONTRACT.actual}), returns ${CUSTOM_SCRIPT_CONTRACT.returns}. ` +
   `The \`: number\` return-type annotation is required and enforced at parse time. ` +
   `Throws are ${CUSTOM_SCRIPT_CONTRACT.throws}.`;
 
 export const CustomScriptConfigSchema = z.object({
-  // Stored as the full `function scoreScript(expected, actual): number { ... }`
-  // declaration. Compiled via the shared `compileTypedScript({ kind: 'evaluator' })`
-  // pipeline — same module the worker uses at runtime, so push-time and
-  // run-time enforcement are byte-identical. Wrong name, wrong params,
-  // missing or non-`number` return annotation, async/import/require, all
-  // rejected here.
+  // Stored as the full typed score source: optional type aliases plus
+  // `function scoreScript(expected, actual): number { ... }`. Compiled via
+  // the shared `compileTypedScript({ kind: 'evaluator' })` pipeline — same
+  // module the worker uses at runtime, so push-time and run-time enforcement
+  // are byte-identical. Wrong name, wrong params, missing or non-`number`
+  // return annotation, async/import/require, all rejected here.
   function: z
     .string()
     .min(1, { message: 'required' })

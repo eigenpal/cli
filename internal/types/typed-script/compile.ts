@@ -9,9 +9,10 @@
  *
  * The contract is intentionally narrow: one top-level function declaration
  * with the canonical name, exact param list, and a *required* return-type
- * annotation. Anything else (`async`, `import()`, `require`, generics on
- * the function itself, multiple top-level decls) is rejected here so the
- * worker never sees ambiguous input.
+ * annotation. Supporting top-level type aliases are allowed; anything else
+ * (`async`, `import()`, `require`, generics on the function itself, extra
+ * runtime declarations) is rejected here so the worker never sees ambiguous
+ * input.
  */
 import { parse } from '@babel/parser';
 import type {
