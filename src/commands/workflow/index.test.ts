@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   bumpSemver,
@@ -12,6 +14,60 @@ import {
   spliceWorkflowVersion,
   summarizeExperimentExecutions,
 } from './index';
+
+const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
+
+describe('command aliases', () => {
+  test('applies global list and compare aliases across the CLI', () => {
+    for (const args of [
+      ['auth', 'ls', '--help'],
+      ['skill', 'ls', '--help'],
+      ['workflow', 'ls', '--help'],
+      ['workflow', 'dataset', 'ls', '--help'],
+      ['workflow', 'versions', 'ls', '--help'],
+      ['workflow', 'step-type', 'ls', '--help'],
+      ['workflow', 'execution', 'ls', '--help'],
+      ['workflow', 'execution', 'diff', '--help'],
+      ['workflow', 'experiment', 'ls', '--help'],
+      ['workflow', 'experiment', 'diff', '--help'],
+      ['agent', 'ls', '--help'],
+      ['agent', 'file', 'ls', '--help'],
+      ['agent', 'dataset', 'ls', '--help'],
+      ['agent', 'execution', 'ls', '--help'],
+      ['agent', 'execution', 'diff', '--help'],
+      ['agent', 'execution', 'expected', 'ls', '--help'],
+      ['agent', 'trigger', 'ls', '--help'],
+    ]) {
+      const result = spawnSync('bun', [CLI, ...args], { encoding: 'utf8' });
+      expect(result.status).toBe(0);
+    }
+  });
+
+  test('keeps explicit high-value workflow aliases', () => {
+    const workflow = spawnSync('bun', [CLI, 'workflow', '--help'], { encoding: 'utf8' });
+    expect(workflow.status).toBe(0);
+    expect(workflow.stdout).toContain('execution');
+    expect(workflow.stdout).toContain('experiment');
+
+    const execution = spawnSync('bun', [CLI, 'workflow', 'exec', '--help'], { encoding: 'utf8' });
+    expect(execution.status).toBe(0);
+    expect(
+      spawnSync('bun', [CLI, 'workflow', 'exec', 'ls', '--help'], { encoding: 'utf8' }).status
+    ).toBe(0);
+    expect(
+      spawnSync('bun', [CLI, 'workflow', 'exec', 'diff', '--help'], { encoding: 'utf8' }).status
+    ).toBe(0);
+
+    const experiment = spawnSync('bun', [CLI, 'workflow', 'exp', '--help'], { encoding: 'utf8' });
+    expect(experiment.status).toBe(0);
+    expect(
+      spawnSync('bun', [CLI, 'workflow', 'exp', 'ls', '--help'], { encoding: 'utf8' }).status
+    ).toBe(0);
+    expect(
+      spawnSync('bun', [CLI, 'workflow', 'exp', 'diff', '--help'], { encoding: 'utf8' }).status
+    ).toBe(0);
+  });
+});
 
 describe('readJsonInput', () => {
   test('returns undefined when neither flag is set (PATCH semantics: leave alone)', async () => {

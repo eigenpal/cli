@@ -10,7 +10,7 @@ Install / uninstall / list the Eigenpal agent skill in your project (Claude Code
 - [Details](#details)
   - [`eigenpal skill install [options]`](#eigenpal-skill-install-options)
   - [`eigenpal skill uninstall [options] [toolIds...]`](#eigenpal-skill-uninstall-options-toolids)
-  - [`eigenpal skill list [options]`](#eigenpal-skill-list-options)
+  - [`eigenpal skill list|ls [options]`](#eigenpal-skill-listls-options)
 
 ## Surface
 
@@ -18,7 +18,7 @@ Install / uninstall / list the Eigenpal agent skill in your project (Claude Code
 skill
 ├── install
 ├── uninstall [toolIds...]
-└── list
+└── list|ls
 ```
 
 ## Commands
@@ -26,10 +26,10 @@ skill
 ### Core
 
 | Command                                           | Description                                                                                                                                                                                        |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `eigenpal skill install [options]`                | Install the skill into one or more tools. Opens an interactive multiselect picker (toggle on to install, toggle off to uninstall) — pass `--tools` for non-interactive use.                        |
 | `eigenpal skill uninstall [options] [toolIds...]` | Remove the skill from named tools (e.g. `skill uninstall claude cursor`), pass `--all` to wipe every install, or run with no args in a TTY for an interactive picker showing only installed tools. |
-| `eigenpal skill list [options]`                   | Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it.                                                                                 |
+| `eigenpal skill list                              | ls [options]`                                                                                                                                                                                      | Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it. |
 
 ## Details
 
@@ -64,7 +64,7 @@ Remove the skill from named tools (e.g. `skill uninstall claude cursor`), pass `
 | `--target <path>` | no       |         | Power-user override: uninstall a single custom directory (skips tool detection) |
 | `--yes`           | no       |         | Required for non-TTY shells; skips confirmation in TTY                          |
 
-### `eigenpal skill list [options]`
+### `eigenpal skill list|ls [options]`
 
 Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it.
 

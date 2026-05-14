@@ -38,11 +38,16 @@ function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
 
+function commandDisplayName(cmd: Command): string {
+  const alias = cmd.alias();
+  return alias ? `${cmd.name()}|${alias}` : cmd.name();
+}
+
 function commandPath(cmd: Command): string {
   const segments: string[] = [];
   let current: Command | null = cmd;
   while (current && current.name() !== 'eigenpal') {
-    segments.unshift(current.name());
+    segments.unshift(commandDisplayName(current));
     current = current.parent ?? null;
   }
   return segments.join(' ');
@@ -252,7 +257,7 @@ function renderASCIITree(cmd: Command, prefix = '', isRoot = true): string {
     const branch = isLast ? '└── ' : '├── ';
     const childPrefix = isLast ? '    ' : '│   ';
     const sig = argSignature(child);
-    lines.push(`${prefix}${branch}${child.name()}${sig ? ' ' + sig : ''}`);
+    lines.push(`${prefix}${branch}${commandDisplayName(child)}${sig ? ' ' + sig : ''}`);
     if (visibleCommands(child).length > 0) {
       lines.push(renderASCIITree(child, prefix + childPrefix, false));
     }

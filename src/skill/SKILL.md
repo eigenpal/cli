@@ -1,6 +1,6 @@
 ---
 name: eigenpal
-description: Build, run, and iterate on Eigenpal workflows from the command line. The workflow engine, evaluators, dataset folders, and execution introspection are all controlled via `eigenpal` subcommands. The server is the source of truth — local files are inputs you push.
+description: Build, run, and iterate on Eigenpal workflows and agents from the command line. Use `eigenpal workflow` for YAML workflows, datasets, evaluators, executions, and experiments. Use `eigenpal agent` for agent workspaces, executions, feedback, traces, files, and expected artifacts.
 license: Apache-2.0
 compatibility: Requires eigenpal CLI.
 metadata:
@@ -11,104 +11,85 @@ metadata:
 
 # Eigenpal
 
-Eigenpal is a workflow engine. A workflow is a DAG of steps
-(parsing, extraction, scripting, etc.). Iteration happens locally with the
-`eigenpal` CLI; **execution + datasets + experiments live on the server**.
+Eigenpal has two major CLI surfaces:
 
-This skill is the schema reference. The CLI does the actual work.
+- `eigenpal workflow` — build and operate YAML workflows: definitions,
+  datasets, evaluators, executions, experiments, versions, and schema
+  introspection.
+- `eigenpal agent` — build and operate agent workspaces: agent files, triggers,
+  executions, traces, feedback, expected artifacts, and reruns.
 
-## Iteration loop (end-to-end)
+Use long command names in generated commands and documentation. They are more
+readable and cost very little for agents to type. Some short aliases exist for
+interactive users; understand them if you see them, but do not prefer them:
 
-```
-1.  eigenpal init workflow my-extraction --template pdf-extraction
-2.  edit workflow.yaml + evaluators.yaml + dataset/examples/*/expected/output.json
-3.  eigenpal workflow validate                                       # local: all three checks, no server contact
-4.  eigenpal workflow push --file workflow.yaml                      # creates wf_… on first push
-5.  eigenpal workflow execution run my-extraction sample-name        # one-off run for debugging
-6.  eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
-7.  eigenpal workflow dataset push <workflow-id> --file dataset/ --mode replace
-8.  eigenpal workflow experiment run <workflow-id>                         # → { batchId, executionIds }
-9.  eigenpal workflow experiment status <workflow-id> <batch-id>
-10. eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
-```
+- `agent exec` = `agent execution`
+- `agent execution fb` = `agent execution feedback`
+- `agent execution artifact` = `agent execution artifacts`
+- `workflow exec` = `workflow execution`
+- `workflow exp` = `workflow experiment`
+- `ls` = `list` anywhere in the CLI
+- `diff` = `compare` anywhere in the CLI
 
-> **`push` BEFORE `execution run`.** The CLI no longer ships YAML at run
-> time — only saved workflows execute. `execution run <workflow-id>` reads
-> the definition from the server, so any local edit to `workflow.yaml`
-> must be `push`ed first or the run will use the previous version. If
-> the workflow has never been pushed, `execution run` exits with
-> `Workflow "<arg>" not found on the server. Push it first.`
+For exact flags and defaults, prefer the generated references:
 
-## Identifying a workflow
+- [`reference/cli/workflow.md`](reference/cli/workflow.md)
+- [`reference/cli/agent.md`](reference/cli/agent.md)
 
-Every command that takes `<workflow-id>` expects a **`wf_xxx` id** — the
-opaque, server-generated identifier printed by `workflow push` and
-`workflow list`. Stable across renames; this is the form to use in
-scripts and CI.
+## Pick The Surface
 
-As a typing convenience the workflow's slug (the YAML's `name:` field)
-is also accepted — the CLI resolves it server-side. The resolver
-detects the form by the `wf_` prefix:
+Choose `workflow` when the work is about a workflow definition, dataset,
+evaluator, experiment, or workflow execution.
 
-| Argument starts with… | Looked up via                                     |
-| --------------------- | ------------------------------------------------- |
-| `wf_…`                | `GET /api/v1/workflows/<id>`                      |
-| anything else         | `GET /api/v1/workflows?name=<slug>` (exact match) |
+Choose `agent` when the work is about an agent workspace, agent file, trigger,
+agent execution, trace, feedback entry, expected artifact, or rerun.
 
-Workflow names are constrained to `[a-z0-9][a-z0-9_-]*` (lowercase
-letters, digits, `_`, `-`; 1–64 chars), so every slug is terminal-safe
-and url-safe by construction — no shell quoting required.
+Agents and workflows are related, but their iteration loops are different:
+workflow experiments evaluate datasets with evaluators; agent workflows do not
+currently expose that same experiment/evaluator loop through the CLI.
+
+## Workflow Iteration Loop
 
 ```bash
-# Both work; prefer the id form in scripts.
-eigenpal workflow execution run wf_abc123 sample-1
-eigenpal workflow execution run my-extraction sample-1
-```
-
-If the workflow hasn't been pushed yet, the resolver fails fast:
-`Workflow "<arg>" not found on the server. Push it first, or run \`eigenpal workflow list\` to see what's available.`
-
-**Other id types — not interchangeable with workflow id:**
-
-- `workflow execution {get,watch,cancel,compare} <executionId>` — `exec_…`
-- `workflow experiment compare <batchA> <batchB>` — batch ids (`evb_…`)
-- `workflow dataset example {get,update,delete} <wf-id> <exampleId>` — second positional is the example id (`evx_…`)
-
-## Common recipes
-
-### From zero — new workflow from a template
-
-```bash
-eigenpal init workflow invoices --template pdf-extraction   # scaffolds workflow.yaml + dataset/ + evaluators.yaml
+# 1. Create or edit the local project.
+eigenpal init workflow invoices --template pdf-extraction
 cd invoices
-eigenpal workflow validate                                   # confirm scaffold is valid before pushing
-eigenpal workflow push --file workflow.yaml
-# → ✓ Created wf_abc123  (`eigenpal workflow list` to see it again)
-```
+$EDITOR workflow.yaml
 
-### Author + validate a workflow
-
-```bash
-# Pick the right step types BEFORE writing the workflow
+# 2. Inspect schemas before guessing config fields.
 eigenpal workflow step-type list --search extract
-eigenpal workflow step-type get ai.extract | jq '.configSchema.properties'
+eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties'
 
-# Validate locally (zod parse + step-type lookup, no server)
+# 3. Validate and push the workflow definition.
 eigenpal workflow validate ./workflow.yaml
+eigenpal workflow push --file workflow.yaml
 
-# Push (creates on first call; same name + new version appends to history)
-eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123
+# 4. Run one example while iterating.
+eigenpal workflow execution run <workflow-id> <example-name>
+eigenpal workflow execution watch <execution-id>
+eigenpal workflow execution get <execution-id> --json
 
-# Update an existing workflow with explicit / auto-bumped semver:
-eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123 --set-version 2.0.0
-eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123 --bump patch    # patch | minor | major
+# 5. Manage the dataset and evaluators when ready to evaluate.
+eigenpal workflow dataset validate ./dataset
+eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
+eigenpal workflow evaluators validate ./evaluators.yaml
+eigenpal workflow evaluators push <workflow-id> --file ./evaluators.yaml
+
+# 6. Run and inspect a batch experiment.
+eigenpal workflow experiment run <workflow-id>
+eigenpal workflow experiment watch <workflow-id> <batch-id>
+eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out results.csv
 ```
 
-The validator emits structured field-path errors with a hint pointing at
-`step-type get <type>` for the offending step. Follow the hint.
+Workflow commands that take `<workflow-id>` accept the stable `wf_...` id. Many
+also accept the workflow slug for convenience, but use the id in scripts.
 
-Version bumping rules (`--bump` vs `--set-version` vs YAML `version:`)
-live in [`reference/workflow-yaml.md`](reference/workflow-yaml.md#validate-before-pushing).
+Useful workflow ids are not interchangeable:
+
+- `<workflow-id>` identifies a workflow (`wf_...`).
+- `<execution-id>` identifies one workflow execution.
+- `<batch-id>` identifies one experiment batch.
+- `<example-id>` identifies one dataset example.
 
 ### Organize workflows into folders
 
@@ -126,435 +107,274 @@ Missing folders in the path are created automatically.
 Default to creating workflows at the top level. Do not move a workflow into
 a folder unless the user specifically asks for that placement.
 
-### Iterate fast on one step (no server, no DAG)
-
-Tightest possible loop — local sandbox, milliseconds per run. Today
-covers `transform.script` and `ai.extract`. For any other step type,
-fall back to `workflow execution run` against the server.
+## Agent Iteration Loop
 
 ```bash
-eigenpal workflow step exec transform.script \
-  --config-json '{"function":"function script(items) { return items.reduce((s,i)=>s+i.v,0); }"}' \
-  --inputs items=@items.json
-# 3
+# 1. Find the agent and inspect its files.
+eigenpal agent list
+eigenpal agent file list <agent-id-or-slug>
+eigenpal agent file get <agent-id-or-slug> agent/instructions.md --out instructions.md
+
+# 2. Find executions that need attention.
+eigenpal agent execution list <agent-id-or-slug> \
+  --feedback-status open \
+  --feedback-rating fail \
+  --since-last-resolved \
+  --include feedback,expected \
+  --compact
+
+# 3. Pull the execution context locally.
+eigenpal agent execution pull <agent-execution-id> --include all --out ./review/<agent-execution-id>
+eigenpal agent execution artifacts list <agent-execution-id>
+eigenpal agent execution trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
+
+# 4. Edit and preview agent files.
+$EDITOR instructions.md
+eigenpal agent file diff <agent-id-or-slug> agent/instructions.md instructions.md
+eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
+eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md
+
+# 5. Rerun and compare.
+eigenpal agent execution rerun <agent-execution-id> --wait
+eigenpal agent execution compare <new-agent-execution-id> \
+  --expected-from <source-agent-execution-id> \
+  --normalize-dates
+eigenpal agent execution compare <new-agent-execution-id> \
+  --baseline-from <source-agent-execution-id> \
+  --normalize-dates
+
+# 6. Resolve feedback once verified.
+eigenpal agent execution feedback resolve <source-agent-execution-id> \
+  --message "Fixed and verified in <new-agent-execution-id>."
 ```
 
-See [`reference/step-exec.md`](reference/step-exec.md) for the full
-grammar — inputs, config, output schema, exit codes.
+Agent commands commonly accept `<agent-id-or-slug>`. Agent execution commands
+take an agent execution id. Execution pulls and comparisons write review
+artifacts under `.eigenpal/artifacts/...` by default.
 
-### Cancel a long-running execution
+## Workflow Recipes
+
+### Author And Validate A Workflow
 
 ```bash
-eigenpal workflow execution cancel exec_abc        # TTY: silent; CI: needs --yes
-eigenpal workflow execution cancel exec_abc --yes  # CI / pipes
+eigenpal workflow step-type list
+eigenpal workflow step-type get <step-type> --json
+eigenpal workflow validate ./workflow.yaml
+eigenpal workflow push --file workflow.yaml
 ```
 
-The worker finishes the current step, then stops — the check happens
-between every step transition, including inside `control.foreach` /
-`control.parallel` / `control.block` bodies. Already-terminal
-executions (completed/failed/cancelled) exit 0 with an info line. Safe
-to retry.
+The validator reports structured field-path errors. If the error hints at a
+step type, inspect that type with `eigenpal workflow step-type get <type>`.
 
-### Compare two experiment batches (no workflow id needed)
+### Manage A Dataset
 
 ```bash
-eigenpal workflow experiment compare evb_old evb_new --regression-threshold 0.05
-```
-
-Output is two stacked tables: a per-evaluator aggregate (rows per evaluator
-with mean Δ, regressions, improvements — sorted biggest mover first) followed
-by a per-(example, evaluator) detail table. No need to write a Python
-aggregator on top.
-
-```bash
-# JSON exposes both layers — `summary.byEvaluator` for the rollup,
-# `rows` for the full per-example detail.
-eigenpal workflow experiment compare evb_old evb_new --json | jq '.summary.byEvaluator'
-```
-
-Unlike its siblings, `compare` takes no `<workflow-id>` — the server resolves
-the owning workflow from each batch id. Both batches must live in the
-same workflow within your tenant. See [`reference/debugging.md`](reference/debugging.md#6-compare-two-experiment-batches)
-for sort flags + `--json` shape.
-
-### Author + validate evaluators
-
-```bash
-# Inspect what evaluator types exist + their config shape
-cat packages/cli/src/skill/reference/evaluators.md   # or read this skill's `reference/`
-
-# Validate locally (every evaluator entry parsed against its discriminated-union schema)
-eigenpal workflow evaluators validate ./evaluators.yaml
-
-# Push (overwrites the workflow's evaluator config)
-eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
-```
-
-Always set `description:` on every evaluator entry. It's a short, plain-language
-sentence (≤500 chars; aim for one line) explaining what the evaluator measures
-and why it matters, written for a non-technical reviewer in the dashboard.
-Skip model names, thresholds, and dot-paths; those belong in `config`. See
-[`reference/evaluators.md`](reference/evaluators.md#writing-descriptions-for-stakeholders).
-
-### Build + validate + upload a dataset
-
-```bash
-# Folder layout: dataset/examples/<name>/{input/arguments.json, input/<file-arg>/<file>, expected/output.json, meta.json}
-eigenpal workflow dataset validate ./dataset            # rejects bad folder names, arg-name collisions, etc.
-
-# Push. `replace` wipes server-side examples for this workflow first; `append` adds.
-eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
-# Watch the `expectedSet` count in the final NDJSON `done` event — if 0, evals run un-graded.
-```
-
-To inspect or round-trip the server's current dataset:
-
-```bash
+eigenpal workflow dataset validate ./dataset
+eigenpal workflow dataset push <workflow-id> --file ./dataset --mode append
 eigenpal workflow dataset list <workflow-id>
-eigenpal workflow dataset pull <workflow-id> --out current.zip   # round-trip back to local
+eigenpal workflow dataset pull <workflow-id> --out dataset.zip
 ```
 
-### Edit one example without re-uploading the whole dataset
+Dataset archives use this folder shape:
+
+```text
+dataset/
+└── examples/
+    └── <example-name>/
+        ├── input/
+        │   ├── arguments.json
+        │   └── <file-argument-name>/<file>
+        ├── expected/output.json
+        └── meta.json
+```
+
+For one-off changes, use the per-example commands instead of re-uploading the
+whole dataset:
 
 ```bash
-# Inspect one example end-to-end (triggerInput + expectedOutput + metadata):
-eigenpal workflow dataset example get <workflow-id> <example-id>
-eigenpal workflow dataset example get <workflow-id> <example-id> --json | jq '.expectedOutput'
-
-# Capture a corrected output as the new ground truth (the most common one):
-#   1. Look at what the workflow returned
-eigenpal workflow execution get exec_… --json | jq '.output.data' > /tmp/correct.json
-#   2. Patch that example's expected output in place
-eigenpal workflow dataset example update <workflow-id> <example-id> \
-  --expected-file /tmp/correct.json
-
-# Add one new example to a known dataset:
-eigenpal workflow dataset example create <workflow-id> \
-  --name missing-required-field \
-  --input-json '{"language":"en"}' \
-  --expected-file /tmp/expected.json \
-  --annotation "edge case: required field absent from input"
-
-# Drop a bad example by id (CI requires --yes):
+eigenpal workflow dataset example get <workflow-id> <example-id> --json
+eigenpal workflow dataset example update <workflow-id> <example-id> --expected-file expected.json
+eigenpal workflow dataset example create <workflow-id> --name edge-case --input-json '{"language":"en"}'
 eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ```
 
-`example update` is a partial PATCH — any flag you omit is left alone. Pass
-`--annotation ""` to clear an annotation. For bulk changes, edit the local
-dataset folder and re-push with `dataset push --mode replace`.
-
-### Run an experiment + collect results
+### Run And Compare Workflow Executions
 
 ```bash
-# Kick off — runs every example in the dataset against every evaluator.
-eigenpal workflow experiment run <workflow-id>                       # → { batchId, executionIds }
-
-# Or restrict to one example:
-eigenpal workflow experiment run <workflow-id> --example-id evx_…
-```
-
-**Recommended:** use `experiment watch` — it polls until terminal AND auto-pulls
-results to disk in one command. Replaces the old "run → status (poll) → results"
-chain so agents don't have to write a custom poller, parse `executions[].status`,
-or chain `monitor + status + pull + score` shell logic.
-
-```bash
-# One command: watch until terminal, then write ./results-<batchId>.json on completion.
-eigenpal workflow experiment watch <workflow-id> <batch-id>
-
-# CSV output:
-eigenpal workflow experiment watch <workflow-id> <batch-id> --format csv
-
-# Custom destination (overrides the default ./results-<batchId>.<format>):
-eigenpal workflow experiment watch <workflow-id> <batch-id> --pull-on-complete ./out/r.json
-
-# Just watch, skip the pull (e.g. you only need the live tick + exit code):
-eigenpal workflow experiment watch <workflow-id> <batch-id> --no-pull
-```
-
-Exit codes match `experiment status --watch`: `0` clean, `1` any
-failed/cancelled/rejected execution, `2` `--max-wait` deadline reached
-(30 min default — re-run to keep watching).
-
-### Monitoring scripts — use `--short` and the JSON rollup
-
-When a script needs to spot-check a batch (no waiting), prefer one of the two
-machine-readable paths instead of folding `executions[].status` yourself.
-
-```bash
-# Single line on stdout, awk-friendly:
-eigenpal workflow experiment status <wf> <batch> --short
-# → 6/6 done failed=0 cancelled=0 rejected=0   (or "in-progress" while pending)
-
-# Parse with awk:
-DONE_STATE=$(eigenpal workflow experiment status <wf> <batch> --short | awk '{print $2}')
-[ "$DONE_STATE" = "done" ] || exit 0   # not terminal yet, try again later
-```
-
-```bash
-# JSON includes a top-level `summary` rollup so you don't count statuses by hand:
-eigenpal workflow experiment status <wf> <batch> --json | jq '.summary'
-# → { total: 6, terminal: 6, complete: true,
-#     completedCount: 5, failedCount: 1,
-#     cancelledCount: 0, rejectedCount: 0,
-#     runningCount: 0, pendingCount: 0 }
-
-# `summary.complete` is the canonical poll-completion flag.
-```
-
-`--short` and `--json` are mutually exclusive with `--watch` — for live
-streaming use `experiment watch` instead.
-
-If you need the raw eval-results export after watching with `--no-pull`, or
-to refetch results outside a watch loop, fall back to:
-
-```bash
-eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out r.csv
-```
-
-### Long documents — split → chunk → extract
-
-The canonical chain when a document is too long for one `ai.extract` call (loan
-contracts, SaaS agreements, RFPs). Each step preserves source `pageIndex` so
-the final extracted fields trace back to the originating page.
-
-```yaml
-- name: parse
-  type: ai.parse
-  with: { input: "{{ input.document }}" }
-
-# LLM-driven section split — each split carries page_range + confidence
-- name: sections
-  type: ai.split
-  with:
-    input: "{{ steps.parse.output }}"
-    sections:
-      - { name: header,    description: "Title page + parties block" }
-      - { name: priloha2,  description: "Príloha 2 odkladacie podmienky", required: true }
-
-# Optional: chunk a long section before extraction (regex-anchored, keeps page refs)
-- name: chunks
-  type: transform.text-chunker
-  with:
-    input: "{{ steps.sections.output.splits[1] }}"   # priloha2 split
-    maxChars: 8000
-    overlap: 500
-    splitOn: ['(?:^|\\n)\\s*\\d+\\.\\d+\\s+', '\\n\\n+', '\\n']
-
-# Deterministic field extraction — counterpart to ai.extract; matches carry _evidence.pageIndex
-- name: header_fields
-  type: transform.regex-extract
-  with:
-    input: "{{ steps.parse.output }}"
-    fields:
-      contractNumber:
-        pattern: 'č\\.\\s*(\\d{1,4}/\\w+/\\d{4})'
-        normalize: strip-spaces
-      signatureDate:
-        pattern: 'uzavretá\\s+dňa\\s+(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})'
-        format: iso-date
-      currency:
-        pattern: '\\b(EUR|USD|CZK)\\b'
-        default: EUR
-    flags: i
-```
-
-Discovery from the CLI:
-
-```bash
-eigenpal workflow step-type get ai.split | jq '.configSchema.properties'
-eigenpal workflow step-type get transform.text-chunker | jq '.configSchema.properties'
-eigenpal workflow step-type get transform.regex-extract | jq '.configSchema.properties'
-```
-
-Pick the right operator for the job:
-
-| Goal                                     | Operator                  |
-| ---------------------------------------- | ------------------------- |
-| Extract structured data with an LLM      | `ai.extract`              |
-| Pull fields by regex (no LLM)            | `transform.regex-extract` |
-| Split a doc into named sections (LLM)    | `ai.split`                |
-| Cut text by regex boundary + overlap     | `transform.text-chunker`  |
-
-### Debug a failing workflow
-
-```bash
-# 1. Re-run a single example against the saved workflow (must be pushed first).
-#    <workflow-id> accepts a `wf_…` id (preferred for scripts) or the slug.
 eigenpal workflow execution run <workflow-id> <example-name>
-
-# 2. Or pull a recorded failure from the server
-eigenpal workflow execution list <workflow-id> --status failed --limit 5
-eigenpal workflow execution get  exec_…                           # full payload, all steps
-eigenpal workflow execution get  exec_… --step extract --include input,output,error
-
-# 3. Compare two runs (e.g. before/after a workflow change)
-eigenpal workflow execution compare <exec-a> <exec-b>
-
-# 4. Wait for a kicked-off run to finish (use this whenever you need
-#    to block until terminal — adaptive polling, 30-min auto-detach)
-eigenpal workflow execution watch exec_…
+eigenpal workflow execution watch <execution-id>
+eigenpal workflow execution get <execution-id> --include input,output,error --json
+eigenpal workflow execution list <workflow-id> --status failed --limit 10
+eigenpal workflow execution compare <execution-id-a> <execution-id-b>
+eigenpal workflow execution cancel <execution-id> --yes
 ```
 
-See [`reference/debugging.md`](reference/debugging.md) for common failure
-modes (`validation_failed`, `template_resolution_failed`, `script_timeout`,
-`step_type_unknown`) and how to skip flaky external steps via
-`meta.json` overrides.
-
-## Output convention
-
-Every command splits its output:
-
-- **stdout** = data — JSON payloads, table rows, file contents from
-  `pull` / `experiment results`. Pipe-safe.
-- **stderr** = status — `✓` / `✗` / `ℹ` / `!` lines. Silenced by
-  `-q` / `--quiet` (errors and warnings always fire; stdout never
-  silenced).
-
-The `--json` flag (on every `list` / `get` / mutating command) flips
-the human-readable table on stdout to the raw server payload — pipe
-through real `jq` to project:
+### Run And Compare Experiments
 
 ```bash
-eigenpal workflow execution list wf_abc --json | jq '.data[0].id'
-eigenpal workflow execution get exec_abc --json | jq '.stepExecutions[].status'
+eigenpal workflow experiment run <workflow-id>
+eigenpal workflow experiment status <workflow-id> <batch-id> --json
+eigenpal workflow experiment watch <workflow-id> <batch-id> --format json
+eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out results.csv
+eigenpal workflow experiment compare <batch-id-a> <batch-id-b> --regression-threshold 0.05
 ```
 
-### Exit codes
+`workflow experiment compare` resolves the owning workflow from the batch ids;
+both batches must belong to the same workflow.
+
+## Agent Recipes
+
+### Inspect And Edit Agent Files
+
+```bash
+eigenpal agent list
+eigenpal agent file list <agent-id-or-slug>
+eigenpal agent file list <agent-id-or-slug> --prefix agent/knowledge
+eigenpal agent file get <agent-id-or-slug> agent/instructions.md --out instructions.md
+eigenpal agent file diff <agent-id-or-slug> agent/instructions.md instructions.md
+eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
+eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md
+```
+
+Use `--preview` before writing substantial changes; it shows how the target file
+would change.
+
+### Inspect Agent Executions
+
+```bash
+eigenpal agent execution list <agent-id-or-slug> --status failed --limit 10
+eigenpal agent execution list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
+eigenpal agent execution get <agent-execution-id> --include feedback,expected,files,trace,issues --json
+eigenpal agent execution pull <agent-execution-id> --include all
+eigenpal agent execution artifacts list <agent-execution-id>
+```
+
+Use `--compact` on execution lists when you only need triage rows.
+
+### Download Agent Traces
+
+```bash
+eigenpal agent execution trace <agent-execution-id> --out trace.jsonl
+eigenpal agent execution trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
+eigenpal agent execution trace <agent-execution-id> | rg 'error|tool'
+```
+
+`trace` streams the raw JSONL to stdout by default. Use shell tools such as
+`jq`, `rg`, or `awk` for filtering; use `--out` when you want to save the file.
+
+### Manage Agent Feedback And Expected Artifacts
+
+```bash
+eigenpal agent execution feedback get <agent-execution-id>
+eigenpal agent execution feedback update <agent-execution-id> \
+  --status open \
+  --rating fail \
+  --message "Expected the filing date to be extracted."
+eigenpal agent execution feedback resolve <agent-execution-id> \
+  --message "Fixed and verified."
+eigenpal agent execution feedback clear <agent-execution-id> --yes
+
+eigenpal agent execution expected list <agent-execution-id>
+eigenpal agent execution expected upload <agent-execution-id> --file expected.json --name expected.json
+eigenpal agent execution expected copy-output <agent-execution-id> --output-file result.json --name expected.json
+eigenpal agent execution expected pull <agent-execution-id> --out expected/
+```
+
+Feedback is attached to one execution. Expected artifacts are the references
+used when comparing future runs.
+
+### Rerun And Compare Agent Executions
+
+```bash
+eigenpal agent execution rerun <agent-execution-id> --wait
+eigenpal agent execution compare <new-agent-execution-id> --expected-from <source-agent-execution-id>
+eigenpal agent execution compare <new-agent-execution-id> --baseline-from <source-agent-execution-id>
+eigenpal agent execution compare <new-agent-execution-id> \
+  --expected-from <source-agent-execution-id> \
+  --normalize-dates \
+  --fail-on-diff
+```
+
+Use `--expected-from` to compare a new output against stored expected artifacts.
+Use `--baseline-from` to compare a new output against another execution's actual
+output.
+
+## Output And Exit Codes
+
+Most `list`, `get`, and mutating commands support `--json`. Prefer JSON when a
+script or agent needs to inspect the result with `jq`.
+
+```bash
+eigenpal workflow execution list <workflow-id> --json | jq '.data[0].id'
+eigenpal agent execution list <agent-id-or-slug> --json | jq '.executions[0].id'
+```
+
+General exit-code convention:
 
 | Code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | Runtime error — network, server 5xx, command-specific failure (e.g. `experiment status` (with or without `--watch`) reports a terminal batch where at least one execution failed or was cancelled). |
-| 2 | Misuse or recoverable failure — bad flag, `step exec --output-schema` violation, `execution watch --max-wait` deadline, `step exec` against an unsupported step type. |
+| 1 | Runtime or command failure. |
+| 2 | Invalid invocation, unsupported option, or timeout/deadline condition. |
 
-Exit 2 means "fix your invocation and re-run." Exit 1 means something
-broke upstream — check the error.
+Status and progress messages go to stderr. Data intended for piping goes to
+stdout.
 
-## Where the schemas live
+## Schema And Reference Files
 
-The CLI ships JSON Schema for every step type and every evaluator type.
-Don't guess fields — introspect:
+Workflow schemas:
 
-```bash
-eigenpal workflow step-type      list                # full step catalog
-eigenpal workflow step-type      get ai.extract      # config + output schema
-eigenpal workflow evaluator-type list                # full evaluator catalog
-eigenpal workflow evaluator-type get llm-judge       # config schema
+- [`reference/workflow-yaml.md`](reference/workflow-yaml.md) — workflow file shape
+- [`reference/step-types.md`](reference/step-types.md) — step-type catalog
+- [`reference/step-exec.md`](reference/step-exec.md) — single-step execution command
+- [`reference/dataset-format.md`](reference/dataset-format.md) — dataset folder format
+- [`reference/evaluators.md`](reference/evaluators.md) — evaluator configuration
+- [`reference/debugging.md`](reference/debugging.md) — workflow execution debugging
+
+CLI command references:
+
+- [`reference/cli/workflow.md`](reference/cli/workflow.md)
+- [`reference/cli/agent.md`](reference/cli/agent.md)
+- [`reference/cli/auth.md`](reference/cli/auth.md)
+- [`reference/cli/status.md`](reference/cli/status.md)
+
+Use `eigenpal --help` for the grouped command overview and
+`eigenpal <command> --help` for live command help.
+
+## CLI Surface
+
+```text
+eigenpal
+├── auth
+│   ├── login
+│   ├── list
+│   └── use
+├── status
+├── workflow
+│   ├── list
+│   ├── pull
+│   ├── push
+│   ├── validate
+│   ├── move
+│   ├── clear-local
+│   ├── dataset
+│   ├── evaluators
+│   ├── execution
+│   ├── experiment
+│   ├── versions
+│   ├── step-type
+│   └── evaluator-type
+├── agent
+│   ├── list
+│   ├── get
+│   ├── push
+│   ├── pull
+│   ├── file
+│   ├── trigger
+│   ├── execution
+│   └── experiment
+└── skill
+    ├── install
+    ├── uninstall
+    └── list
 ```
-
-For workflow / evaluators / dataset shape, see this skill's `reference/`:
-
-- [`reference/workflow-yaml.md`](reference/workflow-yaml.md) — top-level shape, triggers, inputs, steps, output, template expressions
-- [`reference/step-types.md`](reference/step-types.md) — step-type catalog + when to reach for each
-- [`reference/step-exec.md`](reference/step-exec.md) — local single-step iteration (`workflow step exec`) — inputs, config, output schema, exit codes
-- [`reference/dataset-format.md`](reference/dataset-format.md) — `dataset/examples/<name>/{input,expected,meta}` folder convention
-- [`reference/evaluators.md`](reference/evaluators.md) — evaluators.yaml schema + judge patterns
-- [`reference/debugging.md`](reference/debugging.md) — execution introspection + common failures
-- [`reference/cli/`](reference/cli/) — full flag reference per command (autogenerated from the live Commander tree, never lies)
-
-## Validation errors carry hints
-
-Every server-side validation failure returns a structured envelope:
-
-```json
-{
-  "issues": [
-    { "field": "steps.2.config.passThreshold",
-      "message": "Required, got undefined", "code": "invalid_value" }
-  ],
-  "hint": "Failing step is type `eval.llm-judge`. Run `eigenpal workflow step-type get eval.llm-judge` to inspect its config schema."
-}
-```
-
-The CLI renders this with the field column aligned and the hint inline —
-follow the hint, the schema lookup is one command away.
-
-## Don't reach for
-
-- `eval-local` / similar local-mirror commands — they don't exist. Drive
-  the dataset by editing the local folder and pushing with
-  `workflow dataset push --mode replace`, OR use the per-example CRUD
-  (`dataset example {create,update,delete,get}`) when you only need to
-  flip one row.
-- The `manifest.json` dataset format — legacy, the import endpoint rejects
-  it. Always use the folder convention.
-
-## CLI surface
-
-```bash
-# Auth + tenant switching
-eigenpal auth login              # add a profile (or update existing tenant's)
-eigenpal auth list               # see all profiles, current marked ●
-eigenpal auth use [profile]      # switch active (interactive picker if no arg)
-eigenpal status                  # active tenant, user, key id, workflow count
-
-# Definition
-eigenpal workflow list
-eigenpal workflow push --file workflow.yaml [--workflow-id <workflow-id>]
-eigenpal workflow pull <workflow-id>
-eigenpal workflow validate [path]
-eigenpal workflow move <wf-id> --folder billing/invoices  # use --folder / for root
-
-# Evaluators
-eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
-eigenpal workflow evaluators pull <workflow-id>
-eigenpal workflow evaluators validate [path]
-
-# Dataset
-eigenpal workflow dataset push <workflow-id> --file dataset/ [--mode {append|replace}]      # default: append
-eigenpal workflow dataset pull <workflow-id> --out dataset.zip
-eigenpal workflow dataset list <workflow-id>
-eigenpal workflow dataset validate [path]
-eigenpal workflow dataset example create <workflow-id> --name <n> [--input-file] [--expected-file] [--annotation]
-eigenpal workflow dataset example update <workflow-id> <example-id> [--name] [--input-file] [--expected-file] [--annotation] [--row-order]
-eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
-eigenpal workflow dataset example get    <workflow-id> <example-id>                          # full row + metadata
-
-# All-in-one validation against the templated project layout
-eigenpal workflow validate                    # ./workflow.yaml + ./evaluators.yaml + ./dataset/
-
-# Local artifacts
-eigenpal workflow clear-local                 # delete local execution artifacts (no server impact)
-
-# Experiments (batch eval runs)
-eigenpal workflow experiment run     <workflow-id> [--example-id <id> ...]
-eigenpal workflow experiment status  <workflow-id> <batch-id> [--watch] [--short] [--json]    # exit 1 on terminal w/ failures, 2 on --max-wait. --json includes top-level `summary` rollup.
-eigenpal workflow experiment watch   <workflow-id> <batch-id> [--format csv|json] [--pull-on-complete <path>] [--no-pull]    # poll + auto-pull results in one shot
-eigenpal workflow experiment results <workflow-id> [batch-id] --format {csv|json} --out r.csv
-eigenpal workflow experiment list    <workflow-id>
-eigenpal workflow experiment compare <batch-a> <batch-b> [--regression-threshold] [--sort]   # no --workflow-id; prints per-evaluator aggregate + per-row table
-
-# Step-type / evaluator-type introspection
-eigenpal workflow step-type      list
-eigenpal workflow step-type      get <type>
-eigenpal workflow evaluator-type list
-eigenpal workflow evaluator-type get <type>
-
-# Local single-step iteration (no server)
-eigenpal workflow step exec <type> [--config-json | --config-file] [--inputs k=v...] [--output-schema]
-
-# Execution (one-off run + read-side debugging + cancellation)
-eigenpal workflow execution run     <workflow-id> [examples...]
-eigenpal workflow execution get     <exec-id>
-eigenpal workflow execution list    <workflow-id> [--status running|failed|completed]
-eigenpal workflow execution watch   <exec-id>          # 2s/5s adaptive polling
-eigenpal workflow execution compare <exec-a> <exec-b>
-eigenpal workflow execution cancel  <exec-id>          # tells the worker to stop between steps; safe to retry
-
-# Versions
-eigenpal workflow versions list    <workflow-id>                          # pushed semver history (newest first)
-eigenpal workflow versions restore <workflow-id> <version-id>             # re-activate a prior version as the live one
-
-# Tooling
-eigenpal skill install           # interactive multiselect for Claude Code, Cursor, …
-eigenpal skill uninstall [toolIds...]  # name one or more tools, or pass --all
-eigenpal skill list              # show what's installed where
-```
-
-`eigenpal --help` for the grouped overview, `eigenpal <command> --help`
-for any specific command. The full per-command flag reference is also
-bundled at [`reference/cli/`](reference/cli/) (autogenerated from the
-live Commander tree, so it never lies). Read those when you need the
-exact spelling / default / data type for a flag without round-tripping
-to `--help`.

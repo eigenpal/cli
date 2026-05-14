@@ -11,6 +11,7 @@ import { init } from './commands/init';
 import { installSkillTools, listSkillTools, uninstallSkillTools } from './commands/skill';
 import { status } from './commands/status';
 import { registerWorkflowCommands } from './commands/workflow';
+import { applyCommandAliasConventions } from './lib/command-aliases';
 import { action } from './lib/format-error';
 import { configureGroupedHelp } from './lib/help';
 import { setQuiet } from './lib/ui';
@@ -298,6 +299,8 @@ skillCmd
       process.exit(1);
     }
   });
+
+applyCommandAliasConventions(program);
 
 // Only parse when this file is the entry point (e.g. `bun cli.ts` or via the
 // installed `eigenpal` bin), not when imported for getCliHelpStructure.

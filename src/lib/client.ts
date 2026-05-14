@@ -104,6 +104,16 @@ export class ApiClient {
     return this.handleResponse(res, url);
   }
 
+  async put(path: string, body?: unknown): Promise<unknown> {
+    const url = `${this.baseUrl}${path}`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return this.handleResponse(res, url);
+  }
+
   async patch(path: string, body: unknown): Promise<unknown> {
     const url = `${this.baseUrl}${path}`;
     const res = await fetch(url, {

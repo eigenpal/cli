@@ -27,7 +27,7 @@ import {
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { z, type ZodType } from 'zod';
+import { toJSONSchema, type ZodType } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -55,7 +55,7 @@ function toJsonSchema(schema: ZodType): JsonSchemaLike {
   const originalWarn = console.warn;
   console.warn = () => {};
   try {
-    return z.toJSONSchema(schema, { target: 'draft-7' }) as JsonSchemaLike;
+    return toJSONSchema(schema, { target: 'draft-7' }) as JsonSchemaLike;
   } finally {
     console.warn = originalWarn;
   }

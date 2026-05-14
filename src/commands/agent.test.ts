@@ -4,7 +4,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildAgentExecutionRunFormData, validateAgentProject, validateDatasetDir } from './agent';
+import {
+  buildAgentExecutionRunFormData,
+  buildExecutionListParams,
+  compareFileInventory,
+  diffJson,
+  validateAgentProject,
+  validateDatasetDir,
+} from './agent';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'cli.ts');
 
@@ -88,6 +95,64 @@ describe('agent command tree', () => {
     expect(result.stdout).not.toContain('email-alias');
   });
 
+  test('execution help exposes rerun and trace inspection commands', () => {
+    const result = spawnSync('bun', [CLI, 'agent', 'execution', '--help'], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('rerun');
+    expect(result.stdout).toContain('trace');
+    expect(result.stdout).toContain('artifacts');
+  });
+
+  test('execution compare uses two positional ids like workflow compare', () => {
+    const result = spawnSync('bun', [CLI, 'agent', 'execution', 'compare', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('<reference-execution-id> <execution-id>');
+    expect(result.stdout).not.toContain('--expected-from');
+    expect(result.stdout).not.toContain('--baseline-from');
+  });
+
+  test('agent file help exposes targeted file operations', () => {
+    const result = spawnSync('bun', [CLI, 'agent', 'file', '--help'], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('list');
+    expect(result.stdout).toContain('get');
+    expect(result.stdout).toContain('put');
+    expect(result.stdout).toContain('diff');
+  });
+
+  test('short aliases expose execution and feedback commands', () => {
+    const exec = spawnSync('bun', [CLI, 'agent', 'exec', '--help'], { encoding: 'utf8' });
+    expect(exec.status).toBe(0);
+    expect(exec.stdout).toContain('compare');
+
+    const feedback = spawnSync('bun', [CLI, 'agent', 'exec', 'fb', '--help'], { encoding: 'utf8' });
+    expect(feedback.status).toBe(0);
+    expect(feedback.stdout).toContain('resolve');
+  });
+
+  test('agent file put dry-run validates local file without network access', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-file-'));
+    const file = join(dir, 'SOP.md');
+    try {
+      writeFileSync(file, 'Run carefully.\n');
+      const result = spawnSync(
+        'bun',
+        [CLI, 'agent', 'file', 'put', 'invoice-agent', 'agent/SOP.md', file, '--dry-run', '--json'],
+        { encoding: 'utf8' }
+      );
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        dryRun: true,
+        path: 'agent/SOP.md',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('coming-soon versions namespace exits 2 for unsupported behavior', () => {
     const result = spawnSync('bun', [CLI, 'agent', 'versions', 'list', 'invoice-agent'], {
       encoding: 'utf8',
@@ -133,5 +198,60 @@ describe('agent command tree', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('--no-feedback serializes as server noFeedback query param', () => {
+    expect(buildExecutionListParams({ feedback: false })).toMatchObject({ noFeedback: 'true' });
+    expect(buildExecutionListParams({ noFeedback: true })).toMatchObject({ noFeedback: 'true' });
+    expect(buildExecutionListParams({ feedback: false })).not.toHaveProperty('feedback');
+  });
+
+  test('execution list omits client-only compact param', () => {
+    expect(buildExecutionListParams({ compact: true } as { compact: boolean })).not.toHaveProperty(
+      'compact'
+    );
+  });
+});
+
+describe('agent execution comparison helpers', () => {
+  test('reports no JSON differences for matching expected output', () => {
+    expect(diffJson({ ok: true, count: 2 }, { ok: true, count: 2 })).toEqual([]);
+  });
+
+  test('reports missing, extra, and changed JSON fields', () => {
+    expect(diffJson({ a: 1, b: 2 }, { a: 2, c: 3 })).toEqual([
+      { path: '$.a', type: 'changed', expected: '1', actual: '2' },
+      { path: '$.b', type: 'missing' },
+      { path: '$.c', type: 'extra' },
+    ]);
+  });
+
+  test('compares file inventory with missing and extra files', () => {
+    expect(
+      compareFileInventory(['expected.pdf', 'missing.pdf'], ['expected.pdf', 'extra.pdf'], false)
+    ).toEqual({
+      matched: [{ expected: 'expected.pdf', output: 'expected.pdf' }],
+      missing: ['missing.pdf'],
+      extra: ['extra.pdf'],
+    });
+  });
+
+  test('normalizes generated date tokens in filenames', () => {
+    expect(
+      compareFileInventory(
+        ['FR_Zakladatelska_listina_20260507.pdf'],
+        ['FR_Zakladatelska_listina_20260512.pdf'],
+        true
+      )
+    ).toMatchObject({
+      matched: [
+        {
+          expected: 'FR_Zakladatelska_listina_20260507.pdf',
+          output: 'FR_Zakladatelska_listina_20260512.pdf',
+        },
+      ],
+      missing: [],
+      extra: [],
+    });
   });
 });

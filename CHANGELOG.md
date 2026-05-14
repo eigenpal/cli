@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.4.17
+## 0.5.1
 
 ### Major Changes
 
@@ -306,6 +306,7 @@ actual) { ... }` declaration around your statements. Parameter order is
 
 ### Patch Changes
 
+- 5909b21: Add execution-scoped agent feedback filters and expected artifact management to the API, CLI, and SDKs.
 - c15ce88: Rename agent API calls to `/v1/agents` and scope execution helpers under their owning workflow or agent.
 - 71361fd: `auth login`: simplified flow. Removed the dead localhost-callback server (the
   dashboard never POSTed to it — every login fell through to copy-paste anyway).
