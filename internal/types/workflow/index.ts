@@ -164,24 +164,6 @@ export {
   type WorkflowSettings,
 } from './workflow';
 
-// Eval config (workflow-level eval/index.yaml)
-export {
-  DEFAULT_CONCURRENCY,
-  EVAL_CONFIG_FIELD_DEFINITIONS,
-  EVAL_CONFIG_FORM_KEYS,
-  EvalConfigSchema,
-  JUDGE_MODEL_IDS,
-  JudgeModelSchema,
-  isValidJudgeModel,
-  parseEvalConfig,
-  parseEvalConfigForForm,
-  resolveConcurrency,
-  type ConcurrencyResolved,
-  type EvalConfig,
-  type EvalConfigForm,
-  type JudgeModelId,
-} from './eval-config';
-
 // Expected output (per-example: data + expectedDocuments; optional expectedOutputFiles for inline docs)
 export {
   ExpectedDocumentRefSchema,
