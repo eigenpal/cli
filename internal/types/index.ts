@@ -250,6 +250,9 @@ export * from './workflow';
 // Eval primitives (shared by app + worker)
 export * from './eval';
 
+// Git-backed source repository grammar and manifests
+export * from './git-source';
+
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';
 
