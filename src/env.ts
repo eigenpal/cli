@@ -26,3 +26,7 @@ export const env = createEnv({
   skipValidation:
     process.env.SKIP_ENV_VALIDATION === 'true' || process.env.npm_lifecycle_event === 'lint',
 });
+
+export function getProcessEnv(): NodeJS.ProcessEnv {
+  return process.env;
+}

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
-export const SOURCE_PACKAGE_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+export const SOURCE_PACKAGE_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 export const SOURCE_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 export const SOURCE_SEMVER_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 export const SOURCE_VERSION_RANGE_PATTERN = /^[0-9]+(?:\.[0-9]+)?\.(?:x|\*)$/;
 
 export const SourcePackageSegmentSchema = z
   .string()
-  .regex(SOURCE_PACKAGE_SEGMENT_PATTERN, 'Use lowercase letters, numbers, and dashes');
+  .regex(SOURCE_PACKAGE_SEGMENT_PATTERN, 'Use lowercase letters, numbers, dashes, and underscores');
 
 export const SourcePackageTypeSchema = z.enum(['agents', 'workflows', 'resources', 'evaluators']);
 export type SourcePackageType = z.infer<typeof SourcePackageTypeSchema>;
@@ -140,4 +140,25 @@ export function parseReleaseTag(tag: ReleaseTag): {
     packagePath: dottedPackageNameToPath(packageName),
     version,
   };
+}
+
+export type HostedSourceExportPathInput = {
+  gitRepositoryPath: string;
+  ref: string;
+  packagePath: SourcePackagePath;
+};
+
+export function formatHostedSourceExportPath({
+  gitRepositoryPath,
+  ref,
+  packagePath,
+}: HostedSourceExportPathInput): string {
+  const parsedPackagePath = SourcePackagePathSchema.parse(packagePath);
+  if (!gitRepositoryPath.trim()) {
+    throw new Error('gitRepositoryPath is required');
+  }
+  if (!ref.trim()) {
+    throw new Error('ref is required');
+  }
+  return `/export/orgs/${encodeURIComponent(gitRepositoryPath)}/${encodeURIComponent(ref)}/${parsedPackagePath}`;
 }

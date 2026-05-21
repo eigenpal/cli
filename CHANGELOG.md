@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.5.3
+## 0.5.4
 
 ### Major Changes
 
@@ -353,6 +353,7 @@ actual) { ... }` declaration around your statements. Parameter order is
   - `workflow experiment results --format` now rejects bad values up-front via a Commander `InvalidArgumentError` parser-fn (modeled after `intArg`). `--format yaml` previously round-tripped to the server and returned a generic HTTP 400; now the command exits 1 with `error: option '--format <csv|json>' argument 'yaml' is invalid. must be 'csv' or 'json'` before any network I/O happens.
   - Internal refactor: `experiment compare`'s pure helpers (`buildBatchDiff`, `renderBatchDiffHuman`, `normalizeCompareSort`, `formatDelta`, `fetchEvalResults`, `exampleLabelOf`, plus their types) moved out of `commands/workflow/index.ts` into a new sibling `commands/workflow/experiment-compare.ts`. The Commander registration stays in `index.ts`. Tests follow the symbols into `experiment-compare.test.ts`. No user-visible behavior change from the refactor; `index.ts` shrinks by ~310 LOC.
 
+- 2a15fc9: Add hidden Git-backed source inspection commands for early organization repository testing.
 - c82a215: Polish on `eigenpal auth login` based on DX review:
   - **Browser fallback** — the prompt's note now repeats the API-keys URL prominently, so when `xdg-open`/`open`/`start` silently fails (headless VMs, WSL without xdg-open, restricted containers) the user has a copyable URL right next to the prompt instead of a dim status line above.
   - **Outro is informative** — distinguishes "Saved profile X" (first login to this tenant) from "Updated profile X" (re-login overwrote prior creds in place) and shows the exact `eigenpal auth use X` command to switch to it later. No more raw `(profile org_xxxx)` dead-end.

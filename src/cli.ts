@@ -7,6 +7,11 @@ import pkg from '../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agent';
 import { authList, authLogin, authLogout, authUse } from './commands/auth';
 import { completion } from './commands/completion';
+import {
+  hasGitPassthroughSeparator,
+  registerGitCommands,
+  runGitPassthroughFromArgv,
+} from './commands/git';
 import { init } from './commands/init';
 import { installSkillTools, listSkillTools, uninstallSkillTools } from './commands/skill';
 import { status } from './commands/status';
@@ -179,6 +184,7 @@ authCmd
 
 registerWorkflowCommands(program);
 registerAgentCommands(program);
+registerGitCommands(program);
 
 program
   .command('completion <shell>')
@@ -318,5 +324,9 @@ function isEntryPoint(): boolean {
 
 if (isEntryPoint()) {
   configureGroupedHelp(program);
+  if (hasGitPassthroughSeparator(process.argv)) {
+    await runGitPassthroughFromArgv(process.argv);
+    process.exit(0);
+  }
   program.parse();
 }
