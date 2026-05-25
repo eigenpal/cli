@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.5.7
+## 0.5.8
 
 ### Major Changes
 
@@ -317,6 +317,12 @@ actual) { ... }` declaration around your statements. Parameter order is
   - **`init agent` and bare `agent` now exit 2** instead of 0 when invoked. Both subcommands are reserved-but-unimplemented placeholders, and exiting 0 made it possible for a CI script that misrouted into one of them to silently no-op. POSIX exit 2 ("command exists but isn't usable as invoked") makes the misroute fail loudly. The human-readable "coming soon" stderr message is unchanged.
   - **New `--no-color` global flag.** Disables ANSI colors in all output, matching the convention shared by `gh`, `kubectl`, `npm`, and `terraform`. Equivalent to setting `NO_COLOR=1` in the environment, but takes effect for the current invocation only. Implemented as a lazy picocolors wrapper so the flip propagates to every helper in `lib/ui.ts` (and every downstream caller of `pc`) regardless of when in the command lifecycle the flag is parsed.
 
+- 809f3d4: `auth list`: the org name is now the primary label (bold, immediately after
+  the marker), the profile slug is dimmed beside it (still the value you feed
+  to `auth use <name>` or `EIGENPAL_PROFILE=<name>`), and the base URL trails
+  on the right. The redundant `(tenantId)` column was dropped — the profile
+  slug already disambiguates. `auth use` (interactive picker) now prints the
+  non-interactive form on success so you learn the slug you just picked.
 - 49a8f94: Fixed a stray `undefined` in the `eigenpal auth login` outro. The success message used `dim(...)` (a stderr printer that returns `void`) inside a template literal where `ui.dim(...)` (the inline string formatter) was meant. The dim "Saved profile X — switch with" hint now renders correctly instead of literal `undefined`.
 - 16c6e83: Updated `@eigenpal/cli` author from `Eigenpal <hello@eigenpal.com>` to `Jedr Blaszyk <jedr@eigenpal.com>`. Surfaces on the npm package page and in `npm view @eigenpal/cli`.
 - b1d2d77: CLI: default `baseUrl` is now `https://studio.eigenpal.com` instead of `http://localhost:3000`.
@@ -467,6 +473,7 @@ actual) { ... }` declaration around your statements. Parameter order is
 
 - 71361fd: `workflow get-experiment-status --watch` now prints a per-example failure summary on stderr when the batch finishes with any failed/cancelled execution: example name, top-level error (truncated), and the exact `eigenpal execution get <exec-id>` command to drill into step-by-step detail. Removes the need for the agent to grep through a 1000-line JSON dump to find which example broke and why. `reference/debugging.md` documents the discovery path.
 - 71361fd: `eigenpal workflow get-experiment-status --watch` now polls until every execution in the batch reaches a terminal state (`completed` / `failed` / `cancelled`), then exits non-zero if any execution failed or was cancelled. Removes the need for agent-side polling loops that didn't notice all-terminal-already and kept ticking. Renders a one-line `N/M terminal (counts)` progress summary on stderr (in-place rewrite when stderr is a TTY), dumps the full JSON on stdout when done. `--interval <s>` and `--max-wait <s>` are configurable; defaults are 5s/30min.
+- c3bc4e9: Fix Git-backed source release and status edge cases.
 - 04e4018: Harden hidden Git materialization commands for package-ref installs, frozen lockfile replay, dependency materialization, and source authoring smoke flows.
 - 71361fd: `install-skill`: multi-tool support via interactive multiselect.
   - Opens a `@clack/prompts` multiselect picker over supported agent tools

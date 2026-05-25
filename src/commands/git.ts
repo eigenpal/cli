@@ -758,6 +758,10 @@ function resolvePackagePath(target: string): SourcePackagePath {
     : dottedPackageNameToPath(DottedPackageNameSchema.parse(target));
 }
 
+function isAutomationPackagePath(packagePath: SourcePackagePath): boolean {
+  return packagePath.startsWith('agents/') || packagePath.startsWith('workflows/');
+}
+
 function semverParts(version: string): [number, number, number] | null {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) return null;
@@ -1037,7 +1041,10 @@ function validate(opts: BaseOpts & ContextOpts): void {
 function packageStatus(opts: BaseOpts & ContextOpts): void {
   const context = resolveGitSourceContext(opts);
   if (context.gitRoot) checkRepoVersion(context.gitRoot, false);
-  const validation = context.packageRoot ? validatePackage(context.packageRoot) : null;
+  const isRepoRootStatus =
+    context.gitRoot && context.packageRoot && context.gitRoot === context.packageRoot;
+  const validation =
+    context.packageRoot && !isRepoRootStatus ? validatePackage(context.packageRoot) : null;
   const gitStatus = context.gitRoot
     ? (gitOutput(['status', '--short'], context.gitRoot) ?? '')
     : '';
@@ -1046,7 +1053,7 @@ function packageStatus(opts: BaseOpts & ContextOpts): void {
     packageRoot: context.packageRoot,
     packagePath: context.packagePath,
     clean: gitStatus.length === 0,
-    valid: validation?.valid ?? false,
+    valid: validation?.valid ?? null,
     errors: validation?.errors ?? [],
   };
   if (opts.json) console.log(JSON.stringify(payload, null, 2));
@@ -1258,7 +1265,9 @@ async function release(
     throw err;
   }
   success(`Released ${tag}.`);
-  await syncLatestAutomation(client, context.packagePath);
+  if (isAutomationPackagePath(context.packagePath)) {
+    await syncLatestAutomation(client, context.packagePath);
+  }
 }
 
 async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): Promise<void> {
@@ -1269,6 +1278,9 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
   const packagePath = target ? resolvePackagePath(target) : context.packagePath;
   if (!packagePath) {
     throw new Error('Pass an automation target or run sync inside a source package.');
+  }
+  if (!isAutomationPackagePath(packagePath)) {
+    throw new Error('Sync only supports agent and workflow packages.');
   }
   await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
 }

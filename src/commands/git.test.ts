@@ -23,9 +23,12 @@ function git(args: string[], cwd?: string): void {
   }
 }
 
-function makeSourceRepo(): { root: string; packageDir: string } {
+function makeSourceRepo(packagePath = 'agents/invoice-agent'): {
+  root: string;
+  packageDir: string;
+} {
   const root = mkdtempSync(join(tmpdir(), 'eigenpal-source-'));
-  const packageDir = join(root, 'agents', 'invoice-agent');
+  const packageDir = join(root, packagePath);
   git(['init', '-b', 'main', root]);
   mkdirSync(packageDir, { recursive: true });
   writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 1.0.0\n');
@@ -34,12 +37,17 @@ function makeSourceRepo(): { root: string; packageDir: string } {
     join(packageDir, 'eigenpal.yaml'),
     'schemaVersion: 1\nname: Invoice Agent\ndescription: Extract invoices\n'
   );
-  writeFileSync(join(packageDir, 'AGENT.md'), 'Extract invoices.\n');
+  const bodyFilename = packagePath.startsWith('agents/') ? 'AGENT.md' : 'README.md';
+  writeFileSync(join(packageDir, bodyFilename), 'Extract invoices.\n');
   return { root, packageDir };
 }
 
-function makePublishedSourceRepo(): { root: string; packageDir: string; remote: string } {
-  const { root, packageDir } = makeSourceRepo();
+function makePublishedSourceRepo(packagePath = 'agents/invoice-agent'): {
+  root: string;
+  packageDir: string;
+  remote: string;
+} {
+  const { root, packageDir } = makeSourceRepo(packagePath);
   const remote = mkdtempSync(join(tmpdir(), 'eigenpal-source-remote-'));
   git(['init', '--bare', remote]);
   git(['--git-dir', remote, 'symbolic-ref', 'HEAD', 'refs/heads/main']);
@@ -169,6 +177,48 @@ describe('hidden git source commands', () => {
       );
       expect(checks).toContainEqual(
         expect.objectContaining({ check: 'remote origin', status: 'fail' })
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('status from repo root reports repository state without package validation errors', () => {
+    const { root } = makeSourceRepo();
+    try {
+      const result = cli(['git', 'status', '--dir', root, '--json']);
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        gitRoot: realpathSync(root),
+        packagePath: null,
+        clean: false,
+        valid: null,
+        errors: [],
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('status validates nested manifests outside package roots', () => {
+    const { root } = makeSourceRepo();
+    try {
+      const invalidPackage = join(root, 'misc', 'invoice-agent');
+      mkdirSync(invalidPackage, { recursive: true });
+      writeFileSync(join(invalidPackage, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Invalid\n');
+
+      const result = cli(['git', 'status', '--dir', invalidPackage, '--json']);
+      const body = JSON.parse(result.stdout);
+
+      expect(result.status).toBe(0);
+      expect(body).toMatchObject({
+        packageRoot: realpathSync(invalidPackage),
+        packagePath: null,
+        valid: false,
+      });
+      expect(body.errors).toContain(
+        'Package must live under agents/, workflows/, resources/, or evaluators/.'
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -481,6 +531,51 @@ describe('hidden git source commands', () => {
             { encoding: 'utf8' }
           );
           expect(tagger.stdout.trim()).toBe('Release User <releaser@example.com>');
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('release skips automation sync for resource packages', async () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo('resources/knowledge/facts');
+    const syncCalls: string[] = [];
+    try {
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'releaser@example.com',
+              name: 'Release User',
+              keyId: 'ak_release',
+            });
+          }
+          if (url.pathname === '/api/v1/source/releases') {
+            return Response.json({ packagePath: 'resources/knowledge/facts', releases: [] });
+          }
+          if (url.pathname.includes('/sync')) {
+            syncCalls.push(url.pathname);
+            return Response.json({ error: 'sync should not be called' }, { status: 500 });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(
+            ['git', 'release', '1.0.0', packageDir, '-m', 'Release facts'],
+            {
+              baseUrl,
+              cwd: packageDir,
+            }
+          );
+          expect(result.status).toBe(0);
+          expect(syncCalls).toEqual([]);
+
+          const tags = spawnSync('git', ['--git-dir', remote, 'tag'], { encoding: 'utf8' });
+          expect(tags.stdout).toContain('resources.knowledge.facts@1.0.0');
         }
       );
     } finally {

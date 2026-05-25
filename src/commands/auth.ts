@@ -350,24 +350,27 @@ export async function authList(): Promise<void> {
     dim('No profiles configured. Run `eigenpal auth login` to add one.');
     return;
   }
-  // Width-pad the profile name column so the tenant column lines up. Doesn't
-  // collapse to padEnd(16) when one profile name is longer.
-  const nameWidth = Math.max(16, ...names.map((n) => n.length));
-  for (const name of names.sort()) {
+  // Compute column widths on raw strings before ui.bold/ui.dim wrap them
+  // with ANSI escapes. The org name reads as the main label; the profile
+  // slug is dimmed beside it as the disambiguator and the value to feed
+  // back to `auth use <name>` / `EIGENPAL_PROFILE=<name>`.
+  const rows = names.sort().map((name) => {
     const p = profiles[name];
-    const marker = name === current ? ui.ok('●') : ui.dim('○');
     const tenant = p.tenantName ?? p.tenantId ?? '?';
-    // Show the canonical tenant id alongside the display name when both
-    // are known — two profiles with the same tenantName otherwise look
-    // identical.
-    const tenantLabel =
-      p.tenantName && p.tenantId ? `${tenant} ${ui.dim(`(${p.tenantId})`)}` : tenant;
+    return { name, baseUrl: p.baseUrl, tenant };
+  });
+  const tenantWidth = Math.max(16, ...rows.map((r) => r.tenant.length));
+  const nameWidth = Math.max(16, ...rows.map((r) => r.name.length));
+  for (const r of rows) {
+    const marker = r.name === current ? ui.ok('●') : ui.dim('○');
     console.log(
-      `${marker} ${ui.bold(name.padEnd(nameWidth))} ${ui.dim(tenantLabel)}  ${ui.dim(p.baseUrl)}`
+      `${marker} ${ui.bold(r.tenant.padEnd(tenantWidth))}  ${ui.dim(r.name.padEnd(nameWidth))}  ${ui.dim(r.baseUrl)}`
     );
   }
   console.log('');
-  dim(`(● = active. Switch with \`eigenpal auth use <name>\` or \`EIGENPAL_PROFILE=<name>\`.)`);
+  dim(
+    `(● = active. Switch with \`eigenpal auth use <name>\` or \`EIGENPAL_PROFILE=<name>\` for one shell.)`
+  );
 }
 
 export async function authUse(profileName?: string): Promise<void> {
@@ -424,6 +427,10 @@ export async function authUse(profileName?: string): Promise<void> {
   if (profileName) {
     success(`Switched to ${ui.bold(target)}${tenantSuffix}`);
   } else {
-    outro(`${ui.ok('✓')} Switched to ${ui.bold(target)}${tenantSuffix}`);
+    // Surface the non-interactive form so the user learns the slug they just
+    // picked — next time they (or a script) can skip the picker entirely.
+    outro(
+      `${ui.ok('✓')} Switched to ${ui.bold(target)}${tenantSuffix}\n  ${ui.dim(`In scripts: \`eigenpal auth use ${target}\` or \`EIGENPAL_PROFILE=${target}\``)}`
+    );
   }
 }
