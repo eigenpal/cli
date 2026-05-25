@@ -2,20 +2,36 @@ import {
   DottedPackageNameSchema,
   dottedPackageNameToPath,
   formatReleaseTag,
+  parseReleaseTag,
   pathToDottedPackageName,
   RootSourceManifestSchema,
   SourceManifestFilenameSchema,
   SourcePackageManifestSchema,
   SourcePackagePathSchema,
+  SourceVersionRefSchema,
   validateSourcePackageRequiredFiles,
   workspaceDependencyNameToPackagePath,
   type SourcePackageManifest,
   type SourcePackagePath,
+  type SourceVersionRef,
   type WorkspaceDependencyName,
 } from '@eigenpal/types';
 import { InvalidArgumentError, Option, type Command } from 'commander';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
@@ -49,6 +65,20 @@ type PackageContext = {
   gitRoot: string | null;
   packageRoot: string | null;
   packagePath: SourcePackagePath | null;
+};
+type InstallLockPackage = {
+  packagePath: SourcePackagePath;
+  requestedRef: SourceVersionRef;
+  resolvedRef: string;
+  resolvedTag?: string;
+  commit: string;
+  dependencies: InstallLockPackage[];
+};
+type InstallLockfile = {
+  lockfileVersion: 1;
+  eigenpalVersion: string;
+  inputHash: string;
+  root: InstallLockPackage;
 };
 type ShowAgentPayload = {
   agent: Record<string, unknown> & {
@@ -88,12 +118,33 @@ const ReleasesSchema = z.object({
   releases: z.array(ReleaseSchema),
 });
 
+const CommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/);
+
+const InstallLockPackageSchema: z.ZodType<InstallLockPackage> = z.lazy(() =>
+  z.object({
+    packagePath: SourcePackagePathSchema,
+    requestedRef: SourceVersionRefSchema,
+    resolvedRef: z.string().min(1),
+    resolvedTag: z.string().min(1).optional(),
+    commit: CommitShaSchema,
+    dependencies: z.array(InstallLockPackageSchema),
+  })
+);
+
+const InstallLockfileSchema: z.ZodType<InstallLockfile> = z.object({
+  lockfileVersion: z.literal(1),
+  eigenpalVersion: z.string().min(1),
+  inputHash: z.string().min(1),
+  root: InstallLockPackageSchema,
+});
+
 const AuthCheckSchema = z.object({
   ok: z.literal(true),
   email: z.string().email().nullable().optional(),
   name: z.string().nullable().optional(),
   keyId: z.string(),
 });
+const INSTALL_LOCKFILE_NAME = 'eigenpal.lock';
 
 function runGit(
   args: string[],
@@ -172,6 +223,11 @@ function resolveGitRoot(dir: string): string | null {
   return gitOutput(['rev-parse', '--show-toplevel'], dir);
 }
 
+function isOrganizationSourceGitRoot(gitRoot: string | null): gitRoot is string {
+  if (!gitRoot) return false;
+  return Boolean(gitOutput(['remote', 'get-url', 'origin'], gitRoot)?.match(/\/orgs\/[^/]+\.git$/));
+}
+
 function findNearestPackageRoot(startDir: string, gitRoot: string | null): string | null {
   let current = path.resolve(startDir);
   while (true) {
@@ -228,6 +284,343 @@ function releaseTagExists(
 ): boolean {
   const tag = formatReleaseTag(pathToDottedPackageName(packagePath), version);
   return gitOutput(['tag', '--list', tag], gitRoot) === tag;
+}
+
+function readPackageManifest(packageRoot: string): SourcePackageManifest {
+  return SourcePackageManifestSchema.parse(readYamlFile(path.join(packageRoot, 'eigenpal.yaml')));
+}
+
+function parsePackageRef(input: string): { packagePath: SourcePackagePath; ref: SourceVersionRef } {
+  const [rawPackage, rawRef, extra] = input.split('@');
+  if (!rawPackage || extra !== undefined) {
+    throw new Error('Package ref must be <package>[@latest|main|version|range|commit].');
+  }
+  const packagePath = resolvePackagePath(rawPackage);
+  const ref = SourceVersionRefSchema.parse(rawRef || 'latest');
+  return { packagePath, ref };
+}
+
+function versionMatchesRange(version: string, range: string): boolean {
+  const parts = semverParts(version);
+  if (!parts) return false;
+  const rangeParts = range.replace('*', 'x').split('.');
+  if (String(parts[0]) !== rangeParts[0]) return false;
+  if (rangeParts.length === 2) return rangeParts[1] === 'x';
+  if (rangeParts.length !== 3) return false;
+  if (rangeParts[1] === 'x') return true;
+  return String(parts[1]) === rangeParts[1];
+}
+
+function listLocalPackageReleases(
+  gitRoot: string,
+  packagePath: SourcePackagePath
+): SourceRelease[] {
+  const tagPrefix = `${pathToDottedPackageName(packagePath)}@`;
+  const output = gitOutput(['tag', '--list', `${tagPrefix}*`], gitRoot) ?? '';
+  return output
+    .split('\n')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map((tag) => {
+      const parsed = parseReleaseTag(tag);
+      const commit = gitOutput(['rev-list', '-n', '1', tag], gitRoot) ?? '';
+      return { tag, version: parsed.version, commit };
+    })
+    .sort((left, right) => compareSemverDesc(left.version, right.version));
+}
+
+async function listPackageReleases(input: {
+  config: CliConfig;
+  gitRoot?: string | null;
+  packagePath: SourcePackagePath;
+}): Promise<SourceRelease[]> {
+  if (input.gitRoot) {
+    const local = listLocalPackageReleases(input.gitRoot, input.packagePath);
+    if (local.length > 0) return local;
+  }
+  const client = new ApiClient(input.config);
+  return ReleasesSchema.parse(
+    await client.get('/api/v1/source/releases', { packagePath: input.packagePath })
+  ).releases;
+}
+
+function hostedArchiveRequest(input: {
+  repository: SourceRepository;
+  ref: string;
+  packagePath: SourcePackagePath;
+}): string | null {
+  const match = input.repository.remoteUrl.match(/^(.*)\/orgs\/([^/]+)\.git$/);
+  if (!match) return null;
+  const [, baseUrl, gitRepositoryPath] = match;
+  return `${baseUrl}/export/orgs/${encodeURIComponent(gitRepositoryPath)}/${encodeURIComponent(input.ref)}/${input.packagePath}`;
+}
+
+async function resolvePackageRef(input: {
+  config: CliConfig;
+  gitRoot?: string | null;
+  packagePath: SourcePackagePath;
+  ref: SourceVersionRef;
+}): Promise<{
+  requestedRef: SourceVersionRef;
+  resolvedRef: string;
+  resolvedTag?: string;
+  commit: string;
+}> {
+  if (input.ref === 'main' || /^[0-9a-f]{40}$/.test(input.ref)) {
+    if (!input.gitRoot) {
+      throw new Error(`Source ref ${input.ref} requires a cloned organization source repository.`);
+    }
+    const commit = gitOutput(['rev-parse', input.ref], input.gitRoot);
+    if (!commit) throw new Error(`Source ref ${input.ref} does not exist.`);
+    return { requestedRef: input.ref, resolvedRef: input.ref, commit };
+  }
+
+  const releases = await listPackageReleases({
+    config: input.config,
+    gitRoot: input.gitRoot,
+    packagePath: input.packagePath,
+  });
+  const release =
+    input.ref === 'latest'
+      ? sortReleasesNewestFirst(releases)[0]
+      : /^\d+\.\d+\.\d+$/.test(input.ref)
+        ? releases.find((candidate) => candidate.version === input.ref)
+        : sortReleasesNewestFirst(releases).find((candidate) =>
+            versionMatchesRange(candidate.version, input.ref)
+          );
+  if (!release) {
+    throw new Error(`No release found for ${input.packagePath}@${input.ref}.`);
+  }
+  return {
+    requestedRef: input.ref,
+    resolvedRef: release.version,
+    resolvedTag: release.tag,
+    commit:
+      release.commit ||
+      (input.gitRoot ? (gitOutput(['rev-list', '-n', '1', release.tag], input.gitRoot) ?? '') : ''),
+  };
+}
+
+function archivePackage(input: {
+  gitRoot: string;
+  ref: string;
+  packagePath: SourcePackagePath;
+  outDir: string;
+}): void {
+  rmSync(input.outDir, { recursive: true, force: true });
+  mkdirSync(input.outDir, { recursive: true });
+  const tarPath = path.join(mkdtempSyncCompat('eigenpal-source-archive-'), 'package.tar');
+  try {
+    runGit(['archive', '--format=tar', `--output=${tarPath}`, input.ref, input.packagePath], {
+      cwd: input.gitRoot,
+    });
+    const extract = spawnSync(
+      'tar',
+      ['-xf', tarPath, '--strip-components', String(input.packagePath.split('/').length)],
+      {
+        cwd: input.outDir,
+        encoding: 'utf8',
+      }
+    );
+    if (extract.status !== 0) throw new Error(extract.stderr.trim() || 'tar extraction failed');
+  } finally {
+    rmSync(path.dirname(tarPath), { recursive: true, force: true });
+  }
+}
+
+async function tryHostedArchive(input: {
+  config: CliConfig;
+  gitRoot?: string | null;
+  repository?: SourceRepository | null;
+  ref: string;
+  packagePath: SourcePackagePath;
+  outDir: string;
+}): Promise<boolean> {
+  const repository =
+    input.repository ??
+    (input.gitRoot
+      ? ({
+          gitRepositoryPath: '',
+          remoteUrl: gitOutput(['remote', 'get-url', 'origin'], input.gitRoot) ?? '',
+        } satisfies SourceRepository)
+      : null);
+  if (!repository) return false;
+  const url = hostedArchiveRequest({
+    repository,
+    ref: input.ref,
+    packagePath: input.packagePath,
+  });
+  if (!url) return false;
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${requireApiKey(input.config)}` },
+  }).catch(() => null);
+  if (!response?.ok) return false;
+  rmSync(input.outDir, { recursive: true, force: true });
+  mkdirSync(input.outDir, { recursive: true });
+  const tarPath = path.join(mkdtempSyncCompat('eigenpal-hosted-source-'), 'package.tar');
+  try {
+    writeFileSync(tarPath, Buffer.from(await response.arrayBuffer()));
+    const extract = spawnSync(
+      'tar',
+      ['-xf', tarPath, '--strip-components', String(input.packagePath.split('/').length)],
+      {
+        cwd: input.outDir,
+        encoding: 'utf8',
+      }
+    );
+    if (extract.status !== 0) throw new Error(extract.stderr.trim() || 'tar extraction failed');
+    return true;
+  } finally {
+    rmSync(path.dirname(tarPath), { recursive: true, force: true });
+  }
+}
+
+function mkdtempSyncCompat(prefix: string): string {
+  return mkdtempSync(path.join(tmpdir(), prefix));
+}
+
+function dependencyInstallPath(parentRoot: string, packagePath: SourcePackagePath): string {
+  const modulesRoot = path.resolve(parentRoot, 'eigenpal_modules');
+  const destination = path.resolve(modulesRoot, packagePath);
+  if (destination !== modulesRoot && !destination.startsWith(`${modulesRoot}${path.sep}`)) {
+    throw new Error(`Dependency path escapes eigenpal_modules: ${packagePath}`);
+  }
+  return destination;
+}
+
+function lockfileInputHash(input: unknown): string {
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+async function resolvePackageGraph(input: {
+  config: CliConfig;
+  gitRoot?: string | null;
+  repository?: SourceRepository | null;
+  packagePath: SourcePackagePath;
+  ref: SourceVersionRef;
+  seen?: string[];
+}): Promise<InstallLockPackage> {
+  const seen = input.seen ?? [];
+  const key = `${input.packagePath}@${input.ref}`;
+  if (seen.includes(key)) {
+    throw new Error(`Dependency cycle detected: ${[...seen, key].join(' -> ')}`);
+  }
+  const resolved = await resolvePackageRef(input);
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'eigenpal-install-resolve-'));
+  try {
+    const packageRoot = path.join(tempDir, 'package');
+    const ref = resolved.resolvedTag ?? resolved.resolvedRef;
+    if (input.gitRoot) {
+      archivePackage({
+        gitRoot: input.gitRoot,
+        ref,
+        packagePath: input.packagePath,
+        outDir: packageRoot,
+      });
+    } else if (
+      !(await tryHostedArchive({
+        config: input.config,
+        repository: input.repository,
+        ref,
+        packagePath: input.packagePath,
+        outDir: packageRoot,
+      }))
+    ) {
+      throw new Error(`Hosted source export unavailable for ${input.packagePath}@${ref}.`);
+    }
+    const manifest = readPackageManifest(packageRoot);
+    const dependencies =
+      'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
+    return {
+      packagePath: input.packagePath,
+      requestedRef: input.ref,
+      resolvedRef: resolved.resolvedRef,
+      ...(resolved.resolvedTag ? { resolvedTag: resolved.resolvedTag } : {}),
+      commit: resolved.commit,
+      dependencies: await Promise.all(
+        dependencies.map(([dependencyName, version]) =>
+          resolvePackageGraph({
+            config: input.config,
+            gitRoot: input.gitRoot,
+            repository: input.repository,
+            packagePath: workspaceDependencyNameToPackagePath(
+              dependencyName as WorkspaceDependencyName
+            ),
+            ref: SourceVersionRefSchema.parse(version),
+            seen: [...seen, key],
+          })
+        )
+      ),
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function materializeLockPackage(input: {
+  config: CliConfig;
+  gitRoot?: string | null;
+  repository?: SourceRepository | null;
+  lockPackage: InstallLockPackage;
+  outDir: string;
+}): Promise<void> {
+  const ref = input.lockPackage.resolvedTag ?? input.lockPackage.commit;
+  const usedHostedArchive = await tryHostedArchive({
+    config: input.config,
+    gitRoot: input.gitRoot,
+    repository: input.repository,
+    ref,
+    packagePath: input.lockPackage.packagePath,
+    outDir: input.outDir,
+  });
+  if (!usedHostedArchive) {
+    if (!input.gitRoot) {
+      throw new Error(
+        `Hosted source export unavailable for ${input.lockPackage.packagePath}@${ref}.`
+      );
+    }
+    warn(
+      `Hosted source export unavailable for ${input.lockPackage.packagePath}; using local git archive.`
+    );
+    archivePackage({
+      gitRoot: input.gitRoot,
+      ref,
+      packagePath: input.lockPackage.packagePath,
+      outDir: input.outDir,
+    });
+  }
+  const occupied = new Set<string>();
+  for (const dependency of input.lockPackage.dependencies) {
+    const dependencyPath = dependencyInstallPath(input.outDir, dependency.packagePath);
+    if (occupied.has(dependencyPath)) {
+      throw new Error(`Dependency conflict at ${dependencyPath}`);
+    }
+    occupied.add(dependencyPath);
+    await materializeLockPackage({
+      config: input.config,
+      gitRoot: input.gitRoot,
+      repository: input.repository,
+      lockPackage: dependency,
+      outDir: dependencyPath,
+    });
+  }
+}
+
+function writeLockfile(lockfilePath: string, lockfile: InstallLockfile): void {
+  mkdirSync(path.dirname(lockfilePath), { recursive: true });
+  writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
+}
+
+function readLockfile(lockfilePath: string): InstallLockfile {
+  const parsed = InstallLockfileSchema.safeParse(JSON.parse(readFileSync(lockfilePath, 'utf8')));
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid lockfile ${lockfilePath}: ${parsed.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ')}`
+    );
+  }
+  return parsed.data;
 }
 
 function validatePackageReferences(input: {
@@ -473,7 +866,10 @@ function gitCommandCreatesObjects(args: string[]): boolean {
     'revert',
     'tag',
   ]);
-  return args.some((arg) => objectCreatingCommands.has(arg));
+  const command = gitSubcommandFromArgs(args);
+  if (!command) return false;
+  if (command === 'tag' && args.some((arg) => arg === '-l' || arg === '--list')) return false;
+  return objectCreatingCommands.has(command);
 }
 
 function gitCwdFromArgs(args: string[]): string {
@@ -485,6 +881,28 @@ function gitCwdFromArgs(args: string[]): string {
     }
   }
   return cwd;
+}
+
+function gitSubcommandFromArgs(args: string[]): string | null {
+  const optionsWithValue = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--') continue;
+    if (optionsWithValue.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (
+      arg.startsWith('--git-dir=') ||
+      arg.startsWith('--work-tree=') ||
+      arg.startsWith('--namespace=')
+    ) {
+      continue;
+    }
+    if (arg.startsWith('-')) continue;
+    return arg;
+  }
+  return null;
 }
 
 export async function runGitPassthroughFromArgv(argv: string[]): Promise<boolean> {
@@ -581,7 +999,7 @@ function doctor(opts: BaseOpts & ContextOpts): void {
     }
   }
 
-  if (context.packageRoot) {
+  if (context.packageRoot && context.packageRoot !== context.gitRoot) {
     const result = validatePackage(context.packageRoot);
     checks.push({
       check: 'package structure',
@@ -845,14 +1263,379 @@ async function release(
 
 async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): Promise<void> {
   const context = resolveGitSourceContext({ dir: opts.dir });
+  if (target?.includes('@')) {
+    throw new Error('Sync always uses latest; do not pass a versioned target.');
+  }
   const packagePath = target ? resolvePackagePath(target) : context.packagePath;
   if (!packagePath) {
     throw new Error('Pass an automation target or run sync inside a source package.');
   }
-  if (target?.includes('@')) {
-    throw new Error('Sync always uses latest; do not pass a versioned target.');
-  }
   await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
+}
+
+async function install(
+  packageRef: string | undefined,
+  opts: BaseOpts & { out?: string; lockfile?: string; frozenLockfile?: boolean }
+): Promise<void> {
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext();
+  const sourceGitRoot = isOrganizationSourceGitRoot(context.gitRoot) ? context.gitRoot : null;
+  if (sourceGitRoot) checkRepoVersion(sourceGitRoot, false);
+
+  const installFromLock = async (
+    lockfilePath: string,
+    packageDestination: string | null,
+    explicitRef: boolean,
+    repository?: SourceRepository | null,
+    expectedPackagePath?: SourcePackagePath | null,
+    explicitGitRoot?: string | null
+  ): Promise<void> => {
+    const lockfile = readLockfile(lockfilePath);
+    if (expectedPackagePath && lockfile.root.packagePath !== expectedPackagePath) {
+      throw new Error(
+        `Lockfile root package ${lockfile.root.packagePath} does not match requested package ${expectedPackagePath}.`
+      );
+    }
+    const destination = explicitRef
+      ? path.resolve(opts.out ?? path.basename(lockfile.root.packagePath))
+      : packageDestination;
+    if (!destination) throw new Error('No package context found for lockfile install.');
+    const lockInstallGitRoot = explicitRef ? (explicitGitRoot ?? sourceGitRoot) : context.gitRoot;
+    if (explicitRef) {
+      await materializeLockPackage({
+        config,
+        gitRoot: lockInstallGitRoot,
+        repository,
+        lockPackage: lockfile.root,
+        outDir: destination,
+      });
+      writeLockfile(path.join(destination, '.eigenpal', INSTALL_LOCKFILE_NAME), lockfile);
+    } else {
+      rmSync(path.join(destination, 'eigenpal_modules'), { recursive: true, force: true });
+      for (const dependency of lockfile.root.dependencies) {
+        await materializeLockPackage({
+          config,
+          gitRoot: lockInstallGitRoot,
+          repository,
+          lockPackage: dependency,
+          outDir: dependencyInstallPath(destination, dependency.packagePath),
+        });
+      }
+    }
+    success(`Installed from lockfile ${lockfilePath}.`);
+  };
+
+  if (opts.frozenLockfile) {
+    const explicitRef = Boolean(packageRef);
+    const expectedPackagePath = packageRef ? parsePackageRef(packageRef).packagePath : null;
+    const explicitGitRoot =
+      explicitRef && expectedPackagePath && context.gitRoot
+        ? packageManifestExists(context.gitRoot, expectedPackagePath)
+          ? context.gitRoot
+          : sourceGitRoot
+        : sourceGitRoot;
+    const repository = explicitRef && !explicitGitRoot ? await getSourceRepository(config) : null;
+    const lockfilePath =
+      opts.lockfile ??
+      path.join(
+        packageRef && opts.out ? path.resolve(opts.out) : (context.packageRoot ?? process.cwd()),
+        '.eigenpal',
+        INSTALL_LOCKFILE_NAME
+      );
+    await installFromLock(
+      lockfilePath,
+      context.packageRoot,
+      explicitRef,
+      repository,
+      expectedPackagePath,
+      explicitGitRoot
+    );
+    return;
+  }
+
+  if (packageRef) {
+    const parsed = parsePackageRef(packageRef);
+    const explicitGitRoot =
+      context.gitRoot && packageManifestExists(context.gitRoot, parsed.packagePath)
+        ? context.gitRoot
+        : sourceGitRoot;
+    const repository = explicitGitRoot ? null : await getSourceRepository(config);
+    if (parsed.ref === 'main') warn('Installing @main uses draft source and is not reproducible.');
+    const intendedLockfile =
+      opts.lockfile ??
+      path.join(
+        path.resolve(opts.out ?? path.basename(parsed.packagePath)),
+        '.eigenpal',
+        INSTALL_LOCKFILE_NAME
+      );
+    const inputHash = lockfileInputHash({ packageRef });
+    if (existsSync(intendedLockfile)) {
+      const existing = readLockfile(intendedLockfile);
+      if (existing.inputHash !== inputHash) {
+        throw new Error(
+          `Existing lockfile ${intendedLockfile} does not match requested package ref.`
+        );
+      }
+      await installFromLock(intendedLockfile, null, true, repository, parsed.packagePath);
+      return;
+    }
+    const lockRoot = await resolvePackageGraph({
+      config,
+      gitRoot: explicitGitRoot,
+      repository,
+      packagePath: parsed.packagePath,
+      ref: parsed.ref,
+    });
+    const outDir = path.resolve(opts.out ?? path.basename(parsed.packagePath));
+    await materializeLockPackage({
+      config,
+      gitRoot: explicitGitRoot,
+      repository,
+      lockPackage: lockRoot,
+      outDir,
+    });
+    const lockfile: InstallLockfile = {
+      lockfileVersion: 1,
+      eigenpalVersion: '1.0.0',
+      inputHash,
+      root: lockRoot,
+    };
+    writeLockfile(intendedLockfile, lockfile);
+    success(`Installed ${parsed.packagePath}@${lockRoot.resolvedRef} into ${outDir}.`);
+    return;
+  }
+
+  if (!context.packageRoot || !context.packagePath) {
+    throw new Error('Run git install inside a source package or pass a package ref.');
+  }
+  if (!context.gitRoot) {
+    throw new Error('Run git install inside an organization source repository.');
+  }
+  const manifest = readPackageManifest(context.packageRoot);
+  const dependencies =
+    'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
+  const inputHash = lockfileInputHash({ packagePath: context.packagePath, dependencies });
+  const intendedLockfile =
+    opts.lockfile ?? path.join(context.packageRoot, '.eigenpal', INSTALL_LOCKFILE_NAME);
+  if (existsSync(intendedLockfile)) {
+    const existing = readLockfile(intendedLockfile);
+    if (existing.inputHash !== inputHash) {
+      throw new Error(
+        `Existing lockfile ${intendedLockfile} does not match current package inputs.`
+      );
+    }
+    await installFromLock(intendedLockfile, context.packageRoot, false);
+    return;
+  }
+  const root: InstallLockPackage = {
+    packagePath: context.packagePath,
+    requestedRef: 'main',
+    resolvedRef: 'main',
+    commit: gitOutput(['rev-parse', 'HEAD'], context.gitRoot) ?? '',
+    dependencies: await Promise.all(
+      dependencies.map(([dependencyName, version]) =>
+        resolvePackageGraph({
+          config,
+          gitRoot: context.gitRoot!,
+          packagePath: workspaceDependencyNameToPackagePath(
+            dependencyName as WorkspaceDependencyName
+          ),
+          ref: SourceVersionRefSchema.parse(version),
+        })
+      )
+    ),
+  };
+  rmSync(path.join(context.packageRoot, 'eigenpal_modules'), { recursive: true, force: true });
+  for (const dependency of root.dependencies) {
+    await materializeLockPackage({
+      config,
+      gitRoot: context.gitRoot,
+      lockPackage: dependency,
+      outDir: dependencyInstallPath(context.packageRoot, dependency.packagePath),
+    });
+  }
+  const lockfile: InstallLockfile = {
+    lockfileVersion: 1,
+    eigenpalVersion: '1.0.0',
+    inputHash,
+    root,
+  };
+  writeLockfile(intendedLockfile, lockfile);
+  success(`Installed ${root.dependencies.length} dependencies for ${context.packagePath}.`);
+}
+
+function slugifyPackageSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function packagePathForTemplate(template: string, name: string): SourcePackagePath {
+  const slug = slugifyPackageSegment(name);
+  if (!slug) throw new Error('Package name must include at least one letter or number.');
+  const rootByTemplate: Record<string, string> = {
+    agent: 'agents',
+    workflow: 'workflows',
+    skill: 'resources/skills',
+    rule: 'resources/rules',
+    knowledge: 'resources/knowledge',
+    evaluator: 'evaluators',
+  };
+  const root = rootByTemplate[template];
+  if (!root)
+    throw new Error('Template must be agent, workflow, skill, rule, knowledge, or evaluator.');
+  return SourcePackagePathSchema.parse(`${root}/${slug}`);
+}
+
+function writePackageScaffold(
+  packageRoot: string,
+  packagePath: SourcePackagePath,
+  name: string
+): void {
+  const [root, resourceKind] = packagePath.split('/');
+  mkdirSync(packageRoot, { recursive: true });
+  const title = name.trim();
+  writeFileSync(
+    path.join(packageRoot, 'eigenpal.yaml'),
+    YAML.stringify({ schemaVersion: 1, name: title || path.basename(packagePath) })
+  );
+  if (root === 'agents') writeFileSync(path.join(packageRoot, 'AGENT.md'), `# ${title}\n\n`);
+  if (root === 'evaluators') {
+    writeFileSync(
+      path.join(packageRoot, 'evaluator.yaml'),
+      YAML.stringify({ schemaVersion: 1, type: 'exact-diff', config: {} })
+    );
+  }
+  if (root === 'resources' && resourceKind === 'skills') {
+    writeFileSync(path.join(packageRoot, 'SKILL.md'), `# ${title}\n\n`);
+  }
+  if (root === 'resources' && (resourceKind === 'rules' || resourceKind === 'knowledge')) {
+    writeFileSync(path.join(packageRoot, 'README.md'), `# ${title}\n\n`);
+  }
+}
+
+function initPackage(name: string, opts: { template: string; dir?: string }): void {
+  const startDir = path.resolve(opts.dir ?? process.cwd());
+  const gitRoot = resolveGitRoot(startDir) ?? startDir;
+  mkdirSync(gitRoot, { recursive: true });
+  if (!existsSync(path.join(gitRoot, '.git'))) runGit(['init', '-b', 'main', gitRoot]);
+  if (!existsSync(path.join(gitRoot, 'eigenpal.yaml'))) {
+    writeFileSync(
+      path.join(gitRoot, 'eigenpal.yaml'),
+      'schemaVersion: 1\neigenpalVersion: 1.0.0\n'
+    );
+  }
+  const gitignorePath = path.join(gitRoot, '.gitignore');
+  const gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  const additions = ['.eigenpal/', 'eigenpal_modules/'].filter(
+    (entry) => !gitignore.includes(entry)
+  );
+  if (additions.length > 0)
+    writeFileSync(
+      gitignorePath,
+      `${gitignore}${gitignore.endsWith('\n') || !gitignore ? '' : '\n'}${additions.join('\n')}\n`
+    );
+  const packagePath = packagePathForTemplate(opts.template, name);
+  const packageRoot = path.join(gitRoot, packagePath);
+  if (existsSync(packageRoot)) throw new Error(`Package already exists: ${packagePath}`);
+  writePackageScaffold(packageRoot, packagePath, name);
+  success(`Created ${packagePath}.`);
+}
+
+async function pullSource(opts: BaseOpts & { dir?: string }): Promise<void> {
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], context.gitRoot);
+  runGit(['pull', '--ff-only', 'origin', 'main'], {
+    cwd: context.gitRoot,
+    config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
+}
+
+function dirtyPackagePaths(gitRoot: string): SourcePackagePath[] {
+  const status = gitOutput(['status', '--porcelain', '--untracked-files=all'], gitRoot) ?? '';
+  const packagePaths = new Set<SourcePackagePath>();
+  for (const line of status.split('\n')) {
+    const file = line.slice(2).trim().split(' -> ').pop()!.replace(/\\/g, '/');
+    const parts = file.split('/');
+    for (let index = parts.length; index >= 2; index -= 1) {
+      const candidate = parts.slice(0, index).join('/');
+      if (
+        SourcePackagePathSchema.safeParse(candidate).success &&
+        existsSync(path.join(gitRoot, candidate, 'eigenpal.yaml'))
+      ) {
+        packagePaths.add(candidate as SourcePackagePath);
+        break;
+      }
+    }
+  }
+  return [...packagePaths].sort();
+}
+
+async function commitSource(opts: BaseOpts & { message?: string; dir?: string }): Promise<void> {
+  if (!opts.message) throw new Error('Commit requires -m <message>.');
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  checkRepoVersion(context.gitRoot, true);
+  const packagePaths = dirtyPackagePaths(context.gitRoot);
+  if (packagePaths.length === 0) {
+    warn('No source package changes to commit.');
+    return;
+  }
+  for (const packagePath of packagePaths) {
+    const validation = validatePackage(path.join(context.gitRoot, packagePath));
+    if (!validation.valid) {
+      throw new Error(
+        `Package validation failed for ${packagePath}: ${validation.errors.join('; ')}`
+      );
+    }
+  }
+  const rootFiles = ['eigenpal.yaml', '.gitignore'].filter((file) =>
+    existsSync(path.join(context.gitRoot!, file))
+  );
+  runGit(['add', ...rootFiles, ...packagePaths], { cwd: context.gitRoot });
+  const authorEnv = await resolveGitAuthorEnv(config);
+  runGit(['commit', '-m', opts.message], { cwd: context.gitRoot, env: authorEnv });
+}
+
+async function pushSource(opts: BaseOpts & { dir?: string }): Promise<void> {
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], context.gitRoot);
+  runGit(['push', 'origin', 'main', '--follow-tags'], {
+    cwd: context.gitRoot,
+    config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
+}
+
+function upgradeSource(opts: { dir?: string; dryRun?: boolean }): void {
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  const manifestPath = path.join(context.gitRoot, 'eigenpal.yaml');
+  const manifest = readRootManifest(context.gitRoot);
+  if (!manifest.ok) throw new Error(manifest.error);
+  if (manifest.version === '1.0.0') {
+    success('Repository source schema is already 1.0.0.');
+    return;
+  }
+  if (opts.dryRun) {
+    console.log(`Would upgrade repository source schema from ${manifest.version} to 1.0.0.`);
+    return;
+  }
+  console.log('Source repository changelog:');
+  console.log(`- ${manifest.version} -> 1.0.0: normalize root eigenpal.yaml schema version.`);
+  writeFileSync(manifestPath, 'schemaVersion: 1\neigenpalVersion: 1.0.0\n');
+  doctor({
+    dir: context.packagePath && context.packageRoot ? context.packageRoot : context.gitRoot,
+  });
+  success(`Upgraded repository source schema from ${manifest.version} to 1.0.0.`);
 }
 
 function parseReleaseVersion(value: string): string {
@@ -865,6 +1648,15 @@ function parseReleaseVersion(value: string): string {
 function parseType(value: string): string {
   if (!['agent', 'workflow'].includes(value))
     throw new InvalidArgumentError('type must be agent or workflow');
+  return value;
+}
+
+function parseTemplate(value: string): string {
+  if (!['agent', 'workflow', 'skill', 'rule', 'knowledge', 'evaluator'].includes(value)) {
+    throw new InvalidArgumentError(
+      'template must be agent, workflow, skill, rule, knowledge, or evaluator'
+    );
+  }
   return value;
 }
 
@@ -885,6 +1677,51 @@ export function registerGitCommands(program: Command): void {
     .description('Clone the organization source repository.')
     .option('--out <dir>', 'Output directory')
     .action(action(cloneSource));
+
+  withBaseUrl(git.command('install [packageRef]'))
+    .description('Materialize a source package and its workspace dependencies.')
+    .option('--out <dir>', 'Output directory for an explicit package ref')
+    .option('--lockfile <path>', 'Lockfile path')
+    .option('--frozen-lockfile', 'Install exactly from the existing lockfile')
+    .action(action(install));
+
+  git
+    .command('init <name>')
+    .description('Create a new source package scaffold.')
+    .addOption(
+      new Option('--template <template>', 'Package template')
+        .argParser(parseTemplate)
+        .makeOptionMandatory()
+    )
+    .option('--dir <dir>', 'Repository directory')
+    .action(
+      action(async (name: string, opts: { template: string; dir?: string }) =>
+        initPackage(name, opts)
+      )
+    );
+
+  withBaseUrl(git.command('pull'))
+    .description('Pull organization source from origin/main with --ff-only.')
+    .option('--dir <dir>', 'Repository directory')
+    .action(action(pullSource));
+
+  withBaseUrl(git.command('commit'))
+    .description('Validate changed source packages and commit them.')
+    .addOption(new Option('-m, --message <message>', 'Commit message').makeOptionMandatory())
+    .option('--dir <dir>', 'Repository directory')
+    .action(action(commitSource));
+
+  withBaseUrl(git.command('push'))
+    .description('Push organization source main and tags.')
+    .option('--dir <dir>', 'Repository directory')
+    .action(action(pushSource));
+
+  git
+    .command('upgrade')
+    .description('Upgrade the source repository schema in place.')
+    .option('--dir <dir>', 'Repository directory')
+    .option('--dry-run', 'Print upgrade actions without changing files')
+    .action(action(async (opts: { dir?: string; dryRun?: boolean }) => upgradeSource(opts)));
 
   addJsonFlag(git.command('doctor'))
     .description('Check organization source repository health.')

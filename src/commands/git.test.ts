@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -267,6 +275,30 @@ describe('hidden git source commands', () => {
           expect(author.stdout.trim()).toBe(
             'Dev User <dev@example.com>|Dev User <dev@example.com>'
           );
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('git passthrough does not fetch identity for read-only tag listing', async () => {
+    const { root } = makePublishedSourceRepo();
+    let authChecks = 0;
+    try {
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            authChecks += 1;
+            return Response.json({ error: 'auth should not be called' }, { status: 500 });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(['git', '--', '-C', root, 'tag', '--list'], { baseUrl });
+          expect(result.status).toBe(0);
+          expect(authChecks).toBe(0);
         }
       );
     } finally {
@@ -551,6 +583,175 @@ describe('hidden git source commands', () => {
     } finally {
       rmSync(incompatible.root, { recursive: true, force: true });
       rmSync(incompatible.remote, { recursive: true, force: true });
+    }
+  });
+
+  test('install materializes workspace dependencies and writes a lockfile', () => {
+    const { root, packageDir } = makeSourceRepo();
+    try {
+      const dependencyDir = join(root, 'resources', 'knowledge', 'jokes');
+      mkdirSync(dependencyDir, { recursive: true });
+      writeFileSync(
+        join(dependencyDir, 'eigenpal.yaml'),
+        'schemaVersion: 1\nname: Jokes Knowledge\n'
+      );
+      writeFileSync(join(dependencyDir, 'README.md'), '# Jokes\n\n');
+      writeFileSync(
+        join(packageDir, 'eigenpal.yaml'),
+        [
+          'schemaVersion: 1',
+          'name: Invoice Agent',
+          'description: Extract invoices',
+          'dependencies:',
+          '  workspace:resources.knowledge.jokes: 1.0.0',
+          '',
+        ].join('\n')
+      );
+      git(['config', 'user.email', 'test@example.com'], root);
+      git(['config', 'user.name', 'Test User'], root);
+      git(['add', '.'], root);
+      git(['commit', '-m', 'Add packages'], root);
+      git(['tag', '-a', 'resources.knowledge.jokes@1.0.0', '-m', 'Release jokes'], root);
+
+      const result = cli(['git', 'install'], { cwd: packageDir });
+      expect(result.status).toBe(0);
+      expect(
+        existsSync(
+          join(packageDir, 'eigenpal_modules', 'resources', 'knowledge', 'jokes', 'README.md')
+        )
+      ).toBe(true);
+      const lockfile = JSON.parse(
+        readFileSync(join(packageDir, '.eigenpal', 'eigenpal.lock'), 'utf8')
+      );
+      expect(lockfile.root.dependencies[0]).toMatchObject({
+        packagePath: 'resources/knowledge/jokes',
+        resolvedRef: '1.0.0',
+      });
+
+      const frozen = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      expect(frozen.status).toBe(0);
+
+      const lockfilePath = join(packageDir, '.eigenpal', 'eigenpal.lock');
+      const validLockfile = readFileSync(lockfilePath, 'utf8');
+      const invalidLockfile = JSON.parse(validLockfile);
+      invalidLockfile.root.dependencies[0].packagePath = '../escape';
+      writeFileSync(lockfilePath, `${JSON.stringify(invalidLockfile, null, 2)}\n`);
+      const invalidFrozen = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      expect(invalidFrozen.status).toBe(1);
+      expect(invalidFrozen.stderr).toContain('Invalid lockfile');
+      writeFileSync(lockfilePath, validLockfile);
+
+      const out = mkdtempSync(join(tmpdir(), 'eigenpal-install-out-'));
+      const packageRef = cli(['git', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out], {
+        cwd: packageDir,
+      });
+      expect(packageRef.status).toBe(0);
+      expect(existsSync(join(out, 'README.md'))).toBe(true);
+      rmSync(join(out, 'README.md'), { force: true });
+      const frozenPackageRef = cli(
+        ['git', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out, '--frozen-lockfile'],
+        { cwd: packageDir }
+      );
+      expect(frozenPackageRef.status).toBe(0);
+      expect(existsSync(join(out, 'README.md'))).toBe(true);
+      rmSync(out, { recursive: true, force: true });
+
+      writeFileSync(
+        join(packageDir, 'eigenpal.yaml'),
+        [
+          'schemaVersion: 1',
+          'name: Invoice Agent',
+          'dependencies:',
+          '  workspace:resources.knowledge.jokes: 2.0.0',
+          '',
+        ].join('\n')
+      );
+      const mismatch = cli(['git', 'install'], { cwd: packageDir });
+      expect(mismatch.status).toBe(1);
+      expect(mismatch.stderr).toContain('does not match current package inputs');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('init creates scoped package scaffolds without exposing root aliases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eigenpal-init-'));
+    try {
+      const result = cli(
+        ['git', 'init', 'Dad Joke Generator', '--template', 'agent', '--dir', root],
+        {
+          cwd: root,
+        }
+      );
+      expect(result.status).toBe(0);
+      expect(existsSync(join(root, 'agents', 'dad-joke-generator', 'AGENT.md'))).toBe(true);
+      expect(readFileSync(join(root, '.gitignore'), 'utf8')).toContain('eigenpal_modules/');
+
+      const topLevelInit = cli(['init', 'Dad Joke Generator', '--template', 'agent'], {
+        cwd: root,
+      });
+      expect(topLevelInit.status).not.toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('commit validates changed packages and push sends main to origin', async () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo();
+    try {
+      writeFileSync(join(packageDir, 'AGENT.md'), 'Changed instructions.\n');
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'author@example.com',
+              name: 'Source Author',
+              keyId: 'ak_source',
+            });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const commit = await cliAsync(['git', 'commit', '-m', 'Update agent'], {
+            baseUrl,
+            cwd: packageDir,
+          });
+          expect(commit.status).toBe(0);
+          expect(
+            spawnSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' }).stdout
+          ).toBe('');
+
+          const push = await cliAsync(['git', 'push'], { baseUrl, cwd: packageDir });
+          expect(push.status).toBe(0);
+          const remoteMain = spawnSync('git', ['--git-dir', remote, 'rev-parse', 'main'], {
+            encoding: 'utf8',
+          }).stdout.trim();
+          const localMain = spawnSync('git', ['rev-parse', 'main'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).stdout.trim();
+          expect(remoteMain).toBe(localMain);
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('upgrade bumps root manifest and runs doctor checks', () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo();
+    try {
+      writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 0.9.0\n');
+      const result = cli(['git', 'upgrade'], { cwd: packageDir });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Source repository changelog');
+      expect(readFileSync(join(root, 'eigenpal.yaml'), 'utf8')).toContain('eigenpalVersion: 1.0.0');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
     }
   });
 

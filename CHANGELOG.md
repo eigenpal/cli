@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.5.6
+## 0.5.7
 
 ### Major Changes
 
@@ -467,6 +467,7 @@ actual) { ... }` declaration around your statements. Parameter order is
 
 - 71361fd: `workflow get-experiment-status --watch` now prints a per-example failure summary on stderr when the batch finishes with any failed/cancelled execution: example name, top-level error (truncated), and the exact `eigenpal execution get <exec-id>` command to drill into step-by-step detail. Removes the need for the agent to grep through a 1000-line JSON dump to find which example broke and why. `reference/debugging.md` documents the discovery path.
 - 71361fd: `eigenpal workflow get-experiment-status --watch` now polls until every execution in the batch reaches a terminal state (`completed` / `failed` / `cancelled`), then exits non-zero if any execution failed or was cancelled. Removes the need for agent-side polling loops that didn't notice all-terminal-already and kept ticking. Renders a one-line `N/M terminal (counts)` progress summary on stderr (in-place rewrite when stderr is a TTY), dumps the full JSON on stdout when done. `--interval <s>` and `--max-wait <s>` are configurable; defaults are 5s/30min.
+- 04e4018: Harden hidden Git materialization commands for package-ref installs, frozen lockfile replay, dependency materialization, and source authoring smoke flows.
 - 71361fd: `install-skill`: multi-tool support via interactive multiselect.
   - Opens a `@clack/prompts` multiselect picker over supported agent tools
     (Claude Code, Cursor). Toggle on to install, toggle off to uninstall —
