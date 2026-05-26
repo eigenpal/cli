@@ -16,7 +16,7 @@ eigenpal workflow step-type get <type>   # JSON Schema for one type's config + o
 name: extract-invoices # string, lowercase kebab/snake-case, unique within tenant
 version: 1.0.0 # bare semver `MAJOR.MINOR.PATCH`, no leading `v`
 description: Parse a PDF and extract invoice fields. # string, optional
-triggerMethods: [api] # array, ≥1 entry from: api | cron | email
+triggerMethods: [{ type: api }] # array, ≥1 entry with type: api | manual | email
 inputs: [...] # array of input definitions (see below)
 steps: [...] # array of steps, executed in topological order
 output: {...} # object — the workflow's return shape
@@ -36,13 +36,13 @@ folder.
 
 ### `triggerMethods`
 
-Required. Each entry adds an invocation surface:
+Required. Each entry is an object that adds an invocation surface:
 
-- `api` — the workflow can be called via REST or the CLI's `workflow execution run`
-- `cron` — scheduled. Add a sibling `cron: { schedule: "0 9 * * *", timezone: "UTC" }`
-- `email` — inbound email. Add a sibling `email: { subject?: ..., aliases?: [...] }`
+- `{ type: api }` — the workflow can be called via REST or the CLI's `workflow execution run`
+- `{ type: manual }` — the workflow can be started manually
+- `{ type: email, whitelist?: ... }` — inbound email
 
-If `api` is missing, `eigenpal workflow execution run` and `workflow run` reject with a
+If `{ type: api }` is missing, `eigenpal workflow execution run` rejects with a
 403 / "Workflow does not have API trigger enabled."
 
 ### `inputs`

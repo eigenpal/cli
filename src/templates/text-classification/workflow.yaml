@@ -3,7 +3,7 @@ version: 1.0.0
 description: Classify free-form text into one of a fixed set of labels.
 
 triggerMethods:
-  - api
+  - type: api
 
 inputs:
   - name: text

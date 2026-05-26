@@ -3,7 +3,7 @@ version: 1.0.0
 description: Parse a PDF and extract structured fields with an LLM.
 
 triggerMethods:
-  - api
+  - type: api
 
 inputs:
   - name: document

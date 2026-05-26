@@ -4,9 +4,8 @@ description: Replace this with what your workflow does.
 
 # `triggerMethods` controls how this workflow can be invoked:
 #   - api: workflow can be called via the REST API and CLI
-#   - cron: workflow can be scheduled (set `cron` field below)
 triggerMethods:
-  - api
+  - type: api
 
 # `inputs` declares the schema of arguments the workflow accepts. Each entry
 # becomes a top-level key on the call's `triggerInput` object. Use `file: true`

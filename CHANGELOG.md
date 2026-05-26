@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.5.11
+
+### Patch Changes
+
+- 2958f4d: Fix Git-backed source smoke-test polish: hidden `git show` and `git sync` now accept bare agent slugs, and workflow scaffolds use the current `triggerMethods` YAML shape.
+
 ## 0.5.10
 
 ### Patch Changes

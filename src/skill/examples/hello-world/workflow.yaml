@@ -3,7 +3,7 @@ version: 1.0.0
 description: Smallest possible workflow — echoes the input back through transform.script.
 
 triggerMethods:
-  - api
+  - type: api
 
 inputs:
   - name: text

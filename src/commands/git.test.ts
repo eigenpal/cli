@@ -560,6 +560,10 @@ describe('hidden git source commands', () => {
         expect(show.stdout).toContain('recent runs');
         expect(show.stdout).toContain('exec_1');
 
+        const showBySlug = await cliAsync(['git', 'show', 'invoice-agent', '--json'], { baseUrl });
+        expect(showBySlug.status).toBe(0);
+        expect(JSON.parse(showBySlug.stdout).agent.slug).toBe('invoice-agent');
+
         const versions = await cliAsync(['git', 'versions', 'agents.invoice-agent', '--json'], {
           baseUrl,
         });
@@ -642,6 +646,35 @@ describe('hidden git source commands', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('sync accepts bare agent slugs as shorthand', async () => {
+    const { root } = makePublishedSourceRepo();
+    const syncCalls: string[] = [];
+    try {
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (
+            request.method === 'POST' &&
+            url.pathname === '/api/automations/agents.invoice-agent/sync'
+          ) {
+            syncCalls.push(url.pathname);
+            return Response.json({ ok: true });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(['git', 'sync', 'invoice-agent', '--dir', root], {
+            baseUrl,
+          });
+          expect(result.status).toBe(0);
+          expect(syncCalls).toEqual(['/api/automations/agents.invoice-agent/sync']);
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

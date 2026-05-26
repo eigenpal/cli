@@ -796,6 +796,11 @@ function resolvePackagePath(target: string): SourcePackagePath {
     : dottedPackageNameToPath(DottedPackageNameSchema.parse(target));
 }
 
+function resolveAgentPackagePath(target: string): SourcePackagePath {
+  if (target.includes('/') || target.includes('.')) return resolvePackagePath(target);
+  return SourcePackagePathSchema.parse(`agents/${target}`);
+}
+
 function isAutomationPackagePath(packagePath: SourcePackagePath): boolean {
   return packagePath.startsWith('agents/') || packagePath.startsWith('workflows/');
 }
@@ -1181,7 +1186,7 @@ async function list(
 }
 
 async function show(target: string, opts: BaseOpts): Promise<void> {
-  const packagePath = resolvePackagePath(target);
+  const packagePath = resolveAgentPackagePath(target);
   const slug = packagePath.replace(/^agents\//, '');
   const client = new ApiClient(resolveConfig(opts));
   const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(slug)}`, {
@@ -1313,7 +1318,7 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
   if (target?.includes('@')) {
     throw new Error('Sync always uses latest; do not pass a versioned target.');
   }
-  const packagePath = target ? resolvePackagePath(target) : context.packagePath;
+  const packagePath = target ? resolveAgentPackagePath(target) : context.packagePath;
   if (!packagePath) {
     throw new Error('Pass an automation target or run sync inside a source package.');
   }
