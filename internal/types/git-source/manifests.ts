@@ -176,7 +176,22 @@ const TriggerConfigSchema = z
     email: z
       .object({
         enabled: z.boolean().default(true),
-        aliases: z.array(z.string().email()).default([]),
+        aliases: z
+          .array(
+            z.union([
+              z.string().includes('@'),
+              z
+                .object({
+                  address: z.string().includes('@'),
+                  allowlist: z.array(z.string()).default([]),
+                  replyConfig: z.record(z.string(), z.unknown()).default({}),
+                  requireSenderAuth: z.boolean().default(true),
+                  enabled: z.boolean().optional(),
+                })
+                .strict(),
+            ])
+          )
+          .default([]),
       })
       .strict()
       .optional(),

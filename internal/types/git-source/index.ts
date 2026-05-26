@@ -1,4 +1,16 @@
 export {
+  AgentSourceCutoverSettingsSchema,
+  AgentSourceMigrationStateSchema,
+  AgentSourceRuntimeModeSchema,
+  isGitBackedAgentSourceEnabled,
+  resolveAgentSourceCutover,
+  type AgentSourceCutoverDecision,
+  type AgentSourceCutoverSettings,
+  type AgentSourceMigrationState,
+  type AgentSourceRuntimeMode,
+} from './cutover';
+
+export {
   AutomationTargetSchema,
   DottedPackageNameSchema,
   ReleaseTagSchema,
@@ -14,6 +26,7 @@ export {
   dottedPackageNameToPath,
   formatHostedSourceExportPath,
   formatReleaseTag,
+  parseAutomationTarget,
   parseReleaseTag,
   pathToDottedPackageName,
   type AutomationTarget,
@@ -75,3 +88,13 @@ export {
   type WorkspaceDependencyName,
   type WorkspaceDependencyVersion,
 } from './manifests';
+
+export {
+  EncryptedSecretValueSchema,
+  SOURCE_SECRETS_FILENAME,
+  SecretNameSchema,
+  SourceSecretsFileSchema,
+  type EncryptedSecretValue,
+  type SecretName,
+  type SourceSecretsFile,
+} from './secrets';

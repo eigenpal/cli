@@ -5,20 +5,23 @@ import {
   parseReleaseTag,
   pathToDottedPackageName,
   RootSourceManifestSchema,
+  SOURCE_SECRETS_FILENAME,
   SourceManifestFilenameSchema,
   SourcePackageManifestSchema,
   SourcePackagePathSchema,
+  SourceSecretsFileSchema,
   SourceVersionRefSchema,
   validateSourcePackageRequiredFiles,
   workspaceDependencyNameToPackagePath,
   type SourcePackageManifest,
   type SourcePackagePath,
+  type SourceSecretsFile,
   type SourceVersionRef,
   type WorkspaceDependencyName,
 } from '@eigenpal/types';
 import { InvalidArgumentError, Option, type Command } from 'commander';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -48,6 +51,7 @@ import {
   renderListResult,
   success,
   table,
+  ui,
   warn,
   withBaseUrl,
   withPagination,
@@ -65,6 +69,11 @@ type PackageContext = {
   gitRoot: string | null;
   packageRoot: string | null;
   packagePath: SourcePackagePath | null;
+};
+type ResolvedPackageContext = {
+  gitRoot: string;
+  packageRoot: string;
+  packagePath: SourcePackagePath;
 };
 type InstallLockPackage = {
   packagePath: SourcePackagePath;
@@ -273,6 +282,10 @@ function readYamlFile(filePath: string): unknown {
   return YAML.parse(readFileSync(filePath, 'utf8'));
 }
 
+function writeYamlFile(filePath: string, value: unknown): void {
+  writeFileSync(filePath, YAML.stringify(value));
+}
+
 function packageManifestExists(gitRoot: string, packagePath: SourcePackagePath): boolean {
   return existsSync(path.join(gitRoot, packagePath, 'eigenpal.yaml'));
 }
@@ -288,6 +301,31 @@ function releaseTagExists(
 
 function readPackageManifest(packageRoot: string): SourcePackageManifest {
   return SourcePackageManifestSchema.parse(readYamlFile(path.join(packageRoot, 'eigenpal.yaml')));
+}
+
+function requirePackageContext(opts: ContextOpts = {}): ResolvedPackageContext {
+  const context = resolveGitSourceContext(opts);
+  if (!context.gitRoot || !context.packageRoot || !context.packagePath) {
+    throw new Error('Run this command inside a source package, or pass --dir.');
+  }
+  return {
+    gitRoot: context.gitRoot,
+    packageRoot: context.packageRoot,
+    packagePath: context.packagePath,
+  };
+}
+
+function readMutablePackageManifest(packageRoot: string): Record<string, unknown> {
+  const manifest = readYamlFile(path.join(packageRoot, 'eigenpal.yaml'));
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('Package eigenpal.yaml must be a YAML object.');
+  }
+  return manifest as Record<string, unknown>;
+}
+
+function writeMutablePackageManifest(packageRoot: string, manifest: Record<string, unknown>): void {
+  SourcePackageManifestSchema.parse(manifest);
+  writeYamlFile(path.join(packageRoot, 'eigenpal.yaml'), manifest);
 }
 
 function parsePackageRef(input: string): { packagePath: SourcePackagePath; ref: SourceVersionRef } {
@@ -1285,6 +1323,184 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
   await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
 }
 
+function setEmailTriggerAlias(
+  email: string,
+  opts: ContextOpts & {
+    disabled?: boolean;
+    allow?: string[];
+    replyOn?: string;
+    replyMode?: string;
+    requireSenderAuth?: boolean;
+  }
+): void {
+  const context = requirePackageContext(opts);
+  const manifest = readMutablePackageManifest(context.packageRoot);
+  const triggers = { ...((manifest.triggers as Record<string, unknown> | undefined) ?? {}) };
+  const emailConfig = { ...((triggers.email as Record<string, unknown> | undefined) ?? {}) };
+  const aliases = Array.isArray(emailConfig.aliases) ? [...emailConfig.aliases] : [];
+  const nextAlias = {
+    address: email,
+    enabled: !opts.disabled,
+    allowlist: opts.allow ?? [],
+    replyConfig: {
+      ...(opts.replyOn ? { on: opts.replyOn } : {}),
+      ...(opts.replyMode ? { mode: opts.replyMode } : {}),
+    },
+    requireSenderAuth: opts.requireSenderAuth ?? true,
+  };
+  const filtered = aliases.filter((alias) =>
+    typeof alias === 'string'
+      ? alias.toLowerCase() !== email.toLowerCase()
+      : (alias as { address?: string }).address?.toLowerCase() !== email.toLowerCase()
+  );
+  manifest.triggers = {
+    ...triggers,
+    email: { ...emailConfig, enabled: true, aliases: [...filtered, nextAlias] },
+  };
+  writeMutablePackageManifest(context.packageRoot, manifest);
+  success(`Updated email trigger ${ui.bold(email)} in eigenpal.yaml.`);
+}
+
+function setApiTrigger(enabled: boolean, opts: ContextOpts): void {
+  const context = requirePackageContext(opts);
+  const manifest = readMutablePackageManifest(context.packageRoot);
+  const triggers = { ...((manifest.triggers as Record<string, unknown> | undefined) ?? {}) };
+  manifest.triggers = { ...triggers, api: enabled };
+  writeMutablePackageManifest(context.packageRoot, manifest);
+  success(`${enabled ? 'Enabled' : 'Disabled'} API trigger in eigenpal.yaml.`);
+}
+
+function encryptLocalSecret(input: {
+  plaintext: string;
+  keyId: string;
+  key: Buffer;
+  organizationId: string;
+  sourcePath: string;
+  secretName: string;
+}) {
+  if (input.key.byteLength !== 32) throw new Error('Secret encryption key must be 32 bytes.');
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', input.key, nonce);
+  cipher.setAAD(
+    Buffer.from(
+      JSON.stringify({
+        keyId: input.keyId,
+        organizationId: input.organizationId,
+        sourcePath: input.sourcePath,
+        secretName: input.secretName,
+      })
+    )
+  );
+  const ciphertext = Buffer.concat([cipher.update(input.plaintext, 'utf8'), cipher.final()]);
+  return {
+    algorithm: 'aes-256-gcm' as const,
+    keyId: input.keyId,
+    nonce: nonce.toString('base64url'),
+    ciphertext: ciphertext.toString('base64url'),
+    tag: cipher.getAuthTag().toString('base64url'),
+  };
+}
+
+function readSecretsFile(packageRoot: string): SourceSecretsFile {
+  const filePath = path.join(packageRoot, SOURCE_SECRETS_FILENAME);
+  if (!existsSync(filePath)) return { schemaVersion: 1, secrets: {} };
+  return SourceSecretsFileSchema.parse(readYamlFile(filePath));
+}
+
+function writeSecretsFile(packageRoot: string, value: SourceSecretsFile): void {
+  const secretsFile = SourceSecretsFileSchema.parse(value);
+  writeYamlFile(path.join(packageRoot, SOURCE_SECRETS_FILENAME), secretsFile);
+}
+
+async function readSecretInput(opts: { stdin?: boolean; valueFile?: string }): Promise<string> {
+  const selected = [opts.stdin, opts.valueFile].filter(Boolean).length;
+  if (selected > 1) throw new Error('Pass only one of --stdin or --value-file.');
+  if (opts.stdin) return readFileSync(0, 'utf8').replace(/\n$/, '');
+  if (opts.valueFile) return readFileSync(opts.valueFile, 'utf8').replace(/\n$/, '');
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const { password, isCancel, cancel } = await import('@clack/prompts');
+    const answer = await password({ message: 'Secret value' });
+    if (isCancel(answer)) {
+      cancel('Cancelled');
+      process.exit(1);
+    }
+    return String(answer);
+  }
+  throw new Error('Secret value input is required in noninteractive mode.');
+}
+
+async function setSecret(
+  name: string,
+  opts: ContextOpts & {
+    stdin?: boolean;
+    valueFile?: string;
+    keyId: string;
+    keyFile: string;
+    organizationId: string;
+    description?: string;
+  }
+): Promise<void> {
+  const context = requirePackageContext(opts);
+  const sourcePath = `${context.packagePath}/${SOURCE_SECRETS_FILENAME}`;
+  const secretsFile = readSecretsFile(context.packageRoot);
+  const secrets = { ...secretsFile.secrets };
+  secrets[name] = {
+    ...(opts.description ? { description: opts.description } : {}),
+    encrypted: encryptLocalSecret({
+      plaintext: await readSecretInput(opts),
+      keyId: opts.keyId,
+      key: readSecretKeyFile(opts.keyFile),
+      organizationId: opts.organizationId,
+      sourcePath,
+      secretName: name,
+    }),
+  };
+  writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
+  success(`Encrypted ${ui.bold(name)} into secrets.enc.yaml.`);
+}
+
+function unsetSecret(name: string, opts: ContextOpts): void {
+  const context = requirePackageContext(opts);
+  const secretsFile = readSecretsFile(context.packageRoot);
+  const secrets = { ...secretsFile.secrets };
+  delete secrets[name];
+  writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
+  success(`Removed ${ui.bold(name)} from secrets.enc.yaml.`);
+}
+
+async function importSecrets(
+  envFile: string,
+  opts: Parameters<typeof setSecret>[1]
+): Promise<void> {
+  const content = readFileSync(envFile, 'utf8');
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const idx = trimmed.indexOf('=');
+    if (idx === -1) continue;
+    const context = requirePackageContext(opts);
+    const sourcePath = `${context.packagePath}/${SOURCE_SECRETS_FILENAME}`;
+    const secretsFile = readSecretsFile(context.packageRoot);
+    const secrets = { ...secretsFile.secrets };
+    const name = trimmed.slice(0, idx);
+    secrets[name] = {
+      encrypted: encryptLocalSecret({
+        plaintext: trimmed.slice(idx + 1),
+        keyId: opts.keyId,
+        key: readSecretKeyFile(opts.keyFile),
+        organizationId: opts.organizationId,
+        sourcePath,
+        secretName: name,
+      }),
+    };
+    writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
+  }
+}
+
+function readSecretKeyFile(keyFile: string): Buffer {
+  return Buffer.from(readFileSync(keyFile, 'utf8').trim(), 'base64url');
+}
+
 async function install(
   packageRef: string | undefined,
   opts: BaseOpts & { out?: string; lockfile?: string; frozenLockfile?: boolean }
@@ -1657,6 +1873,16 @@ function parseReleaseVersion(value: string): string {
   return value;
 }
 
+function parseBoolean(value: string): boolean {
+  if (value === 'true' || value === 'enabled' || value === 'on') return true;
+  if (value === 'false' || value === 'disabled' || value === 'off') return false;
+  throw new InvalidArgumentError('Expected true/false, enabled/disabled, or on/off');
+}
+
+function collect(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function parseType(value: string): string {
   if (!['agent', 'workflow'].includes(value))
     throw new InvalidArgumentError('type must be agent or workflow');
@@ -1794,4 +2020,56 @@ export function registerGitCommands(program: Command): void {
     .description('Sync an automation from the latest Git source release.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(sync));
+
+  const trigger = git.command('trigger').description('Edit trigger policy in eigenpal.yaml.');
+  trigger
+    .command('api <enabled>')
+    .description('Enable or disable API trigger policy in eigenpal.yaml.')
+    .option('--dir <dir>', 'Directory to inspect')
+    .action(
+      action(async (enabled: string, opts: ContextOpts) =>
+        setApiTrigger(parseBoolean(enabled), opts)
+      )
+    );
+  const triggerEmail = trigger.command('email').description('Edit email trigger policy.');
+  triggerEmail
+    .command('set <email>')
+    .description('Add or update an email trigger alias in eigenpal.yaml.')
+    .option('--dir <dir>', 'Directory to inspect')
+    .option('--disabled', 'Write the alias as disabled')
+    .option('--allow <entry>', 'Allowed sender entry; repeatable', collect, [])
+    .option('--reply-on <never|always>', 'Reply behavior')
+    .option('--reply-mode <sender|all>', 'Reply recipient mode')
+    .option('--no-require-sender-auth', 'Disable sender-auth checks for this alias')
+    .action(
+      action(async (email: string, opts: Parameters<typeof setEmailTriggerAlias>[1]) =>
+        setEmailTriggerAlias(email, opts)
+      )
+    );
+
+  const secret = git.command('secret').description('Edit encrypted secrets.enc.yaml.');
+  secret
+    .command('set <name>')
+    .description('Encrypt and set a secret value in secrets.enc.yaml.')
+    .option('--dir <dir>', 'Directory to inspect')
+    .option('--stdin', 'Read the secret value from stdin')
+    .option('--value-file <path>', 'Read the secret value from a file')
+    .requiredOption('--key-id <id>', 'Organization decrypt key id')
+    .requiredOption('--key-file <path>', 'File containing the base64url-encoded organization key')
+    .requiredOption('--organization-id <id>', 'Organization id for authenticated data')
+    .option('--description <text>', 'Secret description')
+    .action(action(setSecret));
+  secret
+    .command('unset <name>')
+    .description('Remove a secret from secrets.enc.yaml.')
+    .option('--dir <dir>', 'Directory to inspect')
+    .action(action(async (name: string, opts: ContextOpts) => unsetSecret(name, opts)));
+  secret
+    .command('import <env-file>')
+    .description('Import KEY=value entries from an env file into secrets.enc.yaml.')
+    .option('--dir <dir>', 'Directory to inspect')
+    .requiredOption('--key-id <id>', 'Organization decrypt key id')
+    .requiredOption('--key-file <path>', 'File containing the base64url-encoded organization key')
+    .requiredOption('--organization-id <id>', 'Organization id for authenticated data')
+    .action(action(importSecrets));
 }

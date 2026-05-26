@@ -114,6 +114,26 @@ export const AutomationTargetSchema = z.string().superRefine((value, ctx) => {
 });
 export type AutomationTarget = z.infer<typeof AutomationTargetSchema>;
 
+export function parseAutomationTarget(target: AutomationTarget): {
+  packageName: DottedPackageName;
+  packagePath: SourcePackagePath;
+  type: SourcePackageType;
+  slug: string;
+  ref: SourceVersionRef;
+} {
+  const parsed = AutomationTargetSchema.parse(target);
+  const [rawPackageName, rawRef] = parsed.split('@') as [DottedPackageName, string | undefined];
+  const packagePath = dottedPackageNameToPath(rawPackageName);
+  const [type, ...slugParts] = packagePath.split('/') as [SourcePackageType, ...string[]];
+  return {
+    packageName: DottedPackageNameSchema.parse(rawPackageName),
+    packagePath,
+    type,
+    slug: slugParts.join('/'),
+    ref: SourceVersionRefSchema.parse(rawRef ?? 'latest'),
+  };
+}
+
 export function pathToDottedPackageName(path: SourcePackagePath): DottedPackageName {
   const parsed = SourcePackagePathSchema.parse(path);
   return DottedPackageNameSchema.parse(parsed.split('/').join('.'));

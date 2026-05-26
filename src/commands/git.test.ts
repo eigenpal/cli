@@ -183,6 +183,112 @@ describe('hidden git source commands', () => {
     }
   });
 
+  test('hidden trigger and secret commands mutate source files locally', () => {
+    const { root, packageDir } = makeSourceRepo();
+    try {
+      const trigger = cli(
+        [
+          'git',
+          'trigger',
+          'email',
+          'set',
+          'invoice@agent.eigenpal.com',
+          '--allow',
+          'vendor@example.com',
+          '--reply-on',
+          'always',
+          '--reply-mode',
+          'sender',
+        ],
+        { cwd: packageDir }
+      );
+      expect(trigger.status).toBe(0);
+      const manifest = readFileSync(join(packageDir, 'eigenpal.yaml'), 'utf8');
+      expect(manifest).toContain('invoice@agent.eigenpal.com');
+      expect(manifest).toContain('vendor@example.com');
+
+      const keyFile = join(root, 'secret-key.txt');
+      writeFileSync(keyFile, Buffer.alloc(32, 7).toString('base64url'));
+      const valueFile = join(root, 'secret-value.txt');
+      writeFileSync(valueFile, 'sk-plaintext');
+      const secret = cli(
+        [
+          'git',
+          'secret',
+          'set',
+          'OPENAI_API_KEY',
+          '--value-file',
+          valueFile,
+          '--key-id',
+          'org-key-1',
+          '--key-file',
+          keyFile,
+          '--organization-id',
+          'org_1',
+        ],
+        { cwd: packageDir }
+      );
+      expect(secret.status).toBe(0);
+      const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
+      expect(secrets).toContain('OPENAI_API_KEY');
+      expect(secrets).not.toContain('sk-plaintext');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('secret set rejects malformed existing secrets file', () => {
+    const { root, packageDir } = makeSourceRepo();
+    try {
+      writeFileSync(
+        join(packageDir, 'secrets.enc.yaml'),
+        [
+          'schemaVersion: 1',
+          'secrets:',
+          '  OPENAI_API_KEY:',
+          '    encrypted:',
+          '      algorithm: aes-256-gcm',
+          '      keyId: org-key-1',
+          '      nonce: abc',
+          '      ciphertext: def',
+          '      tag: ghi',
+          '    plaintextHint: should-not-be-preserved',
+          '',
+        ].join('\n')
+      );
+      const keyFile = join(root, 'secret-key.txt');
+      writeFileSync(keyFile, Buffer.alloc(32, 7).toString('base64url'));
+      const valueFile = join(root, 'secret-value.txt');
+      writeFileSync(valueFile, 'sentinel-secret-value');
+
+      const secret = cli(
+        [
+          'git',
+          'secret',
+          'set',
+          'OTHER_SECRET',
+          '--value-file',
+          valueFile,
+          '--key-id',
+          'org-key-1',
+          '--key-file',
+          keyFile,
+          '--organization-id',
+          'org_1',
+        ],
+        { cwd: packageDir }
+      );
+
+      expect(secret.status).not.toBe(0);
+      const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
+      expect(secrets).toContain('plaintextHint: should-not-be-preserved');
+      expect(secrets).not.toContain('OTHER_SECRET');
+      expect(secrets).not.toContain('sentinel-secret-value');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('status from repo root reports repository state without package validation errors', () => {
     const { root } = makeSourceRepo();
     try {

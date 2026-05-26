@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.5.10
+
+### Patch Changes
+
+- aee7e0c: Add hidden Git source commands for editing trigger policy and encrypted secrets.
+
 ## 0.5.9
 
 ### Major Changes
