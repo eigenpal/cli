@@ -18,5 +18,7 @@ export { needsUpgrade, upgradeWorkflow } from './upgrades';
 
 export { spliceWorkflowVersion, stripWorkflowVersion } from './version-field';
 
+export { validateSchemaQuality, type SchemaQualityWarning } from './validate-quality';
+
 // Re-export workflow types for convenience
 export type { Step, TriggerMethod, TriggerType, WorkflowDefinition } from '@eigenpal/types';

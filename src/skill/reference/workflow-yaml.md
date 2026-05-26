@@ -191,6 +191,76 @@ The script runs in a WASM sandbox: 5s wall clock, 10 MB heap, no network,
 no filesystem. Trips show up as `script_timeout` / `script_memory_limit`
 on the step execution.
 
+## Be specific with types
+
+Every output schema you write is read three times: by the LLM (for
+`ai.extract`), by downstream steps (autocomplete + template resolution),
+and by the runtime validator. **The more specific the type, the better
+the workflow runs.**
+
+### Use `enum` for coded values
+
+Categorical fields like `category`, `status`, `kind`, `severity`,
+`monitoring`, `frequency` should be enums whenever the value set is
+closed. The LLM is constrained to emit only allowed values, and
+downstream `transform.script` steps know exactly what they'll see.
+
+```yaml
+- name: classify
+  type: ai.extract
+  with:
+    input: '{{ input.text }}'
+    schema:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: ['901', '902']
+          description: |
+            Covenant category.
+            901 = Odkladacie podmienky (conditions precedent).
+            902 = Následné podmienky (subsequent / ongoing covenants).
+      required: [category]
+```
+
+Per-value meanings go inline in the field's `description`. The LLM picks
+them up reliably from there, and the scope browser renders the allowed
+values when downstream steps reference the field.
+
+### `transform.script` — TS literal unions become JSON Schema enums
+
+A TS literal-union return type compiles to a JSON-Schema enum
+automatically. Use it when the function returns a value from a closed set:
+
+```yaml
+- name: severity
+  type: transform.script
+  with:
+    inputs:
+      score: '{{ steps.score.output.value }}'
+    function: |
+      function script(score: number): { level: 'low' | 'medium' | 'high' } {
+        return { level: score > 0.8 ? 'high' : score > 0.4 ? 'medium' : 'low' };
+      }
+```
+
+Downstream steps autocomplete `low | medium | high` for `level`.
+
+### `eigenpal workflow push` warns on weak types
+
+Push surfaces non-fatal **schema-quality warnings** when it sees patterns
+that hurt downstream typing. Common ones:
+
+| Warning code                 | What it means                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `categorical-missing-enum`   | A field named like `category` / `status` / `kind` is a plain `string`. Consider declaring an `enum`. |
+| `weak-script-return`         | A `transform.script` returns `any` or `unknown`. Replace with a concrete shape or a literal union. |
+| `untyped-object`             | A `type: object` field has no `properties`. The LLM has no guidance on what to emit.         |
+| `untyped-array-items`        | A `type: array` field has no `items:` declared.                                              |
+
+Warnings do not block the push. They print to stderr as `! …` lines. Run
+`eigenpal workflow validate` locally to surface them before pushing.
+
 ## Common patterns
 
 ### Conditional branches

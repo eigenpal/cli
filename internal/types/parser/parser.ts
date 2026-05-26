@@ -292,6 +292,12 @@ export const ParseOptionsSchema = z.object({
 
   // Language hints
   languages: z.array(z.string()).optional().describe('OCR language hints'),
+
+  // Internal: tenant context. Set by the document-parser processor so the
+  // LLM-vision parser can fall back to the workspace-level default LLM
+  // provider when `provider` is unset. Not exposed in step YAML; the worker
+  // injects it at parse time.
+  tenantId: z.string().optional(),
 });
 
 export type ParseOptions = z.infer<typeof ParseOptionsSchema>;

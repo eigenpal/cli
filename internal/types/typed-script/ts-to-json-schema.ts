@@ -35,12 +35,23 @@ export interface ConvertContext {
   resolving: Set<string>;
   /** Issue accumulator; each unsupported feature appends here. */
   issues: ConvertIssue[];
+  /** Non-fatal warnings (e.g. `: any` / `: unknown` returns, untyped
+   *  object literals). Surfaced to the user without blocking compile. */
+  warnings: ConvertWarning[];
 }
 
 export interface ConvertIssue {
   message: string;
   /** TS AST node `start`/`end` for diagnostics. Babel parser populates
    *  these when `attachComment: false, ranges: true` (default). */
+  start?: number;
+  end?: number;
+}
+
+export interface ConvertWarning {
+  /** Stable identifier so the CLI / UI can filter or de-duplicate. */
+  code: 'weak-return-type' | 'unstructured-object';
+  message: string;
   start?: number;
   end?: number;
 }
@@ -62,9 +73,20 @@ export function convertTsTypeToJsonSchema(node: TSType, ctx: ConvertContext): Js
       // undefined returns from user code).
       return {};
     case 'TSAnyKeyword':
-    case 'TSUnknownKeyword':
-      // User explicitly opted out of validation.
+    case 'TSUnknownKeyword': {
+      // User explicitly opted out of validation. Emit a non-fatal warning
+      // so downstream tooling (autocomplete, `workflow push`) can nudge
+      // them toward a concrete shape. Downstream consumers of this step's
+      // output can't navigate or validate fields of an empty schema.
+      const keyword = node.type === 'TSAnyKeyword' ? 'any' : 'unknown';
+      ctx.warnings.push({
+        code: 'weak-return-type',
+        message: `\`${keyword}\` produces an empty schema, so downstream steps can't autocomplete this field or its descendants. Describe the actual shape (\`{ name: string; total: number }\`) or a literal union (\`"low" | "medium" | "high"\`) for the strongest downstream typing.`,
+        start: node.start ?? undefined,
+        end: node.end ?? undefined,
+      });
       return {};
+    }
     case 'TSNeverKeyword':
       // `never` rules out all values. No JSON Schema equivalent that
       // rejects everything; closest is `not: {}`.

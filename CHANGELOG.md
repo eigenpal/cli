@@ -1,6 +1,6 @@
 # @eigenpal/cli
 
-## 0.5.8
+## 0.5.9
 
 ### Major Changes
 
@@ -332,6 +332,10 @@ actual) { ... }` declaration around your statements. Parameter order is
   Aligns with the gh / vercel / kubectl convention of falling back to the public service rather than localhost.
 
   Also scrubs internal references from CLI source ahead of open-sourcing — generic placeholder names in docstrings and test fixtures, internal-tracker IDs stripped from comments, and one user-facing error message updated to point at the public issue tracker.
+
+- 75caaec: `eigenpal workflow push` and `eigenpal workflow validate` now surface non-fatal **schema-quality warnings** when an output schema is loose enough to hurt downstream typing: categorical fields like `category`/`status`/`kind` declared as plain strings (no `enum`), `transform.script` functions returning `any`/`unknown`, untyped objects (`type: object` with no `properties`), and untyped arrays (`type: array` with no `items`). Warnings print to stderr and never block the push.
+
+  Updated the bundled CLI skill (`workflow-yaml.md`) with a "Be specific with types" section teaching `enum` fields, per-value meanings inline in `description`, and how `transform.script` TS literal unions auto-produce JSON Schema enums.
 
 - be693a3: `EIGENPAL_API_KEY` is now a complete profile bypass — when set, the active profile's `baseUrl` is also ignored (previously the env key was paired with the profile's URL, which is always wrong because an API key is provisioned for one server).
 

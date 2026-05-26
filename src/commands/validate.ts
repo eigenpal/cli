@@ -3,9 +3,10 @@
  * `validate [path]` subcommand under the noun it belongs to so the CLI
  * surface reads:
  *
- *   eigenpal workflow validate                     all three (templated layout)
- *                                                  — also accepts a single
- *                                                  workflow.yaml path
+ *   eigenpal workflow validate [path]              all three (templated
+ *                                                  layout), OR a single
+ *                                                  workflow.yaml when [path]
+ *                                                  points at one
  *   eigenpal workflow evaluators validate [path]   ./evaluators.yaml
  *   eigenpal workflow dataset    validate [path]   ./dataset/
  *
@@ -17,12 +18,18 @@
  */
 
 import { EvalConfigYamlSchema } from '@eigenpal/types';
-import { parseWorkflow, WorkflowValidationError, YamlParseError } from '@eigenpal/workflow-yaml';
+import {
+  parseWorkflow,
+  validateSchemaQuality,
+  WorkflowValidationError,
+  YamlParseError,
+  type SchemaQualityWarning,
+} from '@eigenpal/workflow-yaml';
 import type { Command } from 'commander';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { error, success, ui } from '../lib/ui';
+import { error, success, ui, warn } from '../lib/ui';
 
 interface ValidationIssue {
   field: string;
@@ -47,26 +54,52 @@ function isDirSafe(path: string, issues: ValidationIssue[], field: string): bool
 
 // ---------- workflow.yaml -------------------------------------------------
 
-function validateWorkflowYaml(path: string): ValidationIssue[] {
+function validateWorkflowYaml(path: string): {
+  issues: ValidationIssue[];
+  warnings: SchemaQualityWarning[];
+} {
   if (!existsSync(path)) {
-    return [{ field: path, message: 'File not found.' }];
+    return { issues: [{ field: path, message: 'File not found.' }], warnings: [] };
   }
   const text = readFileSync(path, 'utf-8');
   try {
-    parseWorkflow(text);
-    return [];
+    const definition = parseWorkflow(text);
+    let warnings: SchemaQualityWarning[] = [];
+    try {
+      warnings = validateSchemaQuality(definition);
+    } catch {
+      warnings = [];
+    }
+    return { issues: [], warnings };
   } catch (err) {
     if (err instanceof YamlParseError) {
       const where = err.line !== undefined ? ` (line ${err.line})` : '';
-      return [{ field: 'yaml', message: `${err.message}${where}` }];
+      return { issues: [{ field: 'yaml', message: `${err.message}${where}` }], warnings: [] };
     }
     if (err instanceof WorkflowValidationError) {
-      return err.errors.map((e) => ({
-        field: e.path.length > 0 ? e.path.map(String).join('.') : '(root)',
-        message: e.message,
-      }));
+      return {
+        issues: err.errors.map((e) => ({
+          field: e.path.length > 0 ? e.path.map(String).join('.') : '(root)',
+          message: e.message,
+        })),
+        warnings: [],
+      };
     }
-    return [{ field: '(root)', message: err instanceof Error ? err.message : String(err) }];
+    return {
+      issues: [{ field: '(root)', message: err instanceof Error ? err.message : String(err) }],
+      warnings: [],
+    };
+  }
+}
+
+function printSchemaQualityWarnings(path: string, warnings: SchemaQualityWarning[]): void {
+  if (warnings.length === 0) return;
+  warn(
+    `workflow.yaml ${ui.dim(`(${path})`)}: ${warnings.length} schema-quality warning${warnings.length === 1 ? '' : 's'}`
+  );
+  for (const w of warnings) {
+    warn(`  ${ui.dim(w.field)} ${w.message}`);
+    if (w.hint) warn(`    ${ui.dim('hint:')} ${w.hint}`);
   }
 }
 
@@ -279,21 +312,33 @@ function rootDir(opts: DirOpt): string {
  *  `./dataset/`). For targeted validation use the per-noun helpers. */
 export function registerAllValidateCommand(parent: Command): void {
   parent
-    .command('validate')
+    .command('validate [path]')
     .description(
-      'Local-only validation against the templated project layout: ./workflow.yaml + ./evaluators.yaml + ./dataset/. For targeted validation use `evaluators validate` or `dataset validate`.'
+      'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.'
     )
     .option(
       '--dir <path>',
       'Project root (defaults to cwd; resolves the three default paths from here)'
     )
-    .action((opts: DirOpt) => {
+    .action((path: string | undefined, opts: DirOpt) => {
+      // Single-file mode: caller passed a positional path pointing at a YAML
+      // file. Validate only that workflow and the schema-quality warnings;
+      // skip evaluators/dataset entirely so a quick `validate ./wf.yaml`
+      // doesn't error on missing project siblings.
+      if (path) {
+        const target = resolve(path);
+        const wfResult = validateWorkflowYaml(target);
+        const wfOk = printIssues('workflow.yaml', target, wfResult.issues);
+        if (wfOk) printSchemaQualityWarnings(target, wfResult.warnings);
+        if (!wfOk) process.exit(1);
+        return;
+      }
+
       const root = rootDir(opts);
-      const wfOk = printIssues(
-        'workflow.yaml',
-        relPath(root, join(root, 'workflow.yaml')),
-        validateWorkflowYaml(join(root, 'workflow.yaml'))
-      );
+      const wfResult = validateWorkflowYaml(join(root, 'workflow.yaml'));
+      const wfPath = relPath(root, join(root, 'workflow.yaml'));
+      const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
+      if (wfOk) printSchemaQualityWarnings(wfPath, wfResult.warnings);
       const evOk = printIssues(
         'evaluators.yaml',
         relPath(root, join(root, 'evaluators.yaml')),

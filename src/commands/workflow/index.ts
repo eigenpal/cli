@@ -10,6 +10,7 @@
  */
 
 import { WORKFLOW_TOOL_METADATA, type WorkflowToolName } from '@eigenpal/types';
+import type { SchemaQualityWarning } from '@eigenpal/workflow-yaml';
 import { InvalidArgumentError, type Command } from 'commander';
 import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
@@ -527,12 +528,18 @@ flag would otherwise shadow it. Validation failures come back as
           const result = (await client.post(`/api/v1/workflows/${workflowId}/versions`, {
             yaml: yamlToSend,
             version: nextVersion,
-          })) as { id?: string; version?: string; [k: string]: unknown };
+          })) as {
+            id?: string;
+            version?: string;
+            warnings?: SchemaQualityWarning[];
+            [k: string]: unknown;
+          };
           if (opts.json) {
             printJson(result);
             return;
           }
           success(`Pushed ${ui.bold(workflowId)} (v${result.version ?? nextVersion})`);
+          printSchemaQualityWarnings(result.warnings);
         } else {
           // Create path: server defaults to 1.0.0 if no version is sent.
           // `--bump` is meaningless when there's no current version to bump
@@ -557,6 +564,7 @@ flag would otherwise shadow it. Validation failures come back as
             workflow?: { id?: string; currentVersion?: { version?: string } };
             version?: { version?: string };
             history?: { id?: string };
+            warnings?: SchemaQualityWarning[];
             // Older shapes — kept as defensive fallbacks.
             id?: string;
             currentVersion?: { version?: string };
@@ -573,6 +581,7 @@ flag would otherwise shadow it. Validation failures come back as
             result.currentVersion?.version ??
             '?';
           success(`Created ${ui.bold(id)} (v${ver})`);
+          printSchemaQualityWarnings(result.warnings);
         }
       }
     )
@@ -614,6 +623,23 @@ flag would otherwise shadow it. Validation failures come back as
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 type BumpLevel = 'patch' | 'minor' | 'major';
+
+/**
+ * Print schema-quality warnings (non-fatal) the server returned alongside
+ * a successful push. Each warning includes a field path, a message, and an
+ * optional hint. The CLI prints them on stderr via `warn()` so a piped
+ * `--json` consumer is unaffected.
+ */
+function printSchemaQualityWarnings(warnings: SchemaQualityWarning[] | undefined): void {
+  if (!warnings || warnings.length === 0) return;
+  warn(
+    `${warnings.length} schema-quality warning${warnings.length === 1 ? '' : 's'} (push succeeded; sharper types make downstream steps easier to wire):`
+  );
+  for (const w of warnings) {
+    warn(`  ${ui.dim(w.field)} ${w.message}`);
+    if (w.hint) warn(`    ${ui.dim('hint:')} ${w.hint}`);
+  }
+}
 
 function isBumpLevel(value: string): value is BumpLevel {
   return value === 'patch' || value === 'minor' || value === 'major';

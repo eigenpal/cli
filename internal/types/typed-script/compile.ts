@@ -28,8 +28,11 @@ import {
   collectLocalAliases,
   convertTsTypeToJsonSchema,
   type ConvertIssue,
+  type ConvertWarning,
   type JsonSchema,
 } from './ts-to-json-schema';
+
+export type CompileWarning = ConvertWarning;
 
 export interface CompileOptions {
   /** Full TypeScript source string; must contain exactly one top-level
@@ -55,6 +58,9 @@ export interface CompileSuccess {
     returnSchema: JsonSchema;
     paramNames: readonly string[];
   };
+  /** Non-fatal warnings (e.g. weak return types). Compile still succeeded;
+   *  callers can surface these to the user via `workflow push` warnings. */
+  warnings: readonly CompileWarning[];
 }
 
 export interface CompileFailure {
@@ -255,6 +261,7 @@ export function compileTypedScript(opts: CompileOptions): CompileSuccess | Compi
 
   // ---- Convert annotation → JSON Schema ----
   const convertIssues: ConvertIssue[] = [];
+  const convertWarnings: ConvertWarning[] = [];
   const inScopeSchemas = new Map<string, JsonSchema>(Object.entries(opts.inScopeSchemas ?? {}));
   const localAliases = collectLocalAliases(aliasDecls);
   const returnSchema =
@@ -265,6 +272,7 @@ export function compileTypedScript(opts: CompileOptions): CompileSuccess | Compi
           inScopeSchemas,
           resolving: new Set(),
           issues: convertIssues,
+          warnings: convertWarnings,
         });
 
   if (convertIssues.length > 0) {
@@ -283,11 +291,8 @@ export function compileTypedScript(opts: CompileOptions): CompileSuccess | Compi
   // ---- Sucrase strip TS annotations → plain JS ----
   let stripped: string;
   try {
-    const out = sucraseTransform(opts.source, {
-      transforms: ['typescript'],
-      // The sandbox is ES2020-friendly; sucrase's default is fine.
-    });
-    stripped = out.code;
+    // The sandbox is ES2020-friendly; sucrase's default is fine.
+    stripped = sucraseTransform(opts.source, { transforms: ['typescript'] }).code;
   } catch (err) {
     const e = err as { message?: string };
     return failWith({
@@ -303,6 +308,7 @@ export function compileTypedScript(opts: CompileOptions): CompileSuccess | Compi
       returnSchema,
       paramNames: actualParamNames,
     },
+    warnings: convertWarnings,
   };
 }
 
