@@ -137,7 +137,7 @@ function registerSecretsExportCommands(agent: Command): void {
     .action(action(pullAgentEnv));
 }
 
-function parseAgentTarget(target: string): {
+export function parseAgentTarget(target: string): {
   packageName: string;
   slug: string;
   sourceRef?: string;
@@ -146,12 +146,16 @@ function parseAgentTarget(target: string): {
   if (extra !== undefined) throw new Error('Agent target must be <slug>[@ref].');
   const normalizedTarget = rawTarget.includes('.')
     ? target
-    : `agents.${rawTarget}${rawRef ? `@${rawRef}` : ''}`;
+    : `agents.${rawTarget}${rawRef !== undefined ? `@${rawRef}` : ''}`;
   const parsed = parseAutomationTarget(normalizedTarget);
   if (parsed.type !== 'agents') {
     throw new Error('Only agent targets are supported in this release. Use agents.<slug>[@ref].');
   }
-  return { packageName: parsed.packageName, slug: parsed.slug, sourceRef: parsed.ref };
+  return {
+    packageName: parsed.packageName,
+    slug: parsed.slug,
+    sourceRef: rawRef !== undefined ? parsed.ref : undefined,
+  };
 }
 
 async function runTarget(
@@ -259,7 +263,7 @@ function registerRunCommands(agent: Command): void {
     });
 
   const listRunsCmd = addJsonFlag(withPagination(withBaseUrl(runs.command('list <target>')), 50))
-    .description('List runs for an agent target, e.g. agents.invoice-agent.')
+    .description('List runs for an agent target; unqualified targets include all source refs.')
     .option('--status <status>', 'Filter by run status')
     .option('--include <items>', 'Comma-separated include list')
     .option('--compact', 'Render compact run rows')

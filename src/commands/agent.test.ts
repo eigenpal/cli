@@ -9,6 +9,7 @@ import {
   buildRunListParams,
   compareFileInventory,
   diffJson,
+  parseAgentTarget,
   sourcePathForInstalledPackage,
   validateAgentProject,
   validateDatasetDir,
@@ -356,6 +357,25 @@ describe('agent command tree', () => {
       buildRunListParams({ sourceRef: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
     ).toMatchObject({
       sourceRef: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    });
+  });
+
+  test('agent targets only filter by source ref when explicitly qualified', () => {
+    expect(parseAgentTarget('invoice-agent')).toMatchObject({
+      slug: 'invoice-agent',
+      sourceRef: undefined,
+    });
+    expect(parseAgentTarget('agents.invoice-agent')).toMatchObject({
+      slug: 'invoice-agent',
+      sourceRef: undefined,
+    });
+    expect(parseAgentTarget('invoice-agent@latest')).toMatchObject({
+      slug: 'invoice-agent',
+      sourceRef: 'latest',
+    });
+    expect(parseAgentTarget('agents.invoice-agent@1.2.3')).toMatchObject({
+      slug: 'invoice-agent',
+      sourceRef: '1.2.3',
     });
   });
 });

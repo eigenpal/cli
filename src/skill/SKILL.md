@@ -148,7 +148,7 @@ eigenpal agents save -m "Improve invoice extraction prompts"
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --example example-name --wait
-eigenpal agents runs get <agent-execution-id> --json
+eigenpal agents runs get <agent-execution-id> --json | jq '.run'
 eigenpal agents runs trace <agent-execution-id> --out ./trace.jsonl
 
 # 5. Release to main + tag when ready to ship (-m optional; defaults to "Release <packagePath>").
@@ -192,11 +192,13 @@ Run a persisted example with `eigenpal agents run agents.<slug>@<ref> --example 
 ### Debug Agent Runs
 
 ```bash
+eigenpal agents runs list agents.<slug> --compact
 eigenpal agents runs list agents.<slug> --status failed --compact
 eigenpal agents runs pull <agent-execution-id> --include all --out ./review/<agent-execution-id>
 eigenpal agents runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
 eigenpal agents runs rerun <agent-execution-id> --wait
 eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
+  --baseline \
   --normalize-dates
 
 eigenpal agents runs feedback resolve <source-agent-execution-id> \
@@ -205,7 +207,10 @@ eigenpal agents runs feedback resolve <source-agent-execution-id> \
 
 Agent commands commonly accept `<agent-id-or-slug>`. Agent execution commands
 take an agent execution id. Execution pulls and comparisons write review
-artifacts under `.eigenpal/artifacts/...` by default.
+artifacts under `.eigenpal/artifacts/...` by default. Unqualified run-list
+targets show all source refs; add `@<ref>` only when you want a specific
+release, branch, tag, semver range, or commit. `runs list --json` returns
+`{ runs, total, limit, offset }`; `runs get --json` returns `{ run }`.
 
 Root `eigenpal run` / `eigenpal runs` and `eigenpal git <cmd>` (for moved subcommands) exit with a deprecation message — use `agents run`, `agents runs list`, and `agents <cmd>` instead.
 
@@ -319,7 +324,7 @@ would change.
 ```bash
 eigenpal agents runs list <agent-id-or-slug> --status failed --limit 10
 eigenpal agents runs list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
-eigenpal agents runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json
+eigenpal agents runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json | jq '.run'
 eigenpal agents runs pull <agent-execution-id> --include all
 eigenpal agents runs artifacts list <agent-execution-id>
 ```
@@ -378,7 +383,8 @@ script or agent needs to inspect the result with `jq`.
 
 ```bash
 eigenpal workflow execution list <workflow-id> --json | jq '.data[0].id'
-eigenpal agents runs list <agent-id-or-slug> --json | jq '.executions[0].id'
+eigenpal agents runs list <agent-id-or-slug> --json | jq '.runs[0].id'
+eigenpal agents runs get <agent-execution-id> --json | jq '.run.id'
 ```
 
 General exit-code convention:

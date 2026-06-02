@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.6.2
+
+### Patch Changes
+
+- d2202b6: List all agent runs for unqualified targets, and reserve source-ref filtering for explicit `@ref` targets.
+
 ## 0.6.0
 
 ### Minor Changes

@@ -212,7 +212,7 @@ agents
 
 | Command                                                                                | Description                                                                                                      |
 | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents\|agent runs list\|ls [options] <target>`                              | List runs for an agent target, e.g. agents.invoice-agent.                                                        |
+| `eigenpal agents\|agent runs list\|ls [options] <target>`                              | List runs for an agent target; unqualified targets include all source refs.                                      |
 | `eigenpal agents\|agent runs get [options] <run-id>`                                   | Get one agent run.                                                                                               |
 | `eigenpal agents\|agent runs rerun [options] <run-id>`                                 | Create a new run from a previous run's stored input snapshot.                                                    |
 | `eigenpal agents\|agent runs pull [options] <run-id>`                                  | Download run feedback, expected artifacts, files, and metadata.                                                  |
@@ -737,7 +737,7 @@ Validate a local dataset directory against the agent input/output schemas.
 
 ### `eigenpal agents|agent runs list|ls [options] <target>`
 
-List runs for an agent target, e.g. agents.invoice-agent.
+List runs for an agent target; unqualified targets include all source refs.
 
 ### Arguments
 
