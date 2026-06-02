@@ -37,6 +37,10 @@ export {
   ApprovalConfigSchema,
   ApprovalInputSchema,
   ApprovalOutputSchema,
+  ClassifyConfigSchema,
+  ClassifyInputSchema,
+  ClassifyLabelSchema,
+  ClassifyOutputSchema,
   DocumentParserConfigSchema,
   DocumentParserInputSchema,
   DocumentParserOutputSchema,
@@ -97,6 +101,10 @@ export {
   type ApprovalConfig,
   type ApprovalInput,
   type ApprovalOutput,
+  type ClassifyConfig,
+  type ClassifyInput,
+  type ClassifyLabel,
+  type ClassifyOutput,
   type DocumentParserConfig,
   type DocumentParserInput,
   type DocumentParserOutput,
@@ -243,6 +251,11 @@ export {
 
 // Single source of truth for the LLM temperature on every model call.
 export { DETERMINISTIC_TEMPERATURE } from './llm-determinism';
+
+// Validation: shared AJV instance + input/output/workspace-schema helpers.
+// One module used by /run endpoints, the worker, the inference session, and
+// the CLI pre-flight so all four call sites reach the same verdict.
+export * from './validation';
 
 // Workflow types (YAML-based sequential execution)
 export * from './workflow';

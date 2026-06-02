@@ -20,7 +20,7 @@ import type { ApiClient } from './client';
 
 interface WorkflowSummary {
   id: string;
-  currentVersion?: { definition?: { name?: string } };
+  name?: string | null;
 }
 
 interface WorkflowListEnvelope {
@@ -75,7 +75,7 @@ async function findSimilarSlug(client: ApiClient, slug: string): Promise<string 
       limit: '20',
     })) as WorkflowListEnvelope;
     const candidates = (res.data ?? [])
-      .map((w) => w.currentVersion?.definition?.name)
+      .map((w) => w.name)
       .filter((n): n is string => typeof n === 'string' && n.length > 0);
     let best: { name: string; distance: number } | null = null;
     for (const candidate of candidates) {

@@ -67,8 +67,21 @@ export const WorkflowInputDefSchema = z.object({
   required: z.boolean().default(true),
   /** Default value if not provided */
   default: z.unknown().optional(),
+  /**
+   * Closed set of allowed values for `type: 'enum'`. Renders as a `<Select>`
+   * in the run form and is enforced by the input validator on the /run path.
+   * Internally converted to the JSON Schema `{ type: 'string', enum: [...] }`
+   * shape, but workflow YAML uses the more natural `type: enum, values: [...]`.
+   */
+  values: z.array(z.string()).optional(),
   /** For array types: describes the element type (e.g. { type: 'file' }) */
-  items: z.object({ type: z.string() }).optional(),
+  items: z
+    .object({
+      type: z.string(),
+      /** Closed set of allowed values for `items.type: 'enum'` (array of enum). */
+      values: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 export type WorkflowInputDef = z.infer<typeof WorkflowInputDefSchema>;
 

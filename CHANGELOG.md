@@ -1,5 +1,23 @@
 # @eigenpal/cli
 
+## 0.5.12
+
+### Minor Changes
+
+- d3b0768: Add `control.fail` and `ai.classify` step types, plus the `expected/error.json` dataset assertion format.
+  - `control.fail` terminates a workflow with a typed status code + message envelope. Optional `condition` template gates the fail. Compose with `ai.classify` to reject documents that match an undesired label.
+  - `ai.classify` runs single-label closed-set classification through the existing extract LLM pipeline. Output is `{ label, confidence, reason }`, where `label` is constrained to the configured names.
+  - `examples/<name>/expected/error.json` (mutually exclusive with `output.json`) lets eval examples assert that a workflow should fail with a specific `{ code, messageContains, step }`. The exact-diff evaluator scores 1 on match, 0 otherwise.
+  - `eigenpal workflow validate` now catches `expected/error.json` shape issues and per-step config violations (e.g. `ai.classify` with fewer than two labels) at push time instead of deferring to runtime.
+
+  Skill reference docs (`step-types.md`, `dataset-format.md`, `evaluators.md`, `workflow-yaml.md`) updated.
+
+### Patch Changes
+
+- 99cad97: Skill reference (auto-generated from `WorkflowDefinitionSchema`) now documents the new `values` row for enum inputs, alongside the existing `items` row used by array inputs. Output-only doc refresh — no CLI behavior change.
+- d70f697: Document the `control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`, and `control.block` step types in the bundled skill reference. The auto-generated catalog can't render nested step shapes, so the YAML form, output access paths (e.g. `steps.<parallel>.output.<branch>.<inner>.<field>`), and scoping rules now live as hand-written prose. Also documents the multi-step iteration footgun: only the LAST inner step's output is keyed into each `items[i]` for `parallel_map` / `foreach` — end the body with a `transform.script` if you need to preserve intermediate fields.
+- ed2cde6: Fix `eigenpal workflow pull` writing a 0-byte file. The v1 single-workflow endpoint now returns the current YAML at the top level (`yamlContent`) via a new `WorkflowDetail` response shape, and the CLI throws a clear error instead of silently writing empty output when no version has been published. Also fixes adjacent regressions caused by the same picker: `workflow list` now shows the workflow name and version columns (previously always `-`), `workflow push --bump` reads the server's current version correctly, the "did you mean?" suggestion on a slug typo lists candidates again, and `workflow execution list` shows a duration column computed from the run start/end timestamps.
+
 ## 0.5.11
 
 ### Patch Changes

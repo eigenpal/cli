@@ -77,6 +77,7 @@ export const S3_PATH_GRAMMAR = {
             $evaluatorId: PATH_REST,
           },
           'input.json': PATH_LEAF,
+          'input-schema.json': PATH_LEAF,
           'output.json': PATH_LEAF,
           'expected.json': PATH_LEAF,
           'metadata.json': PATH_LEAF,

@@ -17,7 +17,7 @@
  * `field: message` lines so an agent can target specific fixes.
  */
 
-import { EvalConfigYamlSchema } from '@eigenpal/types';
+import { EvalConfigYamlSchema, ExpectedErrorSchema } from '@eigenpal/types';
 import {
   parseWorkflow,
   validateSchemaQuality,
@@ -224,7 +224,17 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
     const expectedDir = join(exampleFolder, 'expected');
     if (existsSync(expectedDir)) {
       const expectedPath = join(expectedDir, 'output.json');
-      if (existsSync(expectedPath)) {
+      const expectedErrorPath = join(expectedDir, 'error.json');
+      const hasExpectedOutput = existsSync(expectedPath);
+      const hasExpectedError = existsSync(expectedErrorPath);
+      if (hasExpectedOutput && hasExpectedError) {
+        issues.push({
+          field: `examples/${exampleName}/expected`,
+          message:
+            'expected/output.json and expected/error.json are mutually exclusive (pick success-expected OR failure-expected).',
+        });
+      }
+      if (hasExpectedOutput) {
         let parsed: unknown;
         try {
           parsed = JSON.parse(readFileSync(expectedPath, 'utf-8'));
@@ -243,11 +253,40 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
           });
         }
       }
+      if (hasExpectedError) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(readFileSync(expectedErrorPath, 'utf-8'));
+        } catch {
+          issues.push({
+            field: `examples/${exampleName}/expected/error.json`,
+            message: 'expected/error.json is not valid JSON.',
+          });
+          continue;
+        }
+        // Delegate to the shared schema so the "at least one of code,
+        // messageContains, step" rule and any future constraints (range
+        // checks, length limits) live in exactly one place rather than
+        // drifting between the CLI and the server importer.
+        const result = ExpectedErrorSchema.safeParse(parsed);
+        if (!result.success) {
+          for (const err of result.error.issues) {
+            issues.push({
+              field: `examples/${exampleName}/expected/error.json${
+                err.path.length > 0 ? `:${err.path.join('.')}` : ''
+              }`,
+              message: err.message,
+            });
+          }
+        }
+      }
 
       // expected/<docKey>/<file> — symmetric with input/<argName>/<file>.
       // Each <docKey> folder becomes an `expectedDocuments` entry on import.
+      // `output.json` is the success-expected envelope; `error.json` is the
+      // failure-expected assertion (mutually exclusive with output.json).
       for (const entry of readdirSync(expectedDir)) {
-        if (entry === 'output.json') continue;
+        if (entry === 'output.json' || entry === 'error.json') continue;
         const sub = join(expectedDir, entry);
         const field = `examples/${exampleName}/expected/${entry}`;
         let isDir: boolean;
@@ -264,7 +303,7 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
           issues.push({
             field,
             message:
-              'Entries under expected/ must be `output.json` or a doc folder (`expected/<docKey>/<file>`).',
+              'Entries under expected/ must be `output.json`, `error.json`, or a doc folder (`expected/<docKey>/<file>`).',
           });
           continue;
         }

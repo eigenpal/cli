@@ -140,7 +140,7 @@ See `reference/step-types.md` for the full catalog. Categories:
 - `action.*` — side-effectful operations (HTTP, email, connectors)
 - `ai.*` — model-backed processing (parse, extract, classify, judge)
 - `transform.*` — deterministic data transforms (script, template, merge)
-- `control.*` — flow control (if, for-each, parallel-map)
+- `control.*` — flow control (if, for-each, parallel-map, fail)
 
 When in doubt, use `eigenpal workflow step-type get <type>` — it returns
 the exact JSON Schema for the step's `config` + `output` so you know
@@ -486,5 +486,6 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `description` | string | no |  |  |
 | `required` | boolean | no | `true` |  |
 | `default` | unknown | no |  |  |
+| `values` | array<string> | no |  |  |
 | `items` | object | no |  |  |
 <!-- GENERATED:WORKFLOW_REFERENCE END -->

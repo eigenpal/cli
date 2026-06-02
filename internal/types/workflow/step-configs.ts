@@ -264,6 +264,71 @@ export const AiSplitOutputSchema = z.object({
     .describe('Sections found in the document, in page order. Absent sections are omitted.'),
 });
 
+/**
+ * ai.classify - Classify a document or text into one of a fixed label set.
+ *
+ * Customizable prompt + pre-selected enum. Under the hood the worker
+ * synthesizes an extract schema with `label: enum(labels[].name)` and routes
+ * through the existing ai.extract LLM pipeline — same provider cascade, same
+ * structured-output guarantees, no extra LLM logic to maintain.
+ */
+export const AiClassifyConfigSchema = z.object({
+  input: z
+    .string()
+    .describe(
+      'Template expression for the text to classify. Typically the output of ai.parse, e.g. "{{ steps.parse.output.text }}".'
+    ),
+  labels: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .min(1)
+          .describe(
+            'The label value returned in output.label. Keep it short and stable (used in downstream conditions).'
+          ),
+        description: z
+          .string()
+          .optional()
+          .describe('What documents fall into this label. Fed to the LLM as guidance.'),
+      })
+    )
+    .min(2)
+    .describe('Allowed labels. The LLM is constrained to pick exactly one of these names.'),
+  prompt: z
+    .string()
+    .optional()
+    .describe(
+      'Custom classification instructions appended to the system prompt. Use to clarify edge cases or emphasize evidence the model should weigh.'
+    ),
+  provider: z
+    .string()
+    .optional()
+    .describe(
+      'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted.'
+    ),
+  model: z.string().optional().describe('Model override (advanced)'),
+  maxInputTokens: z
+    .number()
+    .int()
+    .optional()
+    .describe('Max input tokens. Truncates input text when exceeded. Omit for no limit.'),
+});
+
+export const AiClassifyOutputSchema = z.object({
+  label: z
+    .string()
+    .describe(
+      'The selected label name (one of the configured labels). Compare against literal strings to gate downstream steps.'
+    ),
+  confidence: z
+    .enum(['low', 'medium', 'high'])
+    .describe(
+      'LLM confidence in the classification. Coarse enum — numeric scores cluster meaninglessly at 0.85-0.95.'
+    ),
+  reason: z.string().describe('Short justification for the chosen label — useful for debugging.'),
+});
+
 // ============================================================================
 // Transform Step Schemas
 // ============================================================================
@@ -939,6 +1004,44 @@ export const ControlBlockOutputSchema = z
   .record(z.string(), z.unknown())
   .describe("Output from block's declared output mapping");
 
+/**
+ * control.fail - Terminate the workflow with a typed status code + message.
+ *
+ * When `condition` is empty, the step always fails when reached. When set,
+ * the condition (LiquidJS) is evaluated against the current scope; truthy
+ * → fail with the given code+message, falsy → skip and continue. The
+ * executor catches the typed `WorkflowFailedError`, persists `{code, message}`
+ * as JSON in the `executions.error` column, and the sync HTTP API surfaces
+ * `code` as the response status.
+ */
+export const ControlFailConfigSchema = z.object({
+  condition: z
+    .string()
+    .optional()
+    .describe(
+      'Optional LiquidJS expression. When set, the step only fails if this evaluates truthy; when omitted, it always fails when reached (compose with control.if for legacy gating).'
+    ),
+  statusCode: z
+    .number()
+    .int()
+    .min(400)
+    .max(599)
+    .default(422)
+    .describe(
+      'HTTP-style status code returned to the caller (sync runs) and persisted on the execution. Default 422 (Unprocessable Entity).'
+    ),
+  message: z
+    .string()
+    .min(1)
+    .describe(
+      'Human-readable failure message. Supports template expressions, e.g. "Document classified as {{ steps.classify.output.label }}".'
+    ),
+});
+
+export const ControlFailOutputSchema = z
+  .never()
+  .describe('control.fail never produces output — it terminates the workflow when triggered.');
+
 // ============================================================================
 // Step Schema Registry
 // ============================================================================
@@ -984,6 +1087,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Split a parsed document into named sections using an LLM. Consumes ai.parse output; emits per-section page ranges and text ready for downstream ai.extract via control.parallel_map.',
     configSchema: AiSplitConfigSchema,
     outputSchema: AiSplitOutputSchema,
+    configInWith: true,
+  },
+  'ai.classify': {
+    type: 'ai.classify',
+    category: 'ai',
+    name: 'Classify',
+    description:
+      'Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.',
+    configSchema: AiClassifyConfigSchema,
+    outputSchema: AiClassifyOutputSchema,
     configInWith: true,
   },
 
@@ -1186,6 +1299,18 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: ControlBlockOutputSchema,
     configInWith: false,
   },
+  'control.fail': {
+    type: 'control.fail',
+    category: 'control',
+    name: 'Fail',
+    description:
+      'Terminate the workflow with a typed status code + message. With an optional condition, only fails when the condition is truthy; otherwise always fails when reached. Pair with ai.classify or any prior step to fail fast on bad inputs.',
+    configSchema: ControlFailConfigSchema,
+    outputSchema: ControlFailOutputSchema,
+    // Step-level config like every other control.* step — fields sit at the
+    // step root, not inside `step.with`.
+    configInWith: false,
+  },
 };
 
 // ============================================================================
@@ -1332,6 +1457,8 @@ export type AiExtractConfig = z.infer<typeof AiExtractConfigSchema>;
 export type AiExtractOutput = z.infer<typeof AiExtractOutputSchema>;
 export type AiSplitConfig = z.infer<typeof AiSplitConfigSchema>;
 export type AiSplitOutput = z.infer<typeof AiSplitOutputSchema>;
+export type AiClassifyConfig = z.infer<typeof AiClassifyConfigSchema>;
+export type AiClassifyOutput = z.infer<typeof AiClassifyOutputSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
 export type TransformRemoveConfig = z.infer<typeof TransformRemoveConfigSchema>;
 export type TransformCombineConfig = z.infer<typeof TransformCombineConfigSchema>;
@@ -1356,3 +1483,4 @@ export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;
 export type ControlWaitConfig = z.infer<typeof ControlWaitConfigSchema>;
 export type ControlApprovalConfig = z.infer<typeof ControlApprovalConfigSchema>;
 export type ControlBlockConfig = z.infer<typeof ControlBlockConfigSchema>;
+export type ControlFailConfig = z.infer<typeof ControlFailConfigSchema>;

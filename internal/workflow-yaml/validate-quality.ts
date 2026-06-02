@@ -22,7 +22,8 @@ export interface SchemaQualityWarning {
     | 'categorical-missing-enum'
     | 'untyped-object'
     | 'untyped-array-items'
-    | 'weak-script-return';
+    | 'weak-script-return'
+    | 'unknown-step-reference';
   /** Dotted path into the workflow, e.g. `steps.2.with.schema.properties.category`. */
   field: string;
   /** Human-readable explanation. */
@@ -84,7 +85,167 @@ export function validateSchemaQuality(workflow: WorkflowDefinition): SchemaQuali
     const basePath = `steps.${i}`;
     walkStep(step, basePath, warnings);
   }
+  validateStepReferences(workflow, warnings);
   return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// Template step-reference validation.
+//
+// Catches `{{ steps.<name>.output.<field> }}` references to steps the
+// template can't actually see at runtime. Mirrors the UI's scope rules
+// (`packages/app/src/components/workflow-builder/utils/step-path.ts`):
+//
+//   - A step at position N can reference its prior siblings in the same
+//     container plus all ancestors (steps preceding each parent container).
+//   - Steps nested inside a sibling control container (`control.parallel`
+//     branches, `control.parallel_map`/`control.foreach` bodies, `control.if`
+//     branches) are NOT addressable from outside that container — their
+//     outputs live in isolated or only-last-iteration-wins child scopes.
+//
+// Without this check, a bad reference ships at push time and renders
+// `undefined` silently at runtime — same class of bug as the workflow-pull
+// 0-byte file.
+// ---------------------------------------------------------------------------
+
+const STEP_NAME_RE = /\bsteps\.([a-zA-Z0-9_-]+)/g;
+
+function validateStepReferences(workflow: WorkflowDefinition, out: SchemaQualityWarning[]): void {
+  walkContainer(workflow.steps, new Set<string>(), 'steps', out);
+}
+
+function walkContainer(
+  steps: WorkflowDefinition['steps'],
+  ancestorsInScope: ReadonlySet<string>,
+  pathPrefix: string,
+  out: SchemaQualityWarning[]
+): void {
+  // Names addressable BEFORE each step runs. Mutates as we walk siblings.
+  const available = new Set(ancestorsInScope);
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (!step) continue;
+    const stepPath = `${pathPrefix}.${i}`;
+    validateStepRefs(step, stepPath, available, out);
+    // Recurse into nested containers with the scope as it was BEFORE this
+    // step "ran" — the container step itself is not yet in scope inside its
+    // own children, and sibling control containers are isolated runtime
+    // scopes anyway.
+    descendNestedContainers(step, stepPath, available, out);
+    // After the step finishes, subsequent siblings can reference it.
+    available.add(step.name);
+  }
+}
+
+function descendNestedContainers(
+  step: WorkflowDefinition['steps'][number],
+  stepPath: string,
+  ancestorsInScope: ReadonlySet<string>,
+  out: SchemaQualityWarning[]
+): void {
+  if (step.type === 'control.parallel') {
+    const branches = (step as unknown as { branches?: Array<{ steps?: unknown }> }).branches ?? [];
+    for (let b = 0; b < branches.length; b++) {
+      const branchSteps = branches[b]?.steps;
+      if (Array.isArray(branchSteps)) {
+        walkContainer(
+          branchSteps as WorkflowDefinition['steps'],
+          ancestorsInScope,
+          `${stepPath}.branches.${b}.steps`,
+          out
+        );
+      }
+    }
+    return;
+  }
+  if (step.type === 'control.foreach' || step.type === 'control.parallel_map') {
+    const nested = (step as unknown as { steps?: unknown }).steps;
+    if (Array.isArray(nested)) {
+      walkContainer(
+        nested as WorkflowDefinition['steps'],
+        ancestorsInScope,
+        `${stepPath}.steps`,
+        out
+      );
+    }
+    return;
+  }
+  if (step.type === 'control.if') {
+    const ifStep = step as unknown as { then?: unknown; else?: unknown };
+    if (Array.isArray(ifStep.then)) {
+      walkContainer(
+        ifStep.then as WorkflowDefinition['steps'],
+        ancestorsInScope,
+        `${stepPath}.then`,
+        out
+      );
+    }
+    if (Array.isArray(ifStep.else)) {
+      walkContainer(
+        ifStep.else as WorkflowDefinition['steps'],
+        ancestorsInScope,
+        `${stepPath}.else`,
+        out
+      );
+    }
+  }
+}
+
+/** Scan every Liquid-expression field on a step for `steps.<name>` references
+ *  and warn when `<name>` isn't in the current scope. */
+function validateStepRefs(
+  step: WorkflowDefinition['steps'][number],
+  stepPath: string,
+  inScope: ReadonlySet<string>,
+  out: SchemaQualityWarning[]
+): void {
+  // Fields that carry Liquid expressions per BaseStepSchema + per-type schemas.
+  // `with` is the bag of step config (template strings nested arbitrarily);
+  // `if` / `condition` / `items` are top-level template strings; `inputs` on
+  // block steps mirrors `with`.
+  const s = step as unknown as Record<string, unknown>;
+  scanValue(s.if, `${stepPath}.if`, inScope, out);
+  scanValue(s.condition, `${stepPath}.condition`, inScope, out);
+  scanValue(s.items, `${stepPath}.items`, inScope, out);
+  scanValue(s.with, `${stepPath}.with`, inScope, out);
+  scanValue(s.inputs, `${stepPath}.inputs`, inScope, out);
+}
+
+function scanValue(
+  value: unknown,
+  path: string,
+  inScope: ReadonlySet<string>,
+  out: SchemaQualityWarning[]
+): void {
+  if (typeof value === 'string') {
+    // Only scan strings that contain a Liquid expression delimiter. Stops
+    // descriptions / JSON-schema prose / free-form `with.*` strings that
+    // mention "steps.foo" in passing from tripping false-positive warnings.
+    if (!value.includes('{{') && !value.includes('{%')) return;
+    for (const match of value.matchAll(STEP_NAME_RE)) {
+      const name = match[1];
+      if (!inScope.has(name)) {
+        out.push({
+          code: 'unknown-step-reference',
+          field: path,
+          message: `references \`steps.${name}\` but no step named "${name}" is in scope here. Steps nested inside control.parallel branches, control.parallel_map/control.foreach bodies, and control.if branches are not addressable from outside the container — reach inner outputs through the container's aggregate output instead.`,
+          hint: `Use the container step's aggregate output, e.g. \`steps.<parallel>.output.<branch>.${name}.<field>\` or \`steps.<foreach>.output.items[i].${name}.<field>\`. See the "Control containers" section of \`step-types.md\`.`,
+        });
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      scanValue(value[i], `${path}.${i}`, inScope, out);
+    }
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      scanValue(v, `${path}.${k}`, inScope, out);
+    }
+  }
 }
 
 function walkStep(

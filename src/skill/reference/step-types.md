@@ -21,11 +21,11 @@ implement at runtime. Server-side validation errors point you here.
 
 ## Categories (high-level map)
 
-- `ai.*` — model-backed processing (parse, extract). Cost + latency depend on the model.
+- `ai.*` — model-backed processing (parse, extract, classify). Cost + latency depend on the model.
 - `transform.*` — deterministic data transforms (set, remove, combine, split, merge,
   script, template, pdf-embed, xlsx-to-json). WASM sandboxed where applicable.
 - `action.*` — external side effects (HTTP, invoke another workflow, website reader).
-- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, approval, block).
+- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, approval, block, fail).
 
 The full per-type catalog with field tables is auto-generated below from
 `STEP_SCHEMAS`. The high-level map above tells you which family you want;
@@ -33,22 +33,24 @@ the catalog tells you what fields it takes.
 
 ## When to reach for what
 
-| Use case                      | Step                                              |
-| ----------------------------- | ------------------------------------------------- |
-| Read a PDF / DOCX / image     | `ai.parse`                                        |
-| Pull a typed object from text | `ai.extract` with `config.schema`                 |
-| Sum / filter / regex          | `transform.script` (NOT Liquid)                   |
-| Render a DOCX template        | `transform.template`                              |
-| Convert XLSX to JSON          | `transform.xlsx-to-json`                          |
-| Merge or combine objects      | `transform.combine` / `transform.merge`           |
-| Conditional execution         | `if:` on the step (Liquid) or `control.if`        |
-| Map over an input array       | `forEach:` on the step or `control.foreach`       |
-| Concurrent map over an array  | `control.parallel_map`                            |
-| Independent parallel branches | `control.parallel`                                |
-| Pause for human approval      | `control.approval`                                |
-| External HTTP call            | `action.http`                                     |
-| Call another workflow         | `action.invoke-workflow`                          |
-| Fetch a webpage as markdown   | `action.website-reader`                           |
+| Use case                          | Step                                              |
+| --------------------------------- | ------------------------------------------------- |
+| Read a PDF / DOCX / image         | `ai.parse`                                        |
+| Pull a typed object from text     | `ai.extract` with `config.schema`                 |
+| Pick one label from a fixed set   | `ai.classify` with `config.labels`                |
+| Reject bad inputs with a 4xx code | `control.fail` (often after `ai.classify`)        |
+| Sum / filter / regex              | `transform.script` (NOT Liquid)                   |
+| Render a DOCX template            | `transform.template`                              |
+| Convert XLSX to JSON              | `transform.xlsx-to-json`                          |
+| Merge or combine objects          | `transform.combine` / `transform.merge`           |
+| Conditional execution             | `if:` on the step (Liquid) or `control.if`        |
+| Map over an input array           | `forEach:` on the step or `control.foreach`       |
+| Concurrent map over an array      | `control.parallel_map`                            |
+| Independent parallel branches     | `control.parallel`                                |
+| Pause for human approval          | `control.approval`                                |
+| External HTTP call                | `action.http`                                     |
+| Call another workflow             | `action.invoke-workflow`                          |
+| Fetch a webpage as markdown       | `action.website-reader`                           |
 
 ## Liquid vs `transform.script`
 
@@ -100,6 +102,247 @@ $ eigenpal workflow step-type get ai.extract | jq '.outputSchema'
 
 Reference user-supplied schema fields the same way:
 `{{ steps.extract.output.extracted.invoiceNumber }}`.
+
+## Control containers — nested step shape and scoping
+
+`control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`,
+and `control.block` contain nested steps. The auto-generated catalog below
+can't render that shape, so the YAML form lives here. Same for the scoping
+rules — important because the runtime treats nested steps differently from
+top-level ones, and getting the access path wrong silently returns
+`undefined` (no error).
+
+### `control.parallel` — independent branches
+
+Runs each branch concurrently. Use when several pieces of work share input
+but don't depend on each other.
+
+```yaml
+- name: enrich
+  type: control.parallel
+  branches:
+    - name: legal
+      steps:
+        - name: extract-clauses
+          type: ai.extract
+          with:
+            input: '{{ steps.parse.output.markdown }}'
+            schema: { clauses: { type: array, items: { type: string } } }
+    - name: financial
+      steps:
+        - name: extract-totals
+          type: ai.extract
+          with:
+            input: '{{ steps.parse.output.markdown }}'
+            schema: { total: { type: number } }
+```
+
+**Access the output:** branch step outputs are stored under the parent
+parallel step keyed by branch name, then by inner step name. There is no
+flat top-level entry for branch-internal steps.
+
+```liquid
+{{ steps.enrich.output.legal.extract-clauses.clauses }}
+{{ steps.enrich.output.financial.extract-totals.total }}
+```
+
+**Scope inside a branch:** top-level steps that ran before the parallel,
+plus earlier siblings in the same branch. **Other branches' steps are
+NOT visible** — each branch runs in an isolated child scope.
+
+```liquid
+# Inside branch `legal`, second step:
+{{ steps.parse.output.markdown }}              # ancestor: visible
+{{ steps.extract-clauses.output.clauses }}     # sibling: visible
+{{ steps.extract-totals.output.total }}        # other branch: UNDEFINED
+```
+
+### `control.parallel_map` — fan-out over an array
+
+Runs the inner step block concurrently for each item, up to `concurrency`.
+
+```yaml
+- name: process-pages
+  type: control.parallel_map
+  items: '{{ steps.split.output.pages }}'
+  as: page
+  indexAs: i           # optional
+  concurrency: 5       # default 5, max 50
+  steps:
+    - name: extract-fields
+      type: ai.extract
+      with:
+        input: '{{ page.text }}'
+        schema: { fields: { type: object } }
+```
+
+**Access the output:** iteration results are returned as an array in the
+original input order under the parent step's `items` field.
+
+```liquid
+{{ steps.process-pages.output.items[0].extract-fields.fields }}
+{{ steps.process-pages.output.count }}            # number of completed iterations
+{{ steps.process-pages.output.totalIterations }}
+```
+
+`steps.extract-fields.output.fields` (the flat form) is **not** addressable
+from outside the parallel_map.
+
+**Multi-step iterations only key the LAST step's output into `items[i]`.**
+If your iteration body has steps `[parse, extract]`, each `items[i]` is
+`{ extract: <extract output> }` — `parse`'s output is gone. To preserve
+intermediate fields, end the body with a `transform.script` that returns
+the combined shape:
+
+```yaml
+steps:
+  - name: parse
+    type: ai.parse
+    with: { ... }
+  - name: extract
+    type: ai.extract
+    with: { input: '{{ steps.parse.output.markdown }}', ... }
+  - name: combine
+    type: transform.script
+    with:
+      inputs:
+        parsed: '{{ steps.parse.output }}'
+        extracted: '{{ steps.extract.output }}'
+      function: |
+        function script(parsed, extracted): { parsed: any; extracted: any } {
+          return { parsed, extracted };
+        }
+```
+
+Now `items[i].combine.parsed` / `items[i].combine.extracted` both survive.
+
+### `control.foreach` — sequential loop over an array
+
+Same shape as `parallel_map` minus `concurrency`; iterations run in order.
+Use when each iteration depends on the previous, or when concurrency would
+cause downstream rate limits.
+
+```yaml
+- name: per-row
+  type: control.foreach
+  items: '{{ steps.fetch.output.rows }}'
+  as: row
+  steps:
+    - name: persist
+      type: action.http-request
+      with:
+        method: POST
+        url: 'https://example.com/api/rows/{{ row.id }}'
+        body: '{{ row }}'
+```
+
+**Access the output:** same shape as parallel_map — an `items[]` array of
+per-iteration results, in iteration order. Same "only the LAST inner step
+is keyed into `items[i]`" rule applies (use a trailing `transform.script`
+to preserve intermediate outputs).
+
+> ⚠️ Foreach does NOT isolate scopes — the last iteration's inner step
+> outputs technically persist on the top-level `steps` map and `steps.<inner>.output.x`
+> resolves at runtime. That's an only-the-last-row footgun; the autocomplete
+> hides these names and you should treat `steps.<foreach>.output.items[]`
+> as the only correct access.
+
+### `control.if` — conditional branch
+
+```yaml
+- name: route
+  type: control.if
+  condition: '{{ input.priority == "high" }}'
+  then:
+    - name: rush-extract
+      type: ai.extract
+      with: { ... }
+  else:
+    - name: normal-extract
+      type: ai.extract
+      with: { ... }
+```
+
+**Access the output:** the `if` step's output is
+
+```ts
+{
+  condition: boolean,                       // evaluated condition
+  branch: 'then' | 'else',                  // which branch ran
+  result: <last inner step's output> | null // null when chosen branch is empty
+}
+```
+
+The canonical way to consume the result is through the if step itself:
+
+```liquid
+{{ steps.route.output.branch }}             # "then" or "else"
+{{ steps.route.output.result.foo }}         # field from the branch's last step
+```
+
+`steps.<innerName>.output` references from outside the `if` also resolve
+at runtime (unlike `parallel`/`parallel_map`, `if` does not isolate
+scopes), but the template breaks the moment the OTHER branch runs. Use
+`steps.<if>.output.result` so the access is branch-agnostic — or compute
+the final shape in a trailing `transform.script` that handles both cases.
+
+### `control.block` — call a reusable workflow block
+
+```yaml
+- name: invoice-flow
+  type: control.block
+  blockName: parse-invoice          # other workflow's `name:`
+  inputs:
+    contract: '{{ input.contract }}'
+```
+
+**Access the output:** the block's declared output fields are exposed as
+top-level keys under `steps.<this-step>.output`. Block-internal steps are
+not visible — the block runs in an isolated scope.
+
+## Classify-and-fail pattern
+
+`ai.classify` + `control.fail` together let a workflow reject bad inputs
+fast with a typed HTTP-style status code that callers (and evals) can
+match against. The classifier picks one label from a closed set; the
+fail step terminates the run when the label is one you don't want to
+process.
+
+```yaml
+- name: parse
+  type: ai.parse
+  with:
+    input: '{{ input.document }}'
+
+- name: classify
+  type: ai.classify
+  with:
+    input: '{{ steps.parse.output.text }}'
+    labels:
+      - name: invoice
+        description: A vendor invoice with line items and totals.
+      - name: contract
+        description: A multi-page contract or agreement.
+      - name: other
+        description: Anything that is not an invoice or contract.
+
+- name: reject-unsupported
+  type: control.fail
+  condition: '{{ steps.classify.output.label == "other" }}'
+  statusCode: 422
+  message: 'Unsupported document: {{ steps.classify.output.reason }}'
+```
+
+> `control.fail` config is step-level (no `with:`), matching every other
+> `control.*` step. `condition`, `statusCode`, and `message` sit directly
+> on the step node.
+
+The synchronous run endpoint surfaces the `statusCode` as the HTTP
+response status; async runs persist `{ code, message, step }` to
+`executions.error` so the eval scorer can match against
+`expected/error.json` (see `reference/dataset-format.md`). When
+`condition` is omitted, `control.fail` always fails when reached, so
+compose with `control.if` for legacy gating.
 
 <!-- GENERATED:STEP_CATALOG START -->
 ## Full catalog
@@ -172,6 +415,29 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `splits` | array<object> | yes |  | Sections found in the document, in page order. Absent sections are omitted. |
+
+#### `ai.classify` — Classify
+
+Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | Template expression for the text to classify. Typically the output of ai.parse, e.g. "{{ steps.parse.output.text }}". |
+| `labels` | array<object> | yes |  | Allowed labels. The LLM is constrained to pick exactly one of these names. |
+| `prompt` | string | no |  | Custom classification instructions appended to the system prompt. Use to clarify edge cases or emphasize evidence the model should weigh. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted. |
+| `model` | string | no |  | Model override (advanced) |
+| `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text when exceeded. Omit for no limit. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `label` | string | yes |  | The selected label name (one of the configured labels). Compare against literal strings to gate downstream steps. |
+| `confidence` | `"low"` \| `"medium"` \| `"high"` | yes |  | LLM confidence in the classification. Coarse enum — numeric scores cluster meaninglessly at 0.85-0.95. |
+| `reason` | string | yes |  | Short justification for the chosen label — useful for debugging. |
 
 ### Transform steps — deterministic data transforms
 
@@ -568,4 +834,20 @@ Execute a reusable block workflow inline with input/output mapping
 **Output:** `record<string, unknown>`
 
 > Output from block's declared output mapping
+
+#### `control.fail` — Fail
+
+Terminate the workflow with a typed status code + message. With an optional condition, only fails when the condition is truthy; otherwise always fails when reached. Pair with ai.classify or any prior step to fail fast on bad inputs.
+
+**Config** (at step level):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `condition` | string | no |  | Optional LiquidJS expression. When set, the step only fails if this evaluates truthy; when omitted, it always fails when reached (compose with control.if for legacy gating). |
+| `statusCode` | integer | no | `422` | HTTP-style status code returned to the caller (sync runs) and persisted on the execution. Default 422 (Unprocessable Entity). |
+| `message` | string | yes |  | Human-readable failure message. Supports template expressions, e.g. "Document classified as {{ steps.classify.output.label }}". |
+
+**Output:** `unknown`
+
+> control.fail never produces output — it terminates the workflow when triggered.
 <!-- GENERATED:STEP_CATALOG END -->

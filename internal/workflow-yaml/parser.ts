@@ -1,4 +1,9 @@
-import { WorkflowDefinitionSchema, type WorkflowDefinition } from '@eigenpal/types';
+import {
+  WorkflowDefinitionSchema,
+  getStepSchema,
+  type Step,
+  type WorkflowDefinition,
+} from '@eigenpal/types';
 import { parse as parseYaml } from 'yaml';
 import { upgradeWorkflow } from './upgrades';
 
@@ -89,7 +94,98 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
     );
   }
 
+  // Per-step config validation: the base WorkflowDefinitionSchema only
+  // validates the step envelope (`name`, `type`, `with: Record`). For step
+  // types with `configInWith: true` (ai.*, transform.*, action.*) the
+  // per-type config schema (e.g. AiClassifyConfigSchema.labels.min(2)) is
+  // never enforced at push time — only at runtime by the worker, which
+  // means a malformed workflow can be pushed and only fails when invoked.
+  // Run the per-step schemas here so push-time catches what runtime would.
+  const configIssues = validateStepConfigsRecursive(result.data.steps, ['steps']);
+  if (configIssues.length > 0) {
+    const errorMessages = configIssues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
+    throw new WorkflowValidationError(
+      `Invalid workflow definition: ${errorMessages}`,
+      configIssues
+    );
+  }
+
   return result.data;
+}
+
+/**
+ * Walk every step (and nested step) in the workflow and validate its
+ * config against the registered per-type schema.
+ *
+ * `configInWith: true` steps store their config under `step.with`, so we
+ * safeParse `step.with` against the type's `configSchema`. `configInWith:
+ * false` steps put their fields at the step root and are already validated
+ * by the discriminated-union step schema (`FailStepSchema`, `IfStepSchema`,
+ * etc.) — we skip them here to avoid double-validating BaseStep fields.
+ */
+function validateStepConfigsRecursive(
+  steps: Step[],
+  pathPrefix: (string | number)[]
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const stepPath: (string | number)[] = [...pathPrefix, i];
+
+    const schemaDef = getStepSchema(step.type);
+    if (schemaDef?.configInWith) {
+      const cfg = (step as { with?: unknown }).with ?? {};
+      const cfgResult = schemaDef.configSchema.safeParse(cfg);
+      if (!cfgResult.success) {
+        for (const err of cfgResult.error.issues) {
+          issues.push({
+            path: [
+              ...stepPath,
+              'with',
+              ...err.path.filter((p): p is string | number => typeof p !== 'symbol'),
+            ],
+            message: err.message,
+            code: err.code,
+          });
+        }
+      }
+    }
+
+    // Recurse into nested steps for control-flow types. The discriminated
+    // union exposes these as direct properties on the step; we widen with
+    // a structural check to avoid coupling this helper to every future
+    // control-flow variant.
+    const anyStep = step as Step & {
+      then?: Step[];
+      else?: Step[];
+      steps?: Step[];
+      branches?: Array<{ name: string; steps: Step[] }>;
+    };
+    if (Array.isArray(anyStep.then)) {
+      issues.push(...validateStepConfigsRecursive(anyStep.then, [...stepPath, 'then']));
+    }
+    if (Array.isArray(anyStep.else)) {
+      issues.push(...validateStepConfigsRecursive(anyStep.else, [...stepPath, 'else']));
+    }
+    if (Array.isArray(anyStep.steps)) {
+      issues.push(...validateStepConfigsRecursive(anyStep.steps, [...stepPath, 'steps']));
+    }
+    if (Array.isArray(anyStep.branches)) {
+      for (let j = 0; j < anyStep.branches.length; j++) {
+        issues.push(
+          ...validateStepConfigsRecursive(anyStep.branches[j].steps, [
+            ...stepPath,
+            'branches',
+            j,
+            'steps',
+          ])
+        );
+      }
+    }
+  }
+
+  return issues;
 }
 
 /**
@@ -145,6 +241,16 @@ export function validateWorkflow(obj: unknown): ParseResult {
       success: false,
       error: `Invalid workflow definition: ${errorMessages}`,
       validationErrors: validationIssues,
+    };
+  }
+
+  const configIssues = validateStepConfigsRecursive(result.data.steps, ['steps']);
+  if (configIssues.length > 0) {
+    const errorMessages = configIssues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
+    return {
+      success: false,
+      error: `Invalid workflow definition: ${errorMessages}`,
+      validationErrors: configIssues,
     };
   }
 

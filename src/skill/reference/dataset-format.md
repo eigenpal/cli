@@ -27,19 +27,28 @@ dataset/
     │   │       ├── Contract_2026.pdf
     │   │       └── Appendix.pdf
     │   ├── expected/
-    │   │   ├── output.json                 OPTIONAL — raw ground truth JSON
+    │   │   ├── output.json                 OPTIONAL — raw ground truth JSON (success-expected)
     │   │   └── generated_invoice/          OPTIONAL — expected file output
     │   │       └── Invoice.docx
     │   └── meta.json                       OPTIONAL — { rowOrder?, annotation?, overrides? }
     │
-    └── invoice-bar/
-        └── input/
-            └── arguments.json              { amount: 42 }
+    ├── invoice-bar/
+    │   └── input/
+    │       └── arguments.json              { amount: 42 }
+    │
+    └── unsupported-format/
+        ├── input/
+        │   └── arguments.json
+        └── expected/
+            └── error.json                  OPTIONAL — failure-expected, mutually exclusive with output.json
 ```
 
-The `expected/` subfolder mirrors `input/` exactly — `output.json` is
+The `expected/` subfolder mirrors `input/` exactly. `output.json` is
 the scalar/object data ground truth, and any expected file outputs go
 in `expected/<docKey>/<file>` folders (one folder per output path).
+`error.json` is the failure-expected counterpart (see "Failure-expected
+examples" below) and cannot coexist with `output.json` for the same
+example.
 
 ## Rules (every one is enforced server-side at import)
 
@@ -66,9 +75,29 @@ in `expected/<docKey>/<file>` folders (one folder per output path).
   `{"contract": "..."}` AND `input/contract/file.pdf` exists, import
   fails with `code: argument_name_collision`.
 - **`expected/output.json`** is OPTIONAL. When present, it must be a
-  JSON object that mirrors your workflow's `output:` shape 1:1 — no
+  JSON object that mirrors your workflow's `output:` shape 1:1, no
   envelope, no wrapper. A scalar/array at the top level is rejected
-  with `code: invalid_expected_output`.
+  with `code: invalid_expected_output`. Mutually exclusive with
+  `expected/error.json` (see below).
+- **`expected/error.json`** is OPTIONAL and marks the example as
+  failure-expected (the workflow is supposed to terminate via
+  `control.fail`). Must be a JSON object with at least one of
+  `{ code, messageContains, step }`; an empty object is rejected (it
+  would match any failure). When set, the scorer matches the example's
+  terminal `executions.error` envelope against the fields you specify
+  and ignores `expected/output.json` entirely. `code` is the HTTP-style
+  status code from `control.fail`'s `statusCode`; `messageContains` is a
+  case-sensitive substring of the failure message; `step` is the name
+  of the `control.fail` step expected to fire.
+
+  ```json
+  // expected/error.json
+  {
+    "code": 422,
+    "messageContains": "unsupported document type",
+    "step": "reject-unsupported"
+  }
+  ```
 
   > **Note:** the importer is idempotent and accepts both bare objects and
   > pre-wrapped `{ data: { ... } }` forms; bare is preferred.
@@ -145,9 +174,34 @@ The server materializes:
 
 Each file is uploaded to S3 with a fresh `fileId`; the original
 filename is preserved on the `files` row and shows up in the dashboard.
-The `expectedOutput` envelope (`{ data?, expectedDocuments? }`) is
+The `expectedOutput` envelope (`{ data?, expectedDocuments?, error? }`) is
 internal storage shape — your dataset folder stays clean (raw
-`output.json` + per-docKey folders).
+`output.json` or `error.json`, plus per-docKey folders).
+
+## Failure-expected examples
+
+When a workflow uses `control.fail` to reject bad inputs, you usually
+want to test both paths: happy-path examples carry `expected/output.json`
+and assert the workflow completed; rejection examples carry
+`expected/error.json` and assert the workflow failed with the right
+status code.
+
+```
+examples/
+├── valid-invoice/
+│   ├── input/...
+│   └── expected/output.json          # success-expected
+└── unsupported-format/
+    ├── input/...
+    └── expected/error.json           # failure-expected
+                                      # { "code": 422, "step": "reject-unsupported" }
+```
+
+The two files are mutually exclusive for the same example (an example
+is either a success-case or a failure-case, never both). The `exact-diff`
+evaluator branches on the envelope shape and reports a clean
+`expectedFailureButSucceeded` or `actualWasUntypedError` reason when
+the actual run doesn't match the expectation.
 
 ## Validate before pushing
 

@@ -120,7 +120,8 @@ function printJson(value: unknown): void {
 /** Loose row shapes — list endpoints aren't strongly typed in the CLI. */
 interface WorkflowListRow {
   id: string;
-  currentVersion?: { version?: string; definition?: { name?: string } } | null;
+  name?: string | null;
+  version?: string | null;
   updatedAt?: string | null;
   [k: string]: unknown;
 }
@@ -346,16 +347,8 @@ function registerWorkflowCoreCommands(parent: Command): void {
           raw,
           [
             { key: 'id', header: 'id' },
-            {
-              key: 'currentVersion',
-              header: 'name',
-              format: (_v, row) => row.currentVersion?.definition?.name ?? '-',
-            },
-            {
-              key: 'currentVersion',
-              header: 'version',
-              format: (_v, row) => row.currentVersion?.version ?? '-',
-            },
+            { key: 'name', header: 'name', format: (v) => (typeof v === 'string' ? v : '-') },
+            { key: 'version', header: 'version', format: (v) => (typeof v === 'string' ? v : '-') },
             { key: 'updatedAt', header: 'updatedAt', format: formatTimestamp },
           ],
           { ...opts, entityLabel: 'workflow' }
@@ -372,10 +365,17 @@ function registerWorkflowCoreCommands(parent: Command): void {
     action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
       const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
       const result = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
-        currentVersion?: { yamlContent?: string };
+        yamlContent?: string | null;
       };
-      const yaml = result?.currentVersion?.yamlContent ?? '';
-      await writeOrPrint(opts.out, yaml);
+      // No published version → no YAML to pull. Fail loudly rather than
+      // silently writing an empty file (the old behavior masked a server
+      // regression where the picker dropped this field).
+      if (typeof result?.yamlContent !== 'string' || result.yamlContent.length === 0) {
+        throw new Error(
+          `Workflow ${workflowId} has no published version yet, nothing to pull. Run \`eigenpal workflow push\` first.`
+        );
+      }
+      await writeOrPrint(opts.out, result.yamlContent);
     })
   );
 
@@ -493,9 +493,9 @@ flag would otherwise shadow it. Validation failures come back as
           } else if (opts.bump) {
             // Need the server's current version to compute the next one.
             const wf = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
-              currentVersion?: { version?: string } | null;
+              version?: string | null;
             };
-            const current = wf?.currentVersion?.version;
+            const current = wf?.version;
             if (!current) {
               throw new Error(
                 `Cannot --bump ${opts.bump} on ${workflowId}: server has no current version. Push an initial version (with \`--set-version 1.0.0\` or a YAML \`version:\` field) first.`

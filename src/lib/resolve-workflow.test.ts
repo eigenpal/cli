@@ -21,7 +21,14 @@ describe('resolveWorkflowId', () => {
     const seenUrls: string[] = [];
     const client = makeClient((url) => {
       seenUrls.push(url);
-      return jsonResponse({ id: 'wf_abc', currentVersion: { definition: { name: 'foo' } } });
+      // v1 detail shape: flat name/version/yamlContent. Mirrors what
+      // pickPublicWorkflowDetail emits on the server.
+      return jsonResponse({
+        id: 'wf_abc',
+        name: 'foo',
+        version: '1.0.0',
+        yamlContent: 'name: foo',
+      });
     });
     try {
       const out = await resolveWorkflowId(client, 'wf_abc');
@@ -36,8 +43,9 @@ describe('resolveWorkflowId', () => {
     const seenUrls: string[] = [];
     const client = makeClient((url) => {
       seenUrls.push(url);
+      // v1 list shape: flat name (no nested currentVersion).
       return jsonResponse({
-        data: [{ id: 'wf_xyz', currentVersion: { definition: { name: 'my-extraction' } } }],
+        data: [{ id: 'wf_xyz', name: 'my-extraction', version: '1.0.0' }],
         total: 1,
       });
     });
@@ -80,9 +88,9 @@ describe('resolveWorkflowId', () => {
       if (url.includes('?name=')) {
         return jsonResponse({ data: [], total: 0 });
       }
-      // search hit
+      // search hit — flat `name` is the field the v1 list emits.
       return jsonResponse({
-        data: [{ id: 'wf_close', currentVersion: { definition: { name: 'parse-invoices' } } }],
+        data: [{ id: 'wf_close', name: 'parse-invoices', version: '1.0.0' }],
         total: 1,
       });
     });

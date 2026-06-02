@@ -54,7 +54,7 @@ finance) who never see the YAML or the judge prompt. Write it for them:
 
 ## Evaluator types
 
-### `exact-diff` — JSON deep-diff against `expected/output.json`
+### `exact-diff` — JSON deep-diff against `expected/output.json` or `expected/error.json`
 
 ```yaml
 - name: invoice-fields
@@ -69,6 +69,13 @@ finance) who never see the YAML or the judge prompt. Write it for them:
 - `paths` — array of dotted paths into the actual / expected outputs.
   When set, only those paths are diffed. When absent, the whole object
   is compared.
+
+`exact-diff` branches on the example's expected shape: success-expected
+examples (`expected/output.json`) are diffed against the workflow's actual
+output, and failure-expected examples (`expected/error.json`, see
+`reference/dataset-format.md`) are matched against the `control.fail`
+envelope persisted to `executions.error`. The same evaluator handles both
+paths; you do not need a separate evaluator for failure cases.
 
 ### `llm-judge` — LLM-as-judge scoring
 

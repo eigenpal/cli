@@ -11,7 +11,7 @@ import { z } from 'zod';
  */
 
 // AI step types
-export const AI_STEP_TYPES = ['ai.parse', 'ai.extract', 'ai.split'] as const;
+export const AI_STEP_TYPES = ['ai.parse', 'ai.extract', 'ai.split', 'ai.classify'] as const;
 
 // Transform step types
 export const TRANSFORM_STEP_TYPES = [
@@ -44,6 +44,7 @@ export const CONTROL_STEP_TYPES = [
   'control.wait',
   'control.approval',
   'control.block',
+  'control.fail',
 ] as const;
 
 // All step types combined
@@ -64,6 +65,7 @@ export const StepTypeValue = {
   AI_PARSE: 'ai.parse',
   AI_EXTRACT: 'ai.extract',
   AI_SPLIT: 'ai.split',
+  AI_CLASSIFY: 'ai.classify',
   // Transform
   TRANSFORM_SET: 'transform.set',
   TRANSFORM_REMOVE: 'transform.remove',
@@ -88,6 +90,7 @@ export const StepTypeValue = {
   CONTROL_WAIT: 'control.wait',
   CONTROL_APPROVAL: 'control.approval',
   CONTROL_BLOCK: 'control.block',
+  CONTROL_FAIL: 'control.fail',
 } as const;
 
 /**
@@ -170,6 +173,28 @@ export const ApprovalStepSchema = BaseStepSchema.extend({
 export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
 
 /**
+ * Fail step - terminate the workflow with a typed status code and message.
+ *
+ * Config is step-level (not in `step.with`), matching every other
+ * `control.*` step: `condition` / `statusCode` / `message` live directly on
+ * the step node. When `condition` is set, the step only fails if the
+ * LiquidJS expression evaluates truthy. When omitted, the step always
+ * fails when reached. The worker throws `WorkflowFailedError`; the executor
+ * catches it and persists `JSON.stringify({code, message, step})` in
+ * `executions.error`.
+ */
+export const FailStepSchema = BaseStepSchema.extend({
+  type: z.literal('control.fail'),
+  /** Optional template expression that gates the fail. Empty = always fail. */
+  condition: z.string().optional(),
+  /** HTTP-style status code returned to callers. Defaults to 422. */
+  statusCode: z.number().int().min(400).max(599).optional(),
+  /** Human-readable failure message. Supports template expressions. */
+  message: z.string().min(1),
+});
+export type FailStep = z.infer<typeof FailStepSchema>;
+
+/**
  * Step type - discriminated union of all step types
  * Note: Control flow steps (if, parallel, foreach) use nested steps arrays
  * which require lazy evaluation for recursive types.
@@ -180,6 +205,7 @@ export type Step =
   | ActionStep
   | WaitStep
   | ApprovalStep
+  | FailStep
   | IfStep
   | ParallelStep
   | ForeachStep
@@ -357,6 +383,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
     ActionStepSchema,
     WaitStepSchema,
     ApprovalStepSchema,
+    FailStepSchema,
     BlockStepSchemaInner,
     IfStepSchemaInner,
     ParallelStepSchemaInner,

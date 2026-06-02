@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ExpectedErrorSchema } from '../eval/expected-error';
 
 /**
  * Reference to an expected document for eval/judge.
@@ -48,11 +49,22 @@ export const ExpectedDocumentsValueSchema: z.ZodType<ExpectedDocumentsValue> = z
  * Expected output for one eval example.
  * - data: output data shape (e.g. scenario, generated_document_* with fileId "__any__" for comparison).
  * - expectedDocuments: recursive map of paths to refs (e.g. flat keys or nested/array like generated_documents_prevod: [ref, ref]).
+ * - error: failure-expected assertion. Mutually exclusive with `data` and
+ *   `expectedDocuments` (enforced by the schema refinement below). When
+ *   set, the exact-diff scorer matches against the typed `control.fail`
+ *   envelope persisted to `executions.error` instead of diffing output.
  */
-export const ExpectedOutputSchema = z.object({
-  data: z.record(z.string(), z.unknown()).optional(),
-  expectedDocuments: z.record(z.string(), ExpectedDocumentsValueSchema).optional(),
-});
+export const ExpectedOutputSchema = z
+  .object({
+    data: z.record(z.string(), z.unknown()).optional(),
+    expectedDocuments: z.record(z.string(), ExpectedDocumentsValueSchema).optional(),
+    error: ExpectedErrorSchema.optional(),
+  })
+  .refine((v) => !(v.error && (v.data || v.expectedDocuments)), {
+    message:
+      'expectedOutput.error is mutually exclusive with data / expectedDocuments — a failure-expected example asserts the workflow should fail, so there is no output to diff.',
+    path: ['error'],
+  });
 
 export type ExpectedOutput = z.infer<typeof ExpectedOutputSchema>;
 

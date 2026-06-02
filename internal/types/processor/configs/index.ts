@@ -16,6 +16,7 @@ import { PROCESSOR_IDS } from '../../core/ids';
 
 // Re-export individual processor schemas
 export * from './approval';
+export * from './classify';
 export * from './document-parser';
 export * from './extract';
 export * from './merge';
@@ -26,6 +27,7 @@ export * from './xlsx-to-json';
 
 // Import for registry
 import { ApprovalConfigSchema, ApprovalInputSchema, ApprovalOutputSchema } from './approval';
+import { ClassifyConfigSchema, ClassifyInputSchema, ClassifyOutputSchema } from './classify';
 import {
   DocumentParserConfigSchema,
   DocumentParserInputSchema,
@@ -101,6 +103,12 @@ export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
     inputSchema: SplitInputSchema,
     outputSchema: SplitOutputSchema,
     configSchema: SplitConfigSchema,
+  },
+  [PROCESSOR_IDS.CLASSIFY]: {
+    id: PROCESSOR_IDS.CLASSIFY,
+    inputSchema: ClassifyInputSchema,
+    outputSchema: ClassifyOutputSchema,
+    configSchema: ClassifyConfigSchema,
   },
   [PROCESSOR_IDS.XLSX_TO_JSON]: {
     id: PROCESSOR_IDS.XLSX_TO_JSON,
