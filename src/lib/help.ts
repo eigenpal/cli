@@ -47,8 +47,9 @@ export const HELP_GROUPS: CommandGroup[] = [
   },
   {
     title: 'Agents',
-    description: 'Coming soon — agentic process operations',
-    commands: ['agent'],
+    description:
+      'Git-backed source (clone, save, release, sync), runs, datasets, sessions. `git` passthrough adds org remote auth.',
+    commands: ['agents', 'git'],
   },
   {
     title: 'Tooling',

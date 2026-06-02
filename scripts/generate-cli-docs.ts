@@ -181,7 +181,9 @@ function renderCommandTables(groups: CommandGroup[]): string {
     lines.push('| Command | Description |');
     lines.push('| --- | --- |');
     for (const cmd of group.leaves) {
-      lines.push(`| \`${commandUsage(cmd)}\` | ${escapeCell(cmd.description() || '')} |`);
+      lines.push(
+        `| ${escapeCell(`\`${commandUsage(cmd)}\``)} | ${escapeCell(cmd.description() || '')} |`
+      );
     }
     lines.push('');
   }
@@ -274,14 +276,6 @@ function renderTopLevelCommandFile(cmd: Command): string {
   if (cmd.description()) {
     lines.push(cmd.description());
     lines.push('');
-  }
-
-  if (name === 'git') {
-    lines.push('Experimental.');
-    lines.push('');
-    lines.push('This command namespace is intentionally not documented in detail yet.');
-    lines.push('');
-    return lines.join('\n');
   }
 
   const hasChildren = visibleCommands(cmd).length > 0;

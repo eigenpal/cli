@@ -26,10 +26,10 @@ skill
 ### Core
 
 | Command                                           | Description                                                                                                                                                                                        |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eigenpal skill install [options]`                | Install the skill into one or more tools. Opens an interactive multiselect picker (toggle on to install, toggle off to uninstall) — pass `--tools` for non-interactive use.                        |
 | `eigenpal skill uninstall [options] [toolIds...]` | Remove the skill from named tools (e.g. `skill uninstall claude cursor`), pass `--all` to wipe every install, or run with no args in a TTY for an interactive picker showing only installed tools. |
-| `eigenpal skill list                              | ls [options]`                                                                                                                                                                                      | Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it. |
+| `eigenpal skill list\|ls [options]`               | Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it.                                                                                 |
 
 ## Details
 

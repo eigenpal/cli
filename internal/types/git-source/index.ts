@@ -1,16 +1,4 @@
 export {
-  AgentSourceCutoverSettingsSchema,
-  AgentSourceMigrationStateSchema,
-  AgentSourceRuntimeModeSchema,
-  isGitBackedAgentSourceEnabled,
-  resolveAgentSourceCutover,
-  type AgentSourceCutoverDecision,
-  type AgentSourceCutoverSettings,
-  type AgentSourceMigrationState,
-  type AgentSourceRuntimeMode,
-} from './cutover';
-
-export {
   AutomationTargetSchema,
   DottedPackageNameSchema,
   ReleaseTagSchema,
@@ -38,6 +26,15 @@ export {
   type SourceVersionRef,
   type WorkspaceDependency,
 } from './grammar';
+
+export {
+  SourceLockPackageSchema,
+  SourceLockfileSchema,
+  parseSourcePackageRef,
+  sourceLockfileInputHash,
+  type SourceLockPackage,
+  type SourceLockfile,
+} from './lockfile';
 
 export {
   AgentPackageManifestSchema,

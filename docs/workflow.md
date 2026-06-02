@@ -111,8 +111,8 @@ workflow
 ### Core
 
 | Command                                                 | Description                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `eigenpal workflow list                                 | ls [options]`                                                                                                                                                                                                                                                                 | List workflows the caller can read. |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                           |
 | `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
 | `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
@@ -130,8 +130,8 @@ workflow
 ### Dataset
 
 | Command                                                                        | Description                                                                                                     |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `eigenpal workflow dataset list                                                | ls [options] <workflow-id>`                                                                                     | List eval examples for the workflow. |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow dataset list\|ls [options] <workflow-id>`                   | List eval examples for the workflow.                                                                            |
 | `eigenpal workflow dataset pull [options] <workflow-id>`                       | Download the workflow's dataset as a ZIP archive.                                                               |
 | `eigenpal workflow dataset push [options] <workflow-id>`                       | Replace or extend the workflow's dataset from a ZIP or folder.                                                  |
 | `eigenpal workflow dataset example create [options] <workflow-id>`             | Create one eval example without re-uploading the dataset.                                                       |
@@ -142,46 +142,46 @@ workflow
 
 ### Experiment
 
-| Command                       | Description                                    |
-| ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `eigenpal workflow experiment | exp list                                       | ls [options] <workflow-id>`                                                                | List executions for the workflow, newest first.  |
-| `eigenpal workflow experiment | exp run [options] <workflow-id>`               | Start a batch eval against the workflow's dataset.                                         |
-| `eigenpal workflow experiment | exp status [options] <workflow-id> <batchId>`  | Aggregate progress for a batch by `batchId`.                                               |
-| `eigenpal workflow experiment | exp cancel [options] <workflow-id> <batchId>`  | Cancel every execution in a batch. Idempotent.                                             |
-| `eigenpal workflow experiment | exp results [options] <workflow-id> [batchId]` | Download eval results in CSV or JSON.                                                      |
-| `eigenpal workflow experiment | exp compare                                    | diff [options] <batchIdA> <batchIdB>`                                                      | Diff eval scores between two experiment batches. |
-| `eigenpal workflow experiment | exp watch [options] <workflow-id> <batchId>`   | Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`. |
+| Command                                                                           | Description                                                                                |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `eigenpal workflow experiment\|exp list\|ls [options] <workflow-id>`              | List executions for the workflow, newest first.                                            |
+| `eigenpal workflow experiment\|exp run [options] <workflow-id>`                   | Start a batch eval against the workflow's dataset.                                         |
+| `eigenpal workflow experiment\|exp status [options] <workflow-id> <batchId>`      | Aggregate progress for a batch by `batchId`.                                               |
+| `eigenpal workflow experiment\|exp cancel [options] <workflow-id> <batchId>`      | Cancel every execution in a batch. Idempotent.                                             |
+| `eigenpal workflow experiment\|exp results [options] <workflow-id> [batchId]`     | Download eval results in CSV or JSON.                                                      |
+| `eigenpal workflow experiment\|exp compare\|diff [options] <batchIdA> <batchIdB>` | Diff eval scores between two experiment batches.                                           |
+| `eigenpal workflow experiment\|exp watch [options] <workflow-id> <batchId>`       | Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`. |
 
 ### Execution
 
-| Command                      | Description                                     |
-| ---------------------------- | ----------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `eigenpal workflow execution | exec run [options] <workflow-id> [examples...]` | Run a saved workflow against local dataset examples.             |
-| `eigenpal workflow execution | exec get [options] <executionId>`               | Fetch a single execution payload. Optionally narrow to one step. |
-| `eigenpal workflow execution | exec list                                       | ls [options] <workflow-id>`                                      | List recent executions for a workflow.      |
-| `eigenpal workflow execution | exec watch [options] <executionId>`             | Stream live execution status until terminal or 30-min detach.    |
-| `eigenpal workflow execution | exec compare                                    | diff [options] <executionA> <executionB>`                        | Diff two executions side-by-side, per step. |
-| `eigenpal workflow execution | exec cancel [options] <executionId>`            | Cancel an execution. Idempotent on already-terminal runs.        |
+| Command                                                                               | Description                                                      |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `eigenpal workflow execution\|exec run [options] <workflow-id> [examples...]`         | Run a saved workflow against local dataset examples.             |
+| `eigenpal workflow execution\|exec get [options] <executionId>`                       | Fetch a single execution payload. Optionally narrow to one step. |
+| `eigenpal workflow execution\|exec list\|ls [options] <workflow-id>`                  | List recent executions for a workflow.                           |
+| `eigenpal workflow execution\|exec watch [options] <executionId>`                     | Stream live execution status until terminal or 30-min detach.    |
+| `eigenpal workflow execution\|exec compare\|diff [options] <executionA> <executionB>` | Diff two executions side-by-side, per step.                      |
+| `eigenpal workflow execution\|exec cancel [options] <executionId>`                    | Cancel an execution. Idempotent on already-terminal runs.        |
 
 ### Versions
 
-| Command                                                                  | Description                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------ |
-| `eigenpal workflow versions list                                         | ls [options] <workflow-id>`                 | List historical workflow versions, newest first. |
-| `eigenpal workflow versions restore [options] <workflow-id> <versionId>` | Restore the workflow to a previous version. |
+| Command                                                                  | Description                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `eigenpal workflow versions list\|ls [options] <workflow-id>`            | List historical workflow versions, newest first. |
+| `eigenpal workflow versions restore [options] <workflow-id> <versionId>` | Restore the workflow to a previous version.      |
 
 ### Step-type
 
 | Command                                            | Description                                                   |
-| -------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------- |
-| `eigenpal workflow step-type list                  | ls [options]`                                                 | List every step type the deployment supports. |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| `eigenpal workflow step-type list\|ls [options]`   | List every step type the deployment supports.                 |
 | `eigenpal workflow step-type get [options] <type>` | Return the full schema and behavioral docs for one step type. |
 
 ### Evaluator-type
 
 | Command                                                 | Description                                                                                 |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `eigenpal workflow evaluator-type list                  | ls [options]`                                                                               | List every evaluator type with a one-line description. |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `eigenpal workflow evaluator-type list\|ls [options]`   | List every evaluator type with a one-line description.                                      |
 | `eigenpal workflow evaluator-type get [options] <type>` | Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect specific fields. |
 
 ### Step

@@ -1,5 +1,16 @@
 # @eigenpal/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 2aeeaf2: Add first-class source `git save` and branch-aware `git release` flows for Git-backed builder workspaces.
+
+### Patch Changes
+
+- 2aeeaf2: Complete the agent Git cutover with pluralized agent CLI commands, source-ref run support, lockfile metadata, and regenerated SDK/docs surfaces.
+- 2aeeaf2: Expose Git-backed agent source refs and public source automation APIs consistently across CLI docs and SDK facades.
+
 ## 0.5.12
 
 ### Minor Changes

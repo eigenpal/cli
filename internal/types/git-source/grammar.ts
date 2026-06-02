@@ -52,13 +52,21 @@ export const DottedPackageNameSchema = z.string().superRefine((value, ctx) => {
 });
 export type DottedPackageName = z.infer<typeof DottedPackageNameSchema>;
 
-export const SourceVersionRefSchema = z.union([
-  z.literal('latest'),
-  z.literal('main'),
-  z.string().regex(SOURCE_SEMVER_PATTERN),
-  z.string().regex(SOURCE_VERSION_RANGE_PATTERN),
-  z.string().regex(SOURCE_COMMIT_SHA_PATTERN),
-]);
+export const SourceVersionRefSchema = z.string().superRefine((value, ctx) => {
+  if (
+    value === 'latest' ||
+    value === 'main' ||
+    SOURCE_SEMVER_PATTERN.test(value) ||
+    SOURCE_VERSION_RANGE_PATTERN.test(value) ||
+    SOURCE_COMMIT_SHA_PATTERN.test(value)
+  ) {
+    return;
+  }
+  ctx.addIssue({
+    code: 'custom',
+    message: 'Use latest, main, X.Y.Z, X.Y.x, X.x, or a 40-character commit SHA',
+  });
+});
 export type SourceVersionRef = z.infer<typeof SourceVersionRefSchema>;
 
 export const ReleaseTagSchema = z.string().superRefine((value, ctx) => {

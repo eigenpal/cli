@@ -1,6 +1,6 @@
 ---
 name: eigenpal
-description: Build, run, and iterate on Eigenpal workflows and agents from the command line. Use `eigenpal workflow` for YAML workflows, datasets, evaluators, executions, and experiments. Use `eigenpal agent` for agent workspaces, executions, feedback, traces, files, and expected artifacts.
+description: Build, run, and iterate on Eigenpal workflows and agents from the command line. Use `eigenpal workflow` for YAML workflows, datasets, evaluators, executions, and experiments. Use `eigenpal agents` for agent workspaces, runs, feedback, traces, files, and expected artifacts.
 license: Apache-2.0
 compatibility: Requires eigenpal CLI.
 metadata:
@@ -16,16 +16,16 @@ Eigenpal has two major CLI surfaces:
 - `eigenpal workflow` — build and operate YAML workflows: definitions,
   datasets, evaluators, executions, experiments, versions, and schema
   introspection.
-- `eigenpal agent` — build and operate agent workspaces: agent files, triggers,
-  executions, traces, feedback, expected artifacts, and reruns.
+- `eigenpal agents` — build and operate agent workspaces: agent files, triggers,
+  runs, traces, feedback, expected artifacts, and reruns.
 
 Use long command names in generated commands and documentation. They are more
 readable and cost very little for agents to type. Some short aliases exist for
 interactive users; understand them if you see them, but do not prefer them:
 
-- `agent exec` = `agent execution`
-- `agent execution fb` = `agent execution feedback`
-- `agent execution artifact` = `agent execution artifacts`
+- `agents exec` = `agents runs`
+- `agents runs fb` = `agents runs feedback`
+- `agents runs artifact` = `agents runs artifacts`
 - `workflow exec` = `workflow execution`
 - `workflow exp` = `workflow experiment`
 - `ls` = `list` anywhere in the CLI
@@ -34,14 +34,17 @@ interactive users; understand them if you see them, but do not prefer them:
 For exact flags and defaults, prefer the generated references:
 
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
-- [`reference/cli/agent.md`](reference/cli/agent.md)
+- [`reference/cli/agents.md`](reference/cli/agents.md)
+- [`reference/cli/git.md`](reference/cli/git.md)
+- [`reference/cli/run.md`](reference/cli/run.md)
+- [`reference/cli/runs.md`](reference/cli/runs.md)
 
 ## Pick The Surface
 
 Choose `workflow` when the work is about a workflow definition, dataset,
 evaluator, experiment, or workflow execution.
 
-Choose `agent` when the work is about an agent workspace, agent file, trigger,
+Choose `agents` when the work is about an agent workspace, agent file, trigger,
 agent execution, trace, feedback entry, expected artifact, or rerun.
 
 Agents and workflows are related, but their iteration loops are different:
@@ -109,48 +112,120 @@ a folder unless the user specifically asks for that placement.
 
 ## Agent Iteration Loop
 
+Git-backed agent source lives in the organization repository under `agents/<slug>/`.
+Edit source in Git, save builder work with `eigenpal agents save`, and ship with
+`eigenpal agents release` + `eigenpal agents sync`. Builder sessions usually work
+on `builder/<agent>/<session>` branches. This is all Git under the hood, but use
+the Eigenpal CLI whenever possible:
+
+- `eigenpal agents save` = validate changed packages, commit if dirty, and push the current branch.
+- `eigenpal agents release <version> agents/<slug>` = safely land the package onto the release/tag path. Treat this like the merge step.
+- `eigenpal agents sync agents.<slug>` = apply the latest released manifest, including triggers, to the server DB.
+- `eigenpal git -- <args>` = authenticated git passthrough. Use it for every git command, including nuanced/read-only commands (`status`, `diff`, `log`, `rev-parse HEAD`, `merge`) and conflict recovery. Do not call raw `git` directly in normal agent work.
+
+Do not use `eigenpal agents push` or `agents file put` — those targeted the legacy
+HTTP upload API. Configure triggers in `eigenpal.yaml`; `agents sync` applies the
+latest release manifest to the DB.
+
 ```bash
-# 1. Find the agent and inspect its files.
-eigenpal agent list
-eigenpal agent file list <agent-id-or-slug>
-eigenpal agent file get <agent-id-or-slug> agent/instructions.md --out instructions.md
+# 1. Clone org source and open the agent package.
+eigenpal agents clone --out ./source
+cd source/agents/<slug>
+eigenpal agents install
 
-# 2. Find executions that need attention.
-eigenpal agent execution list <agent-id-or-slug> \
-  --feedback-status open \
-  --feedback-rating fail \
-  --since-last-resolved \
-  --include feedback,expected \
-  --compact
+# 2. Edit agent source.
+#    AGENT.md is the inference orchestrator. Schemas are plain JSON files.
+$EDITOR AGENT.md eigenpal.yaml input-schema.json output-schema.json
+$EDITOR skills/<skill>/SKILL.md skills/<skill>/run.py
 
-# 3. Pull the execution context locally.
-eigenpal agent execution pull <agent-execution-id> --include all --out ./review/<agent-execution-id>
-eigenpal agent execution artifacts list <agent-execution-id>
-eigenpal agent execution trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
+# 3. Validate layout, manifest, and schema files; then save durable source changes on the current branch.
+cd ../..   # repo root
+eigenpal agents status
+eigenpal agents validate agents/<slug>
+eigenpal agents save -m "Improve invoice extraction prompts"
 
-# 4. Edit and preview agent files.
-$EDITOR instructions.md
-eigenpal agent file diff <agent-id-or-slug> agent/instructions.md instructions.md
-eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
-eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md
+# 4. Run exactly what was saved.
+SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
+eigenpal agents run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
+eigenpal agents run agents.<slug>@"$SOURCE_REF" --example example-name --wait
+eigenpal agents runs get <agent-execution-id> --json
+eigenpal agents runs trace <agent-execution-id> --out ./trace.jsonl
 
-# 5. Rerun and compare.
-eigenpal agent execution rerun <agent-execution-id> --wait
-eigenpal agent execution compare <new-agent-execution-id> \
-  --expected-from <source-agent-execution-id> \
+# 5. Release to main + tag when ready to ship (-m optional; defaults to "Release <packagePath>").
+#    Release tags are immutable — never move, delete, or force-update a published tag.
+#    If a release is wrong, ship a new patch (`eigenpal agents release patch`).
+eigenpal agents release patch agents/<slug>
+eigenpal agents sync agents.<slug>
+```
+
+### Agent Datasets And Examples
+
+Agent eval examples are runtime data, not Git source. `eigenpal agents save`
+does not persist them. Keep local examples in a dataset directory and use the
+dataset CLI:
+
+```bash
+# Builder sandboxes use /workspace/evals; local projects often use ./dataset.
+eigenpal agents dataset validate /workspace/evals --agent-dir agents/<slug>
+eigenpal agents dataset push agents.<slug> --file /workspace/evals
+eigenpal agents dataset list agents.<slug>
+eigenpal agents dataset pull agents.<slug> --out ./dataset
+```
+
+Example shape:
+
+```text
+evals/<name>/
+  input.json        # scalar/object args
+  input/<field>.*   # file input, when needed
+  expected.json     # partial expected output: only stable fields
+  expected/<file>   # golden file outputs
+  feedback.md       # optional notes
+```
+
+For `expected.json`, include only fields that must be identical on every correct
+run. Omit non-deterministic values such as timestamps, random IDs, and free-form
+LLM text. Validate the actual agent output with the output schema; validate the
+expected file as a partial assertion.
+Run a persisted example with `eigenpal agents run agents.<slug>@<ref> --example <name> --wait`.
+
+### Debug Agent Runs
+
+```bash
+eigenpal agents runs list agents.<slug> --status failed --compact
+eigenpal agents runs pull <agent-execution-id> --include all --out ./review/<agent-execution-id>
+eigenpal agents runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
+eigenpal agents runs rerun <agent-execution-id> --wait
+eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --normalize-dates
-eigenpal agent execution compare <new-agent-execution-id> \
-  --baseline-from <source-agent-execution-id> \
-  --normalize-dates
 
-# 6. Resolve feedback once verified.
-eigenpal agent execution feedback resolve <source-agent-execution-id> \
+eigenpal agents runs feedback resolve <source-agent-execution-id> \
   --message "Fixed and verified in <new-agent-execution-id>."
 ```
 
 Agent commands commonly accept `<agent-id-or-slug>`. Agent execution commands
 take an agent execution id. Execution pulls and comparisons write review
 artifacts under `.eigenpal/artifacts/...` by default.
+
+Root `eigenpal run` / `eigenpal runs` and `eigenpal git <cmd>` (for moved subcommands) exit with a deprecation message — use `agents run`, `agents runs list`, and `agents <cmd>` instead.
+
+Use source refs such as `latest`, `main`, exact versions/tags (`1.2.3`),
+semver ranges (`1.2.x`, `1.x`), or exact commit SHAs when you need provenance.
+
+### Git-backed secrets
+
+Set secrets with the authenticated CLI — plaintext goes to
+`POST /api/v1/source/secrets/encrypt`; only ciphertext is written to
+`secrets.enc.yaml`. Organization decrypt keys never leave the server.
+
+```bash
+echo -n "$VALUE" | eigenpal agents secret set OPENAI_API_KEY --stdin
+eigenpal agents secret import ./local.env
+eigenpal agents save -m "Add API key"
+```
+
+Runtime sandboxes decrypt via `eigenpal agents env pull` →
+`POST /api/v1/source/secrets/decrypt` (same API key auth).
 
 ## Workflow Recipes
 
@@ -227,13 +302,13 @@ both batches must belong to the same workflow.
 ### Inspect And Edit Agent Files
 
 ```bash
-eigenpal agent list
-eigenpal agent file list <agent-id-or-slug>
-eigenpal agent file list <agent-id-or-slug> --prefix agent/knowledge
-eigenpal agent file get <agent-id-or-slug> agent/instructions.md --out instructions.md
-eigenpal agent file diff <agent-id-or-slug> agent/instructions.md instructions.md
-eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
-eigenpal agent file put <agent-id-or-slug> agent/instructions.md instructions.md
+eigenpal agents list
+eigenpal agents file list <agent-id-or-slug>
+eigenpal agents file list <agent-id-or-slug> --prefix agent/knowledge
+eigenpal agents file get <agent-id-or-slug> agent/instructions.md --out instructions.md
+eigenpal agents file diff <agent-id-or-slug> agent/instructions.md instructions.md
+eigenpal agents file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
+eigenpal agents file put <agent-id-or-slug> agent/instructions.md instructions.md
 ```
 
 Use `--preview` before writing substantial changes; it shows how the target file
@@ -242,11 +317,11 @@ would change.
 ### Inspect Agent Executions
 
 ```bash
-eigenpal agent execution list <agent-id-or-slug> --status failed --limit 10
-eigenpal agent execution list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
-eigenpal agent execution get <agent-execution-id> --include feedback,expected,files,trace,issues --json
-eigenpal agent execution pull <agent-execution-id> --include all
-eigenpal agent execution artifacts list <agent-execution-id>
+eigenpal agents runs list <agent-id-or-slug> --status failed --limit 10
+eigenpal agents runs list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
+eigenpal agents runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json
+eigenpal agents runs pull <agent-execution-id> --include all
+eigenpal agents runs artifacts list <agent-execution-id>
 ```
 
 Use `--compact` on execution lists when you only need triage rows.
@@ -254,9 +329,9 @@ Use `--compact` on execution lists when you only need triage rows.
 ### Download Agent Traces
 
 ```bash
-eigenpal agent execution trace <agent-execution-id> --out trace.jsonl
-eigenpal agent execution trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
-eigenpal agent execution trace <agent-execution-id> | rg 'error|tool'
+eigenpal agents runs trace <agent-execution-id> --out trace.jsonl
+eigenpal agents runs trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
+eigenpal agents runs trace <agent-execution-id> | rg 'error|tool'
 ```
 
 `trace` streams the raw JSONL to stdout by default. Use shell tools such as
@@ -265,19 +340,18 @@ eigenpal agent execution trace <agent-execution-id> | rg 'error|tool'
 ### Manage Agent Feedback And Expected Artifacts
 
 ```bash
-eigenpal agent execution feedback get <agent-execution-id>
-eigenpal agent execution feedback update <agent-execution-id> \
+eigenpal agents runs feedback update <agent-execution-id> \
   --status open \
   --rating fail \
   --message "Expected the filing date to be extracted."
-eigenpal agent execution feedback resolve <agent-execution-id> \
+eigenpal agents runs feedback resolve <agent-execution-id> \
   --message "Fixed and verified."
-eigenpal agent execution feedback clear <agent-execution-id> --yes
+eigenpal agents runs feedback clear <agent-execution-id> --yes
 
-eigenpal agent execution expected list <agent-execution-id>
-eigenpal agent execution expected upload <agent-execution-id> --file expected.json --name expected.json
-eigenpal agent execution expected copy-output <agent-execution-id> --output-file result.json --name expected.json
-eigenpal agent execution expected pull <agent-execution-id> --out expected/
+eigenpal agents runs expected list <agent-execution-id>
+eigenpal agents runs expected upload <agent-execution-id> expected.json --name expected.json
+eigenpal agents runs expected copy-output <agent-execution-id> result.json --name expected.json
+eigenpal agents runs expected pull <agent-execution-id> --out expected/
 ```
 
 Feedback is attached to one execution. Expected artifacts are the references
@@ -286,18 +360,16 @@ used when comparing future runs.
 ### Rerun And Compare Agent Executions
 
 ```bash
-eigenpal agent execution rerun <agent-execution-id> --wait
-eigenpal agent execution compare <new-agent-execution-id> --expected-from <source-agent-execution-id>
-eigenpal agent execution compare <new-agent-execution-id> --baseline-from <source-agent-execution-id>
-eigenpal agent execution compare <new-agent-execution-id> \
-  --expected-from <source-agent-execution-id> \
+eigenpal agents runs rerun <agent-execution-id> --wait
+eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id>
+eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
+  --baseline \
   --normalize-dates \
   --fail-on-diff
 ```
 
-Use `--expected-from` to compare a new output against stored expected artifacts.
-Use `--baseline-from` to compare a new output against another execution's actual
-output.
+By default, compare a new output against the reference execution's expected
+artifacts. Use `--baseline` to compare actual outputs from both executions.
 
 ## Output And Exit Codes
 
@@ -306,7 +378,7 @@ script or agent needs to inspect the result with `jq`.
 
 ```bash
 eigenpal workflow execution list <workflow-id> --json | jq '.data[0].id'
-eigenpal agent execution list <agent-id-or-slug> --json | jq '.executions[0].id'
+eigenpal agents runs list <agent-id-or-slug> --json | jq '.executions[0].id'
 ```
 
 General exit-code convention:
@@ -334,7 +406,9 @@ Workflow schemas:
 CLI command references:
 
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
-- [`reference/cli/agent.md`](reference/cli/agent.md)
+- [`reference/cli/agents.md`](reference/cli/agents.md)
+- [`reference/cli/run.md`](reference/cli/run.md)
+- [`reference/cli/runs.md`](reference/cli/runs.md)
 - [`reference/cli/auth.md`](reference/cli/auth.md)
 - [`reference/cli/status.md`](reference/cli/status.md)
 
@@ -364,15 +438,17 @@ eigenpal
 │   ├── versions
 │   ├── step-type
 │   └── evaluator-type
-├── agent
+├── agents
 │   ├── list
-│   ├── get
 │   ├── push
 │   ├── pull
+│   ├── validate
 │   ├── file
 │   ├── trigger
 │   ├── execution
 │   └── experiment
+├── run
+├── runs
 └── skill
     ├── install
     ├── uninstall

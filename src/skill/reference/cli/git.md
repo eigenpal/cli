@@ -1,7 +1,9 @@
 # eigenpal git
 
-Experimental Git-backed source commands.
+Passthrough to git with organization remote auth and committer identity.
 
-Experimental.
+### Arguments
 
-This command namespace is intentionally not documented in detail yet.
+| Name      | Required | Variadic | Description            |
+| --------- | -------- | -------- | ---------------------- |
+| `gitArgs` | no       | yes      | Git arguments after -- |

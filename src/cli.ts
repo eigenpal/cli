@@ -17,11 +17,13 @@ import { installSkillTools, listSkillTools, uninstallSkillTools } from './comman
 import { status } from './commands/status';
 import { registerWorkflowCommands } from './commands/workflow';
 import { applyCommandAliasConventions } from './lib/command-aliases';
+import { exitDeprecatedCli } from './lib/deprecation-forward';
 import { action } from './lib/format-error';
 import { configureGroupedHelp } from './lib/help';
 import { setQuiet } from './lib/ui';
 
 const __filename = path.resolve(fileURLToPath(import.meta.url));
+
 export const program = new Command();
 
 // `0.0.0-placeholder` is the value in source — release.yml rewrites it to the
@@ -112,21 +114,17 @@ initCmd
     }
   });
 
-// Reserved sibling — agent scaffolding lands after the core agent surface.
 initCmd
   .command('agent <name>')
-  .description(
-    'Scaffold a new agent project — coming soon. Use `eigenpal agent push` with an existing agent project for now.'
-  )
-  .action(() => {
-    process.stderr.write(
-      'Agent scaffolding is not available yet. Use `eigenpal agent push --dir <dir>` with an existing agent project for now.\n'
-    );
-    // Exit 2 (POSIX "command exists but isn't usable as invoked") so a CI
-    // script that misroutes through this placeholder fails loudly instead of
-    // silently no-opping with exit 0.
-    process.exit(2);
-  });
+  .description('Deprecated: use `eigenpal agents init <name> --template agent`.')
+  .option('--dir <dir>', 'Target directory (default: ./<name>)')
+  .action(
+    action(async (_name: string, _opts: { dir?: string; baseUrl?: string }) => {
+      exitDeprecatedCli(
+        '`eigenpal init agent` removed. Use `eigenpal agents init <name> --template agent`.'
+      );
+    })
+  );
 
 const authCmd = program
   .command('auth')
@@ -185,6 +183,57 @@ authCmd
 registerWorkflowCommands(program);
 registerAgentCommands(program);
 registerGitCommands(program);
+
+program
+  .command('run <target>')
+  .description('Deprecated: use `eigenpal agents run <target>`.')
+  .option('--input-json <json>', 'JSON input object')
+  .option('--input-file <path>', 'Input file to upload as multipart form-data')
+  .option('--wait', 'Poll until the run reaches a terminal status')
+  .option('--base-url <url>', 'Server base URL')
+  .action(
+    action(
+      (
+        _target: string,
+        _opts: { inputJson?: string; inputFile?: string; wait?: boolean; baseUrl?: string }
+      ) => {
+        exitDeprecatedCli('`eigenpal run` removed. Use `eigenpal agents run <target>`.');
+      }
+    )
+  );
+
+const deprecatedRuns = program
+  .command('runs <target>')
+  .description('Deprecated: use `eigenpal agents runs list <target>`.')
+  .option('--status <status>', 'Filter by run status')
+  .option('--include <items>', 'Comma-separated include list')
+  .option('--compact', 'Render compact run rows')
+  .option('--sort <field>', 'Sort field')
+  .option('--order <asc|desc>', 'Sort order')
+  .option('--base-url <url>', 'Server base URL')
+  .option('--json', 'Emit machine-readable JSON')
+  .option('--limit <n>', 'Page size')
+  .option('--offset <n>', 'Page offset');
+deprecatedRuns.action(
+  action(
+    (
+      _target: string,
+      _opts: {
+        status?: string;
+        include?: string;
+        compact?: boolean;
+        sort?: string;
+        order?: string;
+        baseUrl?: string;
+        json?: boolean;
+        limit?: string;
+        offset?: string;
+      }
+    ) => {
+      exitDeprecatedCli('`eigenpal runs` removed. Use `eigenpal agents runs list <target>`.');
+    }
+  )
+);
 
 program
   .command('completion <shell>')

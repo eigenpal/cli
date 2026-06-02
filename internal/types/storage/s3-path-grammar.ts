@@ -5,7 +5,7 @@
  * API shape: one typed path builder, one readable path string, no helper name
  * to keep in sync with the storage layout.
  *
- *   rootS3Path('agents/:agentSlug/agent/SOP.md', { tenantId, agentSlug });
+ *   rootS3Path('agents/:agentSlug/agent/AGENT.md', { tenantId, agentSlug });
  *   rootS3Path('agents/:agentSlug/executions/:executionId/output.json', {
  *     tenantId,
  *     agentSlug,
@@ -27,7 +27,7 @@
  * context, e.g. an app auth wrapper:
  *
  *   const appS3Path = rootS3Path.tenant(auth.tenantId);
- *   appS3Path('agents/:agentSlug/agent/SOP.md', { agentSlug });
+ *   appS3Path('agents/:agentSlug/agent/AGENT.md', { agentSlug });
  *
  * Do not recreate a helper-per-path API on top of this file. Avoid wrappers
  * like `executionPath(execution)('output.json')` when a direct full-template
@@ -44,10 +44,9 @@ export const S3_PATH_GRAMMAR = {
   agents: {
     $agentSlug: {
       agent: {
-        'SOP.md': PATH_LEAF,
+        'AGENT.md': PATH_LEAF,
         'input-schema.json': PATH_LEAF,
         'output-schema.json': PATH_LEAF,
-        'linked.json': PATH_LEAF,
         'mistakes.md': PATH_LEAF,
         'requirements.txt': PATH_LEAF,
         'package.json': PATH_LEAF,

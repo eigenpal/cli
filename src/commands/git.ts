@@ -4,8 +4,10 @@ import {
   formatReleaseTag,
   parseReleaseTag,
   pathToDottedPackageName,
+  ReleaseTagSchema,
   RootSourceManifestSchema,
   SOURCE_SECRETS_FILENAME,
+  sourceLockfileInputHash,
   SourceManifestFilenameSchema,
   SourcePackageManifestSchema,
   SourcePackagePathSchema,
@@ -13,6 +15,7 @@ import {
   SourceVersionRefSchema,
   validateSourcePackageRequiredFiles,
   workspaceDependencyNameToPackagePath,
+  type EncryptedSecretValue,
   type SourcePackageManifest,
   type SourcePackagePath,
   type SourceSecretsFile,
@@ -21,7 +24,6 @@ import {
 } from '@eigenpal/types';
 import { InvalidArgumentError, Option, type Command } from 'commander';
 import { spawnSync } from 'node:child_process';
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -39,27 +41,25 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
 import { getProcessEnv } from '../env';
-import { ApiClient, ApiError, HtmlResponseError } from '../lib/client';
+import { ApiClient } from '../lib/client';
 import { requireApiKey, resolveConfig, type CliConfig } from '../lib/config';
+import { exitDeprecatedCli } from '../lib/deprecation-forward';
 import { action } from '../lib/format-error';
 import {
   addJsonFlag,
-  dim,
   error,
   formatDuration,
   formatTimestamp,
-  renderListResult,
   success,
   table,
   ui,
   warn,
   withBaseUrl,
-  withPagination,
-  type PaginationOpts,
 } from '../lib/ui';
 
 type BaseOpts = { baseUrl?: string; json?: boolean };
 type SourceRepository = { gitRepositoryPath: string; remoteUrl: string };
+type RuntimeInstallOpts = { remoteUrl?: string };
 type ContextOpts = { dir?: string };
 type GitAuthorEnv = Pick<
   NodeJS.ProcessEnv,
@@ -106,11 +106,6 @@ type ShowAgentPayload = {
 const SourceRepositorySchema = z.object({
   gitRepositoryPath: z.string(),
   remoteUrl: z.string().url(),
-});
-
-const AgentsListSchema = z.object({
-  data: z.array(z.record(z.string(), z.unknown())),
-  total: z.number().optional(),
 });
 
 const ReleaseSchema = z.object({
@@ -171,6 +166,24 @@ function runGit(
   if (result.status && result.status !== 0) process.exit(result.status);
 }
 
+function runGitStrict(
+  args: string[],
+  opts: { cwd?: string; config?: CliConfig; env?: NodeJS.ProcessEnv; gitRemoteUrl?: string } = {}
+): void {
+  const env = opts.config
+    ? gitAuthEnv(opts.config, opts.env, opts.gitRemoteUrl)
+    : { ...getProcessEnv(), ...opts.env };
+  const result = spawnSync('git', args, {
+    cwd: opts.cwd,
+    env,
+    stdio: 'inherit',
+  });
+  if (result.error) throw result.error;
+  if (result.status && result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed with exit code ${result.status}`);
+  }
+}
+
 function gitOutput(
   args: string[],
   cwd?: string,
@@ -206,6 +219,20 @@ function gitAuthEnv(
 }
 
 async function resolveGitAuthorEnv(config: CliConfig): Promise<GitAuthorEnv> {
+  const env = getProcessEnv();
+  if (
+    env.GIT_AUTHOR_NAME &&
+    env.GIT_AUTHOR_EMAIL &&
+    env.GIT_COMMITTER_NAME &&
+    env.GIT_COMMITTER_EMAIL
+  ) {
+    return {
+      GIT_AUTHOR_NAME: env.GIT_AUTHOR_NAME,
+      GIT_AUTHOR_EMAIL: env.GIT_AUTHOR_EMAIL,
+      GIT_COMMITTER_NAME: env.GIT_COMMITTER_NAME,
+      GIT_COMMITTER_EMAIL: env.GIT_COMMITTER_EMAIL,
+    };
+  }
   const auth = AuthCheckSchema.parse(await new ApiClient(config).get('/api/v1/auth/check'));
   const email = auth.email ?? `${auth.keyId}@api-keys.eigenpal.local`;
   const name = auth.name?.trim() || auth.email || `Eigenpal API Key ${auth.keyId}`;
@@ -217,7 +244,22 @@ async function resolveGitAuthorEnv(config: CliConfig): Promise<GitAuthorEnv> {
   };
 }
 
-async function getSourceRepository(config: CliConfig): Promise<SourceRepository> {
+function sourceRepositoryFromRemoteUrl(remoteUrl?: string): SourceRepository | null {
+  if (!remoteUrl) return null;
+  const parsed = SourceRepositorySchema.parse({ gitRepositoryPath: '', remoteUrl });
+  const match = parsed.remoteUrl.match(/\/orgs\/([^/]+)\.git$/);
+  return {
+    gitRepositoryPath: match ? decodeURIComponent(match[1]) : '',
+    remoteUrl: parsed.remoteUrl,
+  };
+}
+
+async function getSourceRepository(
+  config: CliConfig,
+  opts: RuntimeInstallOpts = {}
+): Promise<SourceRepository> {
+  const explicit = sourceRepositoryFromRemoteUrl(opts.remoteUrl);
+  if (explicit) return explicit;
   const client = new ApiClient(config);
   return SourceRepositorySchema.parse(await client.get('/api/v1/source/repository'));
 }
@@ -315,19 +357,6 @@ function requirePackageContext(opts: ContextOpts = {}): ResolvedPackageContext {
   };
 }
 
-function readMutablePackageManifest(packageRoot: string): Record<string, unknown> {
-  const manifest = readYamlFile(path.join(packageRoot, 'eigenpal.yaml'));
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
-    throw new Error('Package eigenpal.yaml must be a YAML object.');
-  }
-  return manifest as Record<string, unknown>;
-}
-
-function writeMutablePackageManifest(packageRoot: string, manifest: Record<string, unknown>): void {
-  SourcePackageManifestSchema.parse(manifest);
-  writeYamlFile(path.join(packageRoot, 'eigenpal.yaml'), manifest);
-}
-
 function parsePackageRef(input: string): { packagePath: SourcePackagePath; ref: SourceVersionRef } {
   const [rawPackage, rawRef, extra] = input.split('@');
   if (!rawPackage || extra !== undefined) {
@@ -370,16 +399,61 @@ function listLocalPackageReleases(
 async function listPackageReleases(input: {
   config: CliConfig;
   gitRoot?: string | null;
+  repository?: SourceRepository | null;
   packagePath: SourcePackagePath;
 }): Promise<SourceRelease[]> {
   if (input.gitRoot) {
     const local = listLocalPackageReleases(input.gitRoot, input.packagePath);
     if (local.length > 0) return local;
   }
+  if (input.repository?.remoteUrl) {
+    const remote = listRemotePackageReleases(input.config, input.repository, input.packagePath);
+    if (remote.length > 0) return remote;
+  }
   const client = new ApiClient(input.config);
   return ReleasesSchema.parse(
     await client.get('/api/v1/source/releases', { packagePath: input.packagePath })
   ).releases;
+}
+
+function listRemotePackageReleases(
+  config: CliConfig,
+  repository: SourceRepository,
+  packagePath: SourcePackagePath
+): SourceRelease[] {
+  const tagPrefix = `${pathToDottedPackageName(packagePath)}@`;
+  const output =
+    gitOutput(
+      ['ls-remote', '--tags', repository.remoteUrl, `refs/tags/${tagPrefix}*`],
+      undefined,
+      config,
+      repository.remoteUrl
+    ) ?? '';
+  const refs = output
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/) as [string, string | undefined])
+    .filter(([commit, ref]) => CommitShaSchema.safeParse(commit).success && ref);
+  const peeledCommits = new Map(
+    refs
+      .filter(([, ref]) => ref?.startsWith('refs/tags/') && ref.endsWith('^{}'))
+      .map(([commit, ref]) => [ref!.slice('refs/tags/'.length, -3), commit] as const)
+  );
+  return refs
+    .filter(([, ref]) => ref?.startsWith('refs/tags/') && !ref.endsWith('^{}'))
+    .map(([commit, ref]) => {
+      const tag = ref!.slice('refs/tags/'.length);
+      const parsed = ReleaseTagSchema.safeParse(tag);
+      if (!parsed.success) return null;
+      const release = parseReleaseTag(parsed.data);
+      if (release.packagePath !== packagePath) return null;
+      return {
+        version: release.version,
+        tag,
+        commit: peeledCommits.get(tag) ?? commit,
+      };
+    })
+    .filter((release): release is SourceRelease => release !== null)
+    .sort((left, right) => compareSemverDesc(left.version, right.version));
 }
 
 function hostedArchiveRequest(input: {
@@ -396,6 +470,7 @@ function hostedArchiveRequest(input: {
 async function resolvePackageRef(input: {
   config: CliConfig;
   gitRoot?: string | null;
+  repository?: SourceRepository | null;
   packagePath: SourcePackagePath;
   ref: SourceVersionRef;
 }): Promise<{
@@ -405,10 +480,9 @@ async function resolvePackageRef(input: {
   commit: string;
 }> {
   if (input.ref === 'main' || /^[0-9a-f]{40}$/.test(input.ref)) {
-    if (!input.gitRoot) {
-      throw new Error(`Source ref ${input.ref} requires a cloned organization source repository.`);
-    }
-    const commit = gitOutput(['rev-parse', input.ref], input.gitRoot);
+    const commit = input.gitRoot
+      ? gitOutput(['rev-parse', input.ref], input.gitRoot)
+      : await resolveRemoteRefCommit(input.config, input.repository, input.ref);
     if (!commit) throw new Error(`Source ref ${input.ref} does not exist.`);
     return { requestedRef: input.ref, resolvedRef: input.ref, commit };
   }
@@ -416,6 +490,7 @@ async function resolvePackageRef(input: {
   const releases = await listPackageReleases({
     config: input.config,
     gitRoot: input.gitRoot,
+    repository: input.repository,
     packagePath: input.packagePath,
   });
   const release =
@@ -437,6 +512,23 @@ async function resolvePackageRef(input: {
       release.commit ||
       (input.gitRoot ? (gitOutput(['rev-list', '-n', '1', release.tag], input.gitRoot) ?? '') : ''),
   };
+}
+
+async function resolveRemoteRefCommit(
+  config: CliConfig,
+  repository: SourceRepository | null | undefined,
+  ref: SourceVersionRef
+): Promise<string | null> {
+  if (/^[0-9a-f]{40}$/.test(ref)) return ref;
+  if (!repository?.remoteUrl) return null;
+  const output = gitOutput(
+    ['ls-remote', repository.remoteUrl, `refs/heads/${ref}`],
+    undefined,
+    config,
+    repository.remoteUrl
+  );
+  const [commit] = output?.split(/\s+/) ?? [];
+  return CommitShaSchema.safeParse(commit).success ? commit : null;
 }
 
 function archivePackage(input: {
@@ -526,10 +618,6 @@ function dependencyInstallPath(parentRoot: string, packagePath: SourcePackagePat
   return destination;
 }
 
-function lockfileInputHash(input: unknown): string {
-  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
-}
-
 async function resolvePackageGraph(input: {
   config: CliConfig;
   gitRoot?: string | null;
@@ -547,7 +635,7 @@ async function resolvePackageGraph(input: {
   const tempDir = await mkdtemp(path.join(tmpdir(), 'eigenpal-install-resolve-'));
   try {
     const packageRoot = path.join(tempDir, 'package');
-    const ref = resolved.resolvedTag ?? resolved.resolvedRef;
+    const ref = resolved.commit;
     if (input.gitRoot) {
       archivePackage({
         gitRoot: input.gitRoot,
@@ -602,7 +690,7 @@ async function materializeLockPackage(input: {
   lockPackage: InstallLockPackage;
   outDir: string;
 }): Promise<void> {
-  const ref = input.lockPackage.resolvedTag ?? input.lockPackage.commit;
+  const ref = input.lockPackage.commit;
   const usedHostedArchive = await tryHostedArchive({
     config: input.config,
     gitRoot: input.gitRoot,
@@ -742,6 +830,15 @@ function validatePackage(dir: string): { valid: boolean; errors: string[]; packa
     else parsedManifest = manifest.data;
   }
 
+  if (context.packageRoot) {
+    const secretsPath = path.join(context.packageRoot, SOURCE_SECRETS_FILENAME);
+    if (existsSync(secretsPath)) {
+      const secrets = SourceSecretsFileSchema.safeParse(readYamlFile(secretsPath));
+      if (!secrets.success)
+        errors.push(secrets.error.issues.map((issue) => issue.message).join('; '));
+    }
+  }
+
   if (context.packageRoot && context.packagePath) {
     const fileIssues = validateSourcePackageRequiredFiles({
       packagePath: context.packagePath,
@@ -846,8 +943,16 @@ function requirePackageClean(context: PackageContext): void {
   }
 }
 
-function requirePushedMain(gitRoot: string, config: CliConfig): void {
+function currentBranch(gitRoot: string): string {
   const branch = gitOutput(['rev-parse', '--abbrev-ref', 'HEAD'], gitRoot);
+  if (!branch || branch === 'HEAD') {
+    throw new Error('Cannot operate from detached HEAD; check out a branch first.');
+  }
+  return branch;
+}
+
+function requirePushedMain(gitRoot: string, config: CliConfig): void {
+  const branch = currentBranch(gitRoot);
   if (branch !== 'main') throw new Error('Release must be run from the main branch.');
   const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], gitRoot);
   runGit(['fetch', 'origin', 'main'], {
@@ -862,21 +967,52 @@ function requirePushedMain(gitRoot: string, config: CliConfig): void {
   }
 }
 
+function checkoutOriginalBranch(gitRoot: string, branch: string): void {
+  if (gitOutput(['rev-parse', '--abbrev-ref', 'HEAD'], gitRoot) === branch) return;
+  runGitStrict(['checkout', branch], { cwd: gitRoot });
+}
+
+function mergeCurrentBranchToMain(input: {
+  gitRoot: string;
+  branch: string;
+  config: CliConfig;
+  authorEnv: GitAuthorEnv;
+}): void {
+  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], input.gitRoot);
+  runGitStrict(['fetch', 'origin', 'main'], {
+    cwd: input.gitRoot,
+    config: input.config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
+  const hasLocalMain = Boolean(
+    gitOutput(['rev-parse', '--verify', 'refs/heads/main'], input.gitRoot)
+  );
+  runGitStrict(hasLocalMain ? ['checkout', 'main'] : ['checkout', '-b', 'main', 'origin/main'], {
+    cwd: input.gitRoot,
+  });
+  runGitStrict(['pull', '--ff-only', 'origin', 'main'], {
+    cwd: input.gitRoot,
+    config: input.config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
+  runGitStrict(['merge', '--no-edit', input.branch], {
+    cwd: input.gitRoot,
+    env: input.authorEnv,
+  });
+  runGitStrict(['push', 'origin', 'main'], {
+    cwd: input.gitRoot,
+    config: input.config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
+}
+
 async function syncLatestAutomation(
   client: ApiClient,
   packagePath: SourcePackagePath
 ): Promise<void> {
   const automation = pathToDottedPackageName(packagePath);
-  try {
-    await client.post(`/api/automations/${encodeURIComponent(automation)}/sync`);
-    success(`Synced ${automation} to latest release.`);
-  } catch (err) {
-    if ((err instanceof ApiError && err.status === 404) || err instanceof HtmlResponseError) {
-      warn('Automation sync endpoint is not available yet; run sync after it lands.');
-      return;
-    }
-    throw err;
-  }
+  await client.post(`/api/automations/${encodeURIComponent(automation)}/sync`);
+  success(`Synced ${automation} to latest release.`);
 }
 
 async function cloneSource(opts: { out?: string; baseUrl?: string }): Promise<void> {
@@ -889,11 +1025,49 @@ async function cloneSource(opts: { out?: string; baseUrl?: string }): Promise<vo
   success(`Cloned ${repo.remoteUrl}`);
 }
 
+const MOVED_FROM_GIT_SUBCOMMANDS = new Set([
+  'clone',
+  'install',
+  'init',
+  'pull',
+  'commit',
+  'save',
+  'push',
+  'upgrade',
+  'doctor',
+  'validate',
+  'status',
+  'deps',
+  'clean',
+  'show',
+  'versions',
+  'release',
+  'sync',
+  'secret',
+]);
+
+function forwardDeprecatedGitSubcommand(args: string[]): void {
+  const subcommand = args[0];
+  if (subcommand === 'trigger') {
+    exitDeprecatedCli(
+      'Trigger CLI removed. Edit triggers in eigenpal.yaml, then run eigenpal agents save, agents release, and agents sync.'
+    );
+  }
+  if (subcommand === 'list') {
+    exitDeprecatedCli(
+      'eigenpal git list removed. Use eigenpal agents list for the agent registry, or browse packages in your cloned source repo.'
+    );
+  }
+  if (!subcommand || !MOVED_FROM_GIT_SUBCOMMANDS.has(subcommand)) return;
+  exitDeprecatedCli(`eigenpal git ${subcommand} removed. Use eigenpal agents ${subcommand}.`);
+}
+
 async function gitPassthrough(args: string[], opts: BaseOpts): Promise<void> {
   if (args.length === 0) {
     error('Pass Git arguments after `--`, for example `eigenpal git -- status`.');
     process.exit(2);
   }
+  forwardDeprecatedGitSubcommand(args);
   const config = resolveConfig(opts);
   const cwd = gitCwdFromArgs(args);
   const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], cwd);
@@ -1068,17 +1242,14 @@ function doctor(opts: BaseOpts & ContextOpts): void {
   if (checks.some((check) => check.status === 'fail')) process.exit(1);
 }
 
-function validate(opts: BaseOpts & ContextOpts): void {
-  const context = resolveGitSourceContext({ dir: opts.dir });
+export function validateSourcePackage(dir: string): {
+  valid: boolean;
+  errors: string[];
+  packagePath?: string;
+} {
+  const context = resolveGitSourceContext({ dir });
   if (context.gitRoot) checkRepoVersion(context.gitRoot, false);
-  const result = validatePackage(opts.dir ?? process.cwd());
-  if (opts.json) console.log(JSON.stringify(result, null, 2));
-  else if (result.valid) success(`Valid package ${result.packagePath ?? ''}`.trim());
-  else {
-    error('Package validation failed.');
-    for (const issue of result.errors) dim(`  ${issue}`);
-  }
-  if (!result.valid) process.exit(1);
+  return validatePackage(dir);
 }
 
 function packageStatus(opts: BaseOpts & ContextOpts): void {
@@ -1088,16 +1259,50 @@ function packageStatus(opts: BaseOpts & ContextOpts): void {
     context.gitRoot && context.packageRoot && context.gitRoot === context.packageRoot;
   const validation =
     context.packageRoot && !isRepoRootStatus ? validatePackage(context.packageRoot) : null;
-  const gitStatus = context.gitRoot
-    ? (gitOutput(['status', '--short'], context.gitRoot) ?? '')
-    : '';
+  const gitStatusLines = context.gitRoot ? readGitStatusLines(context.gitRoot) : [];
+  const branch = context.gitRoot ? currentBranchOrNull(context.gitRoot) : null;
+  const upstream = context.gitRoot
+    ? gitOutput(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], context.gitRoot)
+    : null;
+  const head = context.gitRoot ? gitOutput(['rev-parse', 'HEAD'], context.gitRoot) : null;
+  const aheadOfMain = context.gitRoot ? countAheadOfMain(context.gitRoot) : null;
+  const dirtyPackages = context.gitRoot ? dirtyPackagePaths(context.gitRoot) : [];
+  const packages = dirtyPackages.map((packagePath) => {
+    const packageValidation = validatePackage(path.join(context.gitRoot!, packagePath));
+    return {
+      packagePath,
+      clean: false,
+      valid: packageValidation.valid,
+      errors: packageValidation.errors,
+    };
+  });
+  if (
+    context.gitRoot &&
+    context.packagePath &&
+    !packages.some((item) => item.packagePath === context.packagePath)
+  ) {
+    packages.push({
+      packagePath: context.packagePath,
+      clean: readGitStatusLines(context.gitRoot, [context.packagePath]).length === 0,
+      valid:
+        validation?.valid ??
+        validatePackage(context.packageRoot ?? opts.dir ?? process.cwd()).valid,
+      errors: validation?.errors ?? [],
+    });
+  }
   const payload = {
     gitRoot: context.gitRoot,
     packageRoot: context.packageRoot,
     packagePath: context.packagePath,
-    clean: gitStatus.length === 0,
+    branch,
+    upstream,
+    head,
+    aheadOfMain,
+    dirtyCount: gitStatusLines.length,
+    clean: gitStatusLines.length === 0,
     valid: validation?.valid ?? null,
     errors: validation?.errors ?? [],
+    packages,
   };
   if (opts.json) console.log(JSON.stringify(payload, null, 2));
   else {
@@ -1106,6 +1311,7 @@ function packageStatus(opts: BaseOpts & ContextOpts): void {
         [payload],
         [
           { key: 'packagePath', header: 'package' },
+          { key: 'branch', header: 'branch' },
           { key: 'clean', header: 'clean' },
           { key: 'valid', header: 'valid' },
         ]
@@ -1144,45 +1350,6 @@ function clean(opts: BaseOpts & ContextOpts): void {
     process.exit(1);
   }
   success('Working tree is clean.');
-}
-
-async function list(
-  opts: BaseOpts & PaginationOpts & { type?: string; search?: string; includeArchived?: boolean }
-): Promise<void> {
-  if (opts.type && opts.type !== 'agent') {
-    throw new Error('Only agent automation listing is available before workflow cutover.');
-  }
-  const client = new ApiClient(resolveConfig(opts));
-  const raw = await client.get('/api/v1/agents', {
-    limit: String(opts.limit),
-    offset: String(opts.offset),
-    ...(opts.search ? { search: opts.search } : {}),
-    ...(opts.includeArchived ? { includeArchived: 'true' } : {}),
-  });
-  const parsed = AgentsListSchema.parse(raw);
-  if (opts.json) console.log(JSON.stringify(parsed, null, 2));
-  else {
-    const rows = parsed.data.map((row) => ({
-      ...row,
-      inconsistency:
-        typeof row.sourceIntegrity === 'string' && row.sourceIntegrity !== 'healthy'
-          ? row.sourceIntegrity
-          : '',
-    }));
-    renderListResult(
-      { ...parsed, data: rows },
-      [
-        { key: 'type', header: 'type', format: () => 'agent' },
-        { key: 'slug', header: 'slug' },
-        { key: 'name', header: 'name' },
-        { key: 'status', header: 'status' },
-        { key: 'sourceIntegrity', header: 'source' },
-        { key: 'latestVersion', header: 'latest' },
-        { key: 'inconsistency', header: 'inconsistency' },
-      ],
-      { entityLabel: 'automation' }
-    );
-  }
 }
 
 async function show(target: string, opts: BaseOpts): Promise<void> {
@@ -1264,19 +1431,31 @@ async function release(
   if (!context.gitRoot || !context.packageRoot || !context.packagePath) {
     throw new Error('Run release inside a source package in an organization Git repo.');
   }
+  const resolvedContext: ResolvedPackageContext = {
+    gitRoot: context.gitRoot,
+    packageRoot: context.packageRoot,
+    packagePath: context.packagePath,
+  };
   const config = resolveConfig(opts);
-  checkRepoVersion(context.gitRoot, true);
-  const validation = validatePackage(context.packageRoot);
+  checkRepoVersion(resolvedContext.gitRoot, true);
+  const validation = validatePackage(resolvedContext.packageRoot);
   if (!validation.valid)
     throw new Error(`Package validation failed: ${validation.errors.join('; ')}`);
-  requirePackageClean(context);
-  requirePushedMain(context.gitRoot, config);
-  if (!opts.message) throw new Error('Release requires -m <message>.');
+  const releaseMessage = opts.message?.trim() || `Release ${resolvedContext.packagePath}`;
+  const originalBranch = currentBranch(resolvedContext.gitRoot);
+  const releaseFromMain = originalBranch === 'main';
+  if (releaseFromMain) {
+    requirePackageClean(resolvedContext);
+    requirePushedMain(resolvedContext.gitRoot, config);
+  } else {
+    await commitSourceChanges({ config, context: resolvedContext, message: releaseMessage });
+    await pushCurrentBranch({ config, gitRoot: resolvedContext.gitRoot });
+  }
   const client = new ApiClient(config);
   const version = ['patch', 'minor', 'major'].includes(versionOrBump)
     ? bumpReleaseVersion(
         ReleasesSchema.parse(
-          await client.get('/api/v1/source/releases', { packagePath: context.packagePath })
+          await client.get('/api/v1/source/releases', { packagePath: resolvedContext.packagePath })
         ).releases,
         versionOrBump as 'patch' | 'minor' | 'major'
       )
@@ -1286,30 +1465,72 @@ async function release(
   }
   const existing = ReleasesSchema.parse(
     await client.get('/api/v1/source/releases', {
-      packagePath: context.packagePath,
+      packagePath: resolvedContext.packagePath,
       version,
     })
   );
   if (existing.releases.length > 0) {
-    throw new Error(`Release ${version} already exists for ${context.packagePath}.`);
+    throw new Error(`Release ${version} already exists for ${resolvedContext.packagePath}.`);
   }
-  const tag = formatReleaseTag(pathToDottedPackageName(context.packagePath), version);
   const authorEnv = await resolveGitAuthorEnv(config);
-  runGit(['tag', '-a', tag, '-m', opts.message], { cwd: context.gitRoot, env: authorEnv });
-  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], context.gitRoot);
+  if (!releaseFromMain) {
+    try {
+      mergeCurrentBranchToMain({
+        gitRoot: resolvedContext.gitRoot,
+        branch: originalBranch,
+        config,
+        authorEnv,
+      });
+      await tagAndSyncRelease({
+        context: resolvedContext,
+        config,
+        client,
+        version,
+        message: releaseMessage,
+        authorEnv,
+      });
+    } finally {
+      checkoutOriginalBranch(resolvedContext.gitRoot, originalBranch);
+    }
+    return;
+  }
+  await tagAndSyncRelease({
+    context: resolvedContext,
+    config,
+    client,
+    version,
+    message: releaseMessage,
+    authorEnv,
+  });
+}
+
+async function tagAndSyncRelease(input: {
+  context: ResolvedPackageContext;
+  config: CliConfig;
+  client: ApiClient;
+  version: string;
+  message: string;
+  authorEnv: GitAuthorEnv;
+}): Promise<void> {
+  const tag = formatReleaseTag(pathToDottedPackageName(input.context.packagePath), input.version);
+  runGitStrict(['tag', '-a', tag, '-m', input.message], {
+    cwd: input.context.gitRoot,
+    env: input.authorEnv,
+  });
+  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], input.context.gitRoot);
   try {
-    runGit(['push', 'origin', tag], {
-      cwd: context.gitRoot,
-      config,
+    runGitStrict(['push', 'origin', tag], {
+      cwd: input.context.gitRoot,
+      config: input.config,
       gitRemoteUrl: remoteUrl ?? undefined,
     });
   } catch (err) {
-    runGit(['tag', '-d', tag], { cwd: context.gitRoot });
+    runGitStrict(['tag', '-d', tag], { cwd: input.context.gitRoot });
     throw err;
   }
   success(`Released ${tag}.`);
-  if (isAutomationPackagePath(context.packagePath)) {
-    await syncLatestAutomation(client, context.packagePath);
+  if (isAutomationPackagePath(input.context.packagePath)) {
+    await syncLatestAutomation(input.client, input.context.packagePath);
   }
 }
 
@@ -1326,84 +1547,6 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
     throw new Error('Sync only supports agent and workflow packages.');
   }
   await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
-}
-
-function setEmailTriggerAlias(
-  email: string,
-  opts: ContextOpts & {
-    disabled?: boolean;
-    allow?: string[];
-    replyOn?: string;
-    replyMode?: string;
-    requireSenderAuth?: boolean;
-  }
-): void {
-  const context = requirePackageContext(opts);
-  const manifest = readMutablePackageManifest(context.packageRoot);
-  const triggers = { ...((manifest.triggers as Record<string, unknown> | undefined) ?? {}) };
-  const emailConfig = { ...((triggers.email as Record<string, unknown> | undefined) ?? {}) };
-  const aliases = Array.isArray(emailConfig.aliases) ? [...emailConfig.aliases] : [];
-  const nextAlias = {
-    address: email,
-    enabled: !opts.disabled,
-    allowlist: opts.allow ?? [],
-    replyConfig: {
-      ...(opts.replyOn ? { on: opts.replyOn } : {}),
-      ...(opts.replyMode ? { mode: opts.replyMode } : {}),
-    },
-    requireSenderAuth: opts.requireSenderAuth ?? true,
-  };
-  const filtered = aliases.filter((alias) =>
-    typeof alias === 'string'
-      ? alias.toLowerCase() !== email.toLowerCase()
-      : (alias as { address?: string }).address?.toLowerCase() !== email.toLowerCase()
-  );
-  manifest.triggers = {
-    ...triggers,
-    email: { ...emailConfig, enabled: true, aliases: [...filtered, nextAlias] },
-  };
-  writeMutablePackageManifest(context.packageRoot, manifest);
-  success(`Updated email trigger ${ui.bold(email)} in eigenpal.yaml.`);
-}
-
-function setApiTrigger(enabled: boolean, opts: ContextOpts): void {
-  const context = requirePackageContext(opts);
-  const manifest = readMutablePackageManifest(context.packageRoot);
-  const triggers = { ...((manifest.triggers as Record<string, unknown> | undefined) ?? {}) };
-  manifest.triggers = { ...triggers, api: enabled };
-  writeMutablePackageManifest(context.packageRoot, manifest);
-  success(`${enabled ? 'Enabled' : 'Disabled'} API trigger in eigenpal.yaml.`);
-}
-
-function encryptLocalSecret(input: {
-  plaintext: string;
-  keyId: string;
-  key: Buffer;
-  organizationId: string;
-  sourcePath: string;
-  secretName: string;
-}) {
-  if (input.key.byteLength !== 32) throw new Error('Secret encryption key must be 32 bytes.');
-  const nonce = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', input.key, nonce);
-  cipher.setAAD(
-    Buffer.from(
-      JSON.stringify({
-        keyId: input.keyId,
-        organizationId: input.organizationId,
-        sourcePath: input.sourcePath,
-        secretName: input.secretName,
-      })
-    )
-  );
-  const ciphertext = Buffer.concat([cipher.update(input.plaintext, 'utf8'), cipher.final()]);
-  return {
-    algorithm: 'aes-256-gcm' as const,
-    keyId: input.keyId,
-    nonce: nonce.toString('base64url'),
-    ciphertext: ciphertext.toString('base64url'),
-    tag: cipher.getAuthTag().toString('base64url'),
-  };
 }
 
 function readSecretsFile(packageRoot: string): SourceSecretsFile {
@@ -1434,31 +1577,44 @@ async function readSecretInput(opts: { stdin?: boolean; valueFile?: string }): P
   throw new Error('Secret value input is required in noninteractive mode.');
 }
 
+async function encryptSecretsViaApi(
+  client: ApiClient,
+  secrets: Array<{ sourcePath: string; secretName: string; plaintext: string }>
+): Promise<Record<string, EncryptedSecretValue>> {
+  const payload = (await client.post('/api/v1/source/secrets/encrypt', { secrets })) as {
+    secrets?: Record<string, EncryptedSecretValue>;
+  };
+  return payload.secrets ?? {};
+}
+
 async function setSecret(
   name: string,
   opts: ContextOpts & {
     stdin?: boolean;
     valueFile?: string;
-    keyId: string;
-    keyFile: string;
-    organizationId: string;
     description?: string;
+    baseUrl?: string;
   }
 ): Promise<void> {
   const context = requirePackageContext(opts);
+  const config = resolveConfig(opts);
+  requireApiKey(config);
+  const client = new ApiClient(config);
   const sourcePath = `${context.packagePath}/${SOURCE_SECRETS_FILENAME}`;
+  const encryptedByName = await encryptSecretsViaApi(client, [
+    {
+      sourcePath,
+      secretName: name,
+      plaintext: await readSecretInput(opts),
+    },
+  ]);
+  const encrypted = encryptedByName[name];
+  if (!encrypted) throw new Error('Server did not return encrypted secret.');
   const secretsFile = readSecretsFile(context.packageRoot);
   const secrets = { ...secretsFile.secrets };
   secrets[name] = {
     ...(opts.description ? { description: opts.description } : {}),
-    encrypted: encryptLocalSecret({
-      plaintext: await readSecretInput(opts),
-      keyId: opts.keyId,
-      key: readSecretKeyFile(opts.keyFile),
-      organizationId: opts.organizationId,
-      sourcePath,
-      secretName: name,
-    }),
+    encrypted,
   };
   writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
   success(`Encrypted ${ui.bold(name)} into secrets.enc.yaml.`);
@@ -1477,38 +1633,43 @@ async function importSecrets(
   envFile: string,
   opts: Parameters<typeof setSecret>[1]
 ): Promise<void> {
+  const context = requirePackageContext(opts);
+  const config = resolveConfig(opts);
+  requireApiKey(config);
+  const client = new ApiClient(config);
+  const sourcePath = `${context.packagePath}/${SOURCE_SECRETS_FILENAME}`;
+  const entries: Array<{ sourcePath: string; secretName: string; plaintext: string }> = [];
   const content = readFileSync(envFile, 'utf8');
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const idx = trimmed.indexOf('=');
     if (idx === -1) continue;
-    const context = requirePackageContext(opts);
-    const sourcePath = `${context.packagePath}/${SOURCE_SECRETS_FILENAME}`;
-    const secretsFile = readSecretsFile(context.packageRoot);
-    const secrets = { ...secretsFile.secrets };
-    const name = trimmed.slice(0, idx);
-    secrets[name] = {
-      encrypted: encryptLocalSecret({
-        plaintext: trimmed.slice(idx + 1),
-        keyId: opts.keyId,
-        key: readSecretKeyFile(opts.keyFile),
-        organizationId: opts.organizationId,
-        sourcePath,
-        secretName: name,
-      }),
-    };
-    writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
+    entries.push({
+      sourcePath,
+      secretName: trimmed.slice(0, idx),
+      plaintext: trimmed.slice(idx + 1),
+    });
   }
-}
-
-function readSecretKeyFile(keyFile: string): Buffer {
-  return Buffer.from(readFileSync(keyFile, 'utf8').trim(), 'base64url');
+  if (entries.length === 0) return;
+  const encryptedByName = await encryptSecretsViaApi(client, entries);
+  const secretsFile = readSecretsFile(context.packageRoot);
+  const secrets = { ...secretsFile.secrets };
+  for (const entry of entries) {
+    const encrypted = encryptedByName[entry.secretName];
+    if (!encrypted) {
+      throw new Error(`Server did not return encrypted secret for ${entry.secretName}.`);
+    }
+    secrets[entry.secretName] = { encrypted };
+  }
+  writeSecretsFile(context.packageRoot, { schemaVersion: 1, secrets });
+  success(`Imported ${ui.bold(String(entries.length))} secret(s) into secrets.enc.yaml.`);
 }
 
 async function install(
   packageRef: string | undefined,
-  opts: BaseOpts & { out?: string; lockfile?: string; frozenLockfile?: boolean }
+  opts: BaseOpts &
+    RuntimeInstallOpts & { out?: string; lockfile?: string; frozenLockfile?: boolean }
 ): Promise<void> {
   const config = resolveConfig(opts);
   const context = resolveGitSourceContext();
@@ -1567,7 +1728,8 @@ async function install(
           ? context.gitRoot
           : sourceGitRoot
         : sourceGitRoot;
-    const repository = explicitRef && !explicitGitRoot ? await getSourceRepository(config) : null;
+    const repository =
+      explicitRef && !explicitGitRoot ? await getSourceRepository(config, opts) : null;
     const lockfilePath =
       opts.lockfile ??
       path.join(
@@ -1575,6 +1737,27 @@ async function install(
         '.eigenpal',
         INSTALL_LOCKFILE_NAME
       );
+    if (!explicitRef) {
+      if (!context.packageRoot || !context.packagePath) {
+        throw new Error(
+          'Run eigenpal agents install --frozen-lockfile inside a source package or pass a package ref.'
+        );
+      }
+      const manifest = readPackageManifest(context.packageRoot);
+      const dependencies =
+        'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
+      const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });
+      const existing = readLockfile(lockfilePath);
+      if (existing.inputHash !== inputHash) {
+        throw new Error(`Existing lockfile ${lockfilePath} does not match current package inputs.`);
+      }
+    } else if (packageRef) {
+      const existing = readLockfile(lockfilePath);
+      const inputHash = sourceLockfileInputHash({ packageRef });
+      if (existing.inputHash !== inputHash) {
+        throw new Error(`Existing lockfile ${lockfilePath} does not match requested package ref.`);
+      }
+    }
     await installFromLock(
       lockfilePath,
       context.packageRoot,
@@ -1592,7 +1775,7 @@ async function install(
       context.gitRoot && packageManifestExists(context.gitRoot, parsed.packagePath)
         ? context.gitRoot
         : sourceGitRoot;
-    const repository = explicitGitRoot ? null : await getSourceRepository(config);
+    const repository = explicitGitRoot ? null : await getSourceRepository(config, opts);
     if (parsed.ref === 'main') warn('Installing @main uses draft source and is not reproducible.');
     const intendedLockfile =
       opts.lockfile ??
@@ -1601,7 +1784,7 @@ async function install(
         '.eigenpal',
         INSTALL_LOCKFILE_NAME
       );
-    const inputHash = lockfileInputHash({ packageRef });
+    const inputHash = sourceLockfileInputHash({ packageRef });
     if (existsSync(intendedLockfile)) {
       const existing = readLockfile(intendedLockfile);
       if (existing.inputHash !== inputHash) {
@@ -1609,7 +1792,14 @@ async function install(
           `Existing lockfile ${intendedLockfile} does not match requested package ref.`
         );
       }
-      await installFromLock(intendedLockfile, null, true, repository, parsed.packagePath);
+      await installFromLock(
+        intendedLockfile,
+        null,
+        true,
+        repository,
+        parsed.packagePath,
+        explicitGitRoot
+      );
       return;
     }
     const lockRoot = await resolvePackageGraph({
@@ -1639,15 +1829,15 @@ async function install(
   }
 
   if (!context.packageRoot || !context.packagePath) {
-    throw new Error('Run git install inside a source package or pass a package ref.');
+    throw new Error('Run eigenpal agents install inside a source package or pass a package ref.');
   }
   if (!context.gitRoot) {
-    throw new Error('Run git install inside an organization source repository.');
+    throw new Error('Run eigenpal agents install inside an organization source repository.');
   }
   const manifest = readPackageManifest(context.packageRoot);
   const dependencies =
     'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
-  const inputHash = lockfileInputHash({ packagePath: context.packagePath, dependencies });
+  const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });
   const intendedLockfile =
     opts.lockfile ?? path.join(context.packageRoot, '.eigenpal', INSTALL_LOCKFILE_NAME);
   if (existsSync(intendedLockfile)) {
@@ -1789,11 +1979,44 @@ async function pullSource(opts: BaseOpts & { dir?: string }): Promise<void> {
   });
 }
 
+function readGitStatusLines(gitRoot: string, pathspec: string[] = []): string[] {
+  const status =
+    gitOutput(
+      [
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+        ...(pathspec.length ? ['--', ...pathspec] : []),
+      ],
+      gitRoot
+    ) ?? '';
+  return status.split('\n').filter(Boolean);
+}
+
+function currentBranchOrNull(gitRoot: string): string | null {
+  const branch = gitOutput(['rev-parse', '--abbrev-ref', 'HEAD'], gitRoot);
+  return branch && branch !== 'HEAD' ? branch : null;
+}
+
+function countAheadOfMain(gitRoot: string): number | null {
+  const base = gitOutput(['rev-parse', '--verify', 'origin/main'], gitRoot)
+    ? 'origin/main'
+    : gitOutput(['rev-parse', '--verify', 'main'], gitRoot)
+      ? 'main'
+      : null;
+  if (!base) return null;
+  const count = gitOutput(['rev-list', '--count', `${base}..HEAD`], gitRoot);
+  return count ? Number(count) : null;
+}
+
+function statusPath(line: string): string {
+  return line.slice(2).trim().split(' -> ').pop()!.replace(/\\/g, '/');
+}
+
 function dirtyPackagePaths(gitRoot: string): SourcePackagePath[] {
-  const status = gitOutput(['status', '--porcelain', '--untracked-files=all'], gitRoot) ?? '';
   const packagePaths = new Set<SourcePackagePath>();
-  for (const line of status.split('\n')) {
-    const file = line.slice(2).trim().split(' -> ').pop()!.replace(/\\/g, '/');
+  for (const line of readGitStatusLines(gitRoot)) {
+    const file = statusPath(line);
     const parts = file.split('/');
     for (let index = parts.length; index >= 2; index -= 1) {
       const candidate = parts.slice(0, index).join('/');
@@ -1809,43 +2032,82 @@ function dirtyPackagePaths(gitRoot: string): SourcePackagePath[] {
   return [...packagePaths].sort();
 }
 
-async function commitSource(opts: BaseOpts & { message?: string; dir?: string }): Promise<void> {
-  if (!opts.message) throw new Error('Commit requires -m <message>.');
-  const config = resolveConfig(opts);
-  const context = resolveGitSourceContext({ dir: opts.dir });
-  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
-  checkRepoVersion(context.gitRoot, true);
-  const packagePaths = dirtyPackagePaths(context.gitRoot);
-  if (packagePaths.length === 0) {
-    warn('No source package changes to commit.');
-    return;
+function dirtyRootFiles(gitRoot: string): string[] {
+  return readGitStatusLines(gitRoot, ['eigenpal.yaml', '.gitignore'])
+    .map(statusPath)
+    .filter((file) => file === 'eigenpal.yaml' || file === '.gitignore');
+}
+
+function hasDirtySharedResources(gitRoot: string): boolean {
+  return readGitStatusLines(gitRoot, ['resources']).length > 0;
+}
+
+async function commitSourceChanges(input: {
+  config: CliConfig;
+  context: PackageContext;
+  message?: string;
+}): Promise<boolean> {
+  if (!input.context.gitRoot) throw new Error('Not inside a Git repository.');
+  const packagePaths = dirtyPackagePaths(input.context.gitRoot);
+  const sharedPaths = hasDirtySharedResources(input.context.gitRoot) ? ['resources'] : [];
+  const rootFiles = dirtyRootFiles(input.context.gitRoot);
+  if (packagePaths.length === 0 && sharedPaths.length === 0 && rootFiles.length === 0) {
+    warn('No source package or shared resource changes to commit.');
+    return false;
+  }
+  if (!input.message) {
+    throw new Error('Commit requires -m <message> when source changes are dirty.');
   }
   for (const packagePath of packagePaths) {
-    const validation = validatePackage(path.join(context.gitRoot, packagePath));
+    const validation = validatePackage(path.join(input.context.gitRoot, packagePath));
     if (!validation.valid) {
       throw new Error(
         `Package validation failed for ${packagePath}: ${validation.errors.join('; ')}`
       );
     }
   }
-  const rootFiles = ['eigenpal.yaml', '.gitignore'].filter((file) =>
-    existsSync(path.join(context.gitRoot!, file))
-  );
-  runGit(['add', ...rootFiles, ...packagePaths], { cwd: context.gitRoot });
-  const authorEnv = await resolveGitAuthorEnv(config);
-  runGit(['commit', '-m', opts.message], { cwd: context.gitRoot, env: authorEnv });
+  runGit(['add', ...rootFiles, ...packagePaths, ...sharedPaths], { cwd: input.context.gitRoot });
+  const authorEnv = await resolveGitAuthorEnv(input.config);
+  runGit(['commit', '-m', input.message], { cwd: input.context.gitRoot, env: authorEnv });
+  return true;
+}
+
+async function commitSource(opts: BaseOpts & { message?: string; dir?: string }): Promise<void> {
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  checkRepoVersion(context.gitRoot, true);
+  await commitSourceChanges({ config, context, message: opts.message });
+}
+
+async function saveSource(opts: BaseOpts & { message?: string; dir?: string }): Promise<void> {
+  const config = resolveConfig(opts);
+  const context = resolveGitSourceContext({ dir: opts.dir });
+  if (!context.gitRoot) throw new Error('Not inside a Git repository.');
+  checkRepoVersion(context.gitRoot, true);
+  await commitSourceChanges({ config, context, message: opts.message });
+  await pushCurrentBranch({ config, gitRoot: context.gitRoot });
+  success('Saved source branch.');
+}
+
+async function pushCurrentBranch(input: { config: CliConfig; gitRoot: string }): Promise<void> {
+  const branch = currentBranch(input.gitRoot);
+  if (!branch) {
+    throw new Error('Cannot push from detached HEAD; check out a branch first.');
+  }
+  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], input.gitRoot);
+  runGit(['push', '-u', 'origin', 'HEAD', '--follow-tags'], {
+    cwd: input.gitRoot,
+    config: input.config,
+    gitRemoteUrl: remoteUrl ?? undefined,
+  });
 }
 
 async function pushSource(opts: BaseOpts & { dir?: string }): Promise<void> {
   const config = resolveConfig(opts);
   const context = resolveGitSourceContext({ dir: opts.dir });
   if (!context.gitRoot) throw new Error('Not inside a Git repository.');
-  const remoteUrl = gitOutput(['remote', 'get-url', 'origin'], context.gitRoot);
-  runGit(['push', 'origin', 'main', '--follow-tags'], {
-    cwd: context.gitRoot,
-    config,
-    gitRemoteUrl: remoteUrl ?? undefined,
-  });
+  await pushCurrentBranch({ config, gitRoot: context.gitRoot });
 }
 
 function upgradeSource(opts: { dir?: string; dryRun?: boolean }): void {
@@ -1878,22 +2140,6 @@ function parseReleaseVersion(value: string): string {
   return value;
 }
 
-function parseBoolean(value: string): boolean {
-  if (value === 'true' || value === 'enabled' || value === 'on') return true;
-  if (value === 'false' || value === 'disabled' || value === 'off') return false;
-  throw new InvalidArgumentError('Expected true/false, enabled/disabled, or on/off');
-}
-
-function collect(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
-function parseType(value: string): string {
-  if (!['agent', 'workflow'].includes(value))
-    throw new InvalidArgumentError('type must be agent or workflow');
-  return value;
-}
-
 function parseTemplate(value: string): string {
   if (!['agent', 'workflow', 'skill', 'rule', 'knowledge', 'evaluator'].includes(value)) {
     throw new InvalidArgumentError(
@@ -1903,32 +2149,21 @@ function parseTemplate(value: string): string {
   return value;
 }
 
-export function registerGitCommands(program: Command): void {
-  const git = program
-    .command('git', { hidden: true })
-    .description('Experimental Git-backed source commands.')
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .argument('[gitArgs...]', 'Git arguments after --')
-    .action(
-      action(async (gitArgs: string[] | undefined, opts: BaseOpts) =>
-        gitPassthrough(gitArgs ?? [], opts)
-      )
-    );
-
-  withBaseUrl(git.command('clone'))
+export function registerAgentSourceCommands(agent: Command): void {
+  withBaseUrl(agent.command('clone'))
     .description('Clone the organization source repository.')
     .option('--out <dir>', 'Output directory')
     .action(action(cloneSource));
 
-  withBaseUrl(git.command('install [packageRef]'))
+  withBaseUrl(agent.command('install [packageRef]'))
     .description('Materialize a source package and its workspace dependencies.')
     .option('--out <dir>', 'Output directory for an explicit package ref')
     .option('--lockfile <path>', 'Lockfile path')
     .option('--frozen-lockfile', 'Install exactly from the existing lockfile')
+    .option('--remote-url <url>', 'Use an explicit organization Git remote URL')
     .action(action(install));
 
-  git
+  agent
     .command('init <name>')
     .description('Create a new source package scaffold.')
     .addOption(
@@ -1943,74 +2178,77 @@ export function registerGitCommands(program: Command): void {
       )
     );
 
-  withBaseUrl(git.command('pull'))
-    .description('Pull organization source from origin/main with --ff-only.')
+  withBaseUrl(agent.command('pull'))
+    .description(
+      'Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs pull.'
+    )
     .option('--dir <dir>', 'Repository directory')
     .action(action(pullSource));
 
-  withBaseUrl(git.command('commit'))
+  withBaseUrl(agent.command('commit'))
     .description('Validate changed source packages and commit them.')
     .addOption(new Option('-m, --message <message>', 'Commit message').makeOptionMandatory())
     .option('--dir <dir>', 'Repository directory')
     .action(action(commitSource));
 
-  withBaseUrl(git.command('push'))
-    .description('Push organization source main and tags.')
+  withBaseUrl(agent.command('save'))
+    .description('Validate, commit if dirty, and push the current source branch.')
+    .option('-m, --message <message>', 'Commit message when source changes are dirty')
+    .option('--dir <dir>', 'Repository directory')
+    .action(action(saveSource));
+
+  withBaseUrl(agent.command('push'))
+    .description('Push the current organization source branch and tags.')
     .option('--dir <dir>', 'Repository directory')
     .action(action(pushSource));
 
-  git
+  agent
     .command('upgrade')
     .description('Upgrade the source repository schema in place.')
     .option('--dir <dir>', 'Repository directory')
     .option('--dry-run', 'Print upgrade actions without changing files')
     .action(action(async (opts: { dir?: string; dryRun?: boolean }) => upgradeSource(opts)));
 
-  addJsonFlag(git.command('doctor'))
+  addJsonFlag(agent.command('doctor'))
     .description('Check organization source repository health.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(async (opts: BaseOpts & ContextOpts) => doctor(opts)));
 
-  addJsonFlag(git.command('validate [dir]'))
-    .description('Validate the nearest source package.')
-    .action(action(async (dir: string | undefined, opts: BaseOpts) => validate({ ...opts, dir })));
-
-  addJsonFlag(git.command('status'))
+  addJsonFlag(agent.command('status'))
     .description('Show source repo and package status.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(async (opts: BaseOpts & ContextOpts) => packageStatus(opts)));
 
-  addJsonFlag(git.command('deps'))
+  addJsonFlag(agent.command('deps'))
     .description('List package workspace dependencies.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(async (opts: BaseOpts & ContextOpts) => deps(opts)));
 
-  git
+  agent
     .command('clean')
     .description('Require a clean source working tree.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(async (opts: BaseOpts & ContextOpts) => clean(opts)));
 
-  addJsonFlag(withPagination(withBaseUrl(git.command('list')), 50))
-    .description('List Git-backed automations.')
-    .option('--type <type>', 'Filter by automation type', parseType)
-    .option('--search <q>', 'Search by slug, name, or description')
-    .option('--include-archived', 'Include archived automations')
-    .action(action(list));
-
-  addJsonFlag(withBaseUrl(git.command('show <automation>')))
+  addJsonFlag(withBaseUrl(agent.command('show <automation>')))
     .description('Show Git-backed automation details.')
     .action(action(show));
 
-  addJsonFlag(withBaseUrl(git.command('versions <package>')))
+  addJsonFlag(withBaseUrl(agent.command('versions <package>')))
     .description('List package release versions.')
     .action(action(versions));
 
-  withBaseUrl(git.command('release'))
-    .description('Create and push a package release tag.')
-    .argument('<version>', 'Version or bump level', parseReleaseVersion)
+  withBaseUrl(agent.command('release'))
+    .description(
+      'Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.'
+    )
+    .argument(
+      '<version>',
+      'Version (X.Y.Z) or bump level (patch, minor, major)',
+      parseReleaseVersion
+    )
     .argument('[dir]', 'Package directory')
-    .addOption(new Option('-m, --message <message>', 'Annotated tag message').makeOptionMandatory())
+    .option('-m, --message <message>', 'Annotated tag message (default: Release <packagePath>)')
     .action(
       action(
         async (
@@ -2021,47 +2259,18 @@ export function registerGitCommands(program: Command): void {
       )
     );
 
-  withBaseUrl(git.command('sync [automation]'))
+  withBaseUrl(agent.command('sync [automation]'))
     .description('Sync an automation from the latest Git source release.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(sync));
 
-  const trigger = git.command('trigger').description('Edit trigger policy in eigenpal.yaml.');
-  trigger
-    .command('api <enabled>')
-    .description('Enable or disable API trigger policy in eigenpal.yaml.')
-    .option('--dir <dir>', 'Directory to inspect')
-    .action(
-      action(async (enabled: string, opts: ContextOpts) =>
-        setApiTrigger(parseBoolean(enabled), opts)
-      )
-    );
-  const triggerEmail = trigger.command('email').description('Edit email trigger policy.');
-  triggerEmail
-    .command('set <email>')
-    .description('Add or update an email trigger alias in eigenpal.yaml.')
-    .option('--dir <dir>', 'Directory to inspect')
-    .option('--disabled', 'Write the alias as disabled')
-    .option('--allow <entry>', 'Allowed sender entry; repeatable', collect, [])
-    .option('--reply-on <never|always>', 'Reply behavior')
-    .option('--reply-mode <sender|all>', 'Reply recipient mode')
-    .option('--no-require-sender-auth', 'Disable sender-auth checks for this alias')
-    .action(
-      action(async (email: string, opts: Parameters<typeof setEmailTriggerAlias>[1]) =>
-        setEmailTriggerAlias(email, opts)
-      )
-    );
-
-  const secret = git.command('secret').description('Edit encrypted secrets.enc.yaml.');
+  const secret = agent.command('secret').description('Edit encrypted secrets.enc.yaml.');
   secret
     .command('set <name>')
     .description('Encrypt and set a secret value in secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
     .option('--stdin', 'Read the secret value from stdin')
     .option('--value-file <path>', 'Read the secret value from a file')
-    .requiredOption('--key-id <id>', 'Organization decrypt key id')
-    .requiredOption('--key-file <path>', 'File containing the base64url-encoded organization key')
-    .requiredOption('--organization-id <id>', 'Organization id for authenticated data')
     .option('--description <text>', 'Secret description')
     .action(action(setSecret));
   secret
@@ -2073,8 +2282,19 @@ export function registerGitCommands(program: Command): void {
     .command('import <env-file>')
     .description('Import KEY=value entries from an env file into secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
-    .requiredOption('--key-id <id>', 'Organization decrypt key id')
-    .requiredOption('--key-file <path>', 'File containing the base64url-encoded organization key')
-    .requiredOption('--organization-id <id>', 'Organization id for authenticated data')
     .action(action(importSecrets));
+}
+
+export function registerGitCommands(program: Command): void {
+  program
+    .command('git')
+    .description('Passthrough to git with organization remote auth and committer identity.')
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .argument('[gitArgs...]', 'Git arguments after --')
+    .action(
+      action(async (gitArgs: string[] | undefined, opts: BaseOpts) =>
+        gitPassthrough(gitArgs ?? [], opts)
+      )
+    );
 }

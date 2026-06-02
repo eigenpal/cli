@@ -128,17 +128,18 @@ async function withApiServer(
   }
 }
 
-describe('hidden git source commands', () => {
-  test('top-level help hides git namespace while direct help works', () => {
-    const top = spawnSync('bun', [CLI, '--help'], { encoding: 'utf8' });
-    expect(top.status).toBe(0);
-    expect(top.stdout).not.toContain('git [options]');
+describe('git passthrough and agents source commands', () => {
+  test('git help describes passthrough; source subcommands live under agents', () => {
+    const gitHelp = spawnSync('bun', [CLI, 'git', '--help'], { encoding: 'utf8' });
+    expect(gitHelp.status).toBe(0);
+    expect(gitHelp.stdout).toContain('Passthrough');
+    expect(gitHelp.stdout).not.toContain('save');
 
-    const hidden = spawnSync('bun', [CLI, 'git', '--help'], { encoding: 'utf8' });
-    expect(hidden.status).toBe(0);
-    expect(hidden.stdout).toContain('Experimental Git-backed source commands');
-    expect(hidden.stdout).toContain('validate');
-    expect(hidden.stdout).toContain('versions');
+    const agentsHelp = spawnSync('bun', [CLI, 'agents', '--help'], { encoding: 'utf8' });
+    expect(agentsHelp.status).toBe(0);
+    expect(agentsHelp.stdout).toContain('save');
+    expect(agentsHelp.stdout).toContain('versions');
+    expect(agentsHelp.stdout).not.toContain('trigger');
   });
 
   test('resolves package context from a source package subdirectory', () => {
@@ -183,61 +184,56 @@ describe('hidden git source commands', () => {
     }
   });
 
-  test('hidden trigger and secret commands mutate source files locally', () => {
+  test('git trigger is removed and agents secret commands mutate source files locally', async () => {
     const { root, packageDir } = makeSourceRepo();
     try {
-      const trigger = cli(
-        [
-          'git',
-          'trigger',
-          'email',
-          'set',
-          'invoice@agent.eigenpal.com',
-          '--allow',
-          'vendor@example.com',
-          '--reply-on',
-          'always',
-          '--reply-mode',
-          'sender',
-        ],
-        { cwd: packageDir }
-      );
-      expect(trigger.status).toBe(0);
-      const manifest = readFileSync(join(packageDir, 'eigenpal.yaml'), 'utf8');
-      expect(manifest).toContain('invoice@agent.eigenpal.com');
-      expect(manifest).toContain('vendor@example.com');
+      const trigger = cli(['git', 'trigger', 'email', 'set', 'invoice@agent.eigenpal.com'], {
+        cwd: packageDir,
+      });
+      expect(trigger.status).toBe(2);
+      expect(trigger.stderr).toContain('Trigger CLI removed');
 
-      const keyFile = join(root, 'secret-key.txt');
-      writeFileSync(keyFile, Buffer.alloc(32, 7).toString('base64url'));
       const valueFile = join(root, 'secret-value.txt');
       writeFileSync(valueFile, 'sk-plaintext');
-      const secret = cli(
-        [
-          'git',
-          'secret',
-          'set',
-          'OPENAI_API_KEY',
-          '--value-file',
-          valueFile,
-          '--key-id',
-          'org-key-1',
-          '--key-file',
-          keyFile,
-          '--organization-id',
-          'org_1',
-        ],
-        { cwd: packageDir }
+      await withApiServer(
+        async (request) => {
+          const url = new URL(request.url);
+          if (request.method !== 'POST' || url.pathname !== '/api/v1/source/secrets/encrypt') {
+            return new Response('not found', { status: 404 });
+          }
+          const body = (await request.json()) as {
+            secrets?: Array<{ secretName: string; plaintext: string }>;
+          };
+          const secretName = body.secrets?.[0]?.secretName ?? 'OPENAI_API_KEY';
+          return Response.json({
+            secrets: {
+              [secretName]: {
+                algorithm: 'aes-256-gcm',
+                keyId: 'org-key-1',
+                nonce: 'abc',
+                ciphertext: 'def',
+                tag: 'ghi',
+              },
+            },
+          });
+        },
+        async (baseUrl) => {
+          const secret = await cliAsync(
+            ['agents', 'secret', 'set', 'OPENAI_API_KEY', '--value-file', valueFile],
+            { cwd: packageDir, baseUrl }
+          );
+          expect(secret.status).toBe(0);
+          const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
+          expect(secrets).toContain('OPENAI_API_KEY');
+          expect(secrets).not.toContain('sk-plaintext');
+        }
       );
-      expect(secret.status).toBe(0);
-      const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
-      expect(secrets).toContain('OPENAI_API_KEY');
-      expect(secrets).not.toContain('sk-plaintext');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test('secret set rejects malformed existing secrets file', () => {
+  test('secret set rejects malformed existing secrets file', async () => {
     const { root, packageDir } = makeSourceRepo();
     try {
       writeFileSync(
@@ -256,34 +252,58 @@ describe('hidden git source commands', () => {
           '',
         ].join('\n')
       );
-      const keyFile = join(root, 'secret-key.txt');
-      writeFileSync(keyFile, Buffer.alloc(32, 7).toString('base64url'));
       const valueFile = join(root, 'secret-value.txt');
       writeFileSync(valueFile, 'sentinel-secret-value');
 
-      const secret = cli(
-        [
-          'git',
-          'secret',
-          'set',
-          'OTHER_SECRET',
-          '--value-file',
-          valueFile,
-          '--key-id',
-          'org-key-1',
-          '--key-file',
-          keyFile,
-          '--organization-id',
-          'org_1',
-        ],
-        { cwd: packageDir }
+      await withApiServer(
+        async (request) => {
+          const url = new URL(request.url);
+          if (request.method !== 'POST' || url.pathname !== '/api/v1/source/secrets/encrypt') {
+            return new Response('not found', { status: 404 });
+          }
+          return Response.json({
+            secrets: {
+              OTHER_SECRET: {
+                algorithm: 'aes-256-gcm',
+                keyId: 'org-key-1',
+                nonce: 'abc',
+                ciphertext: 'def',
+                tag: 'ghi',
+              },
+            },
+          });
+        },
+        async (baseUrl) => {
+          const secret = await cliAsync(
+            ['agents', 'secret', 'set', 'OTHER_SECRET', '--value-file', valueFile],
+            { cwd: packageDir, baseUrl }
+          );
+
+          expect(secret.status).not.toBe(0);
+          const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
+          expect(secrets).toContain('plaintextHint: should-not-be-preserved');
+          expect(secrets).not.toContain('OTHER_SECRET');
+          expect(secrets).not.toContain('sentinel-secret-value');
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('validate rejects plaintext secrets file', () => {
+    const { root, packageDir } = makeSourceRepo();
+    try {
+      writeFileSync(
+        join(packageDir, 'secrets.enc.yaml'),
+        ['schemaVersion: 1', 'secrets:', '  OPENAI_API_KEY:', '    value: sk-plaintext', ''].join(
+          '\n'
+        )
       );
 
-      expect(secret.status).not.toBe(0);
-      const secrets = readFileSync(join(packageDir, 'secrets.enc.yaml'), 'utf8');
-      expect(secrets).toContain('plaintextHint: should-not-be-preserved');
-      expect(secrets).not.toContain('OTHER_SECRET');
-      expect(secrets).not.toContain('sentinel-secret-value');
+      const result = cli(['git', 'validate'], { cwd: packageDir });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('secrets.enc.yaml must not contain plaintext secret values');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -295,13 +315,24 @@ describe('hidden git source commands', () => {
       const result = cli(['git', 'status', '--dir', root, '--json']);
 
       expect(result.status).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({
+      const body = JSON.parse(result.stdout);
+      expect(body).toMatchObject({
         gitRoot: realpathSync(root),
         packagePath: null,
+        branch: null,
+        head: null,
         clean: false,
         valid: null,
         errors: [],
       });
+      expect(body.dirtyCount).toBeGreaterThan(0);
+      expect(body.packages).toContainEqual(
+        expect.objectContaining({
+          packagePath: 'agents/invoice-agent',
+          clean: false,
+          valid: true,
+        })
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -462,7 +493,7 @@ describe('hidden git source commands', () => {
     }
   });
 
-  test('clone fetches the organization repository URL and keeps git hidden from public aliases', async () => {
+  test('clone fetches the organization repository URL and rejects top-level clone alias', async () => {
     const { root, remote } = makePublishedSourceRepo();
     const out = mkdtempSync(join(tmpdir(), 'eigenpal-clone-out-'));
     try {
@@ -473,8 +504,19 @@ describe('hidden git source commands', () => {
             remoteUrl: `file://${remote}`,
           }),
         async (baseUrl) => {
-          const clone = await cliAsync(['git', 'clone', '--out', join(out, 'repo')], { baseUrl });
+          const clone = await cliAsync(['agents', 'clone', '--out', join(out, 'repo')], {
+            baseUrl,
+          });
           expect(clone.status).toBe(0);
+
+          const deprecatedGitClone = await cliAsync(
+            ['git', 'clone', '--out', join(out, 'deprecated')],
+            {
+              baseUrl,
+            }
+          );
+          expect(deprecatedGitClone.status).toBe(2);
+          expect(deprecatedGitClone.stderr).toContain('Use eigenpal agents clone');
 
           const topLevelClone = await cliAsync(['clone'], { baseUrl });
           expect(topLevelClone.status).not.toBe(0);
@@ -549,9 +591,13 @@ describe('hidden git source commands', () => {
         return Response.json({ error: 'not found' }, { status: 404 });
       },
       async (baseUrl) => {
-        const list = await cliAsync(['git', 'list', '--search', 'invoice'], { baseUrl });
+        const list = await cliAsync(['agents', 'list', '--search', 'invoice'], { baseUrl });
         expect(list.status).toBe(0);
-        expect(list.stdout).toContain('inconsistency');
+        expect(list.stdout).toContain('invoice-agent');
+
+        const deprecatedList = await cliAsync(['git', 'list', '--search', 'invoice'], { baseUrl });
+        expect(deprecatedList.status).toBe(2);
+        expect(deprecatedList.stderr).toContain('git list removed');
         expect(list.stdout).toContain('unregistered');
 
         const show = await cliAsync(['git', 'show', 'agents.invoice-agent'], { baseUrl });
@@ -649,6 +695,87 @@ describe('hidden git source commands', () => {
     }
   });
 
+  test('release from builder branch saves, lands main, tags, syncs, and restores branch', async () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo();
+    const syncCalls: string[] = [];
+    try {
+      git(['checkout', '-b', 'builder/invoice-agent/release-session'], root);
+      writeFileSync(join(packageDir, 'AGENT.md'), 'Release-ready instructions.\n');
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'releaser@example.com',
+              name: 'Release User',
+              keyId: 'ak_release',
+            });
+          }
+          if (url.pathname === '/api/v1/source/releases' && !url.searchParams.get('version')) {
+            return Response.json({
+              packagePath: 'agents/invoice-agent',
+              releases: [
+                {
+                  version: '1.0.0',
+                  tag: 'agents.invoice-agent@1.0.0',
+                  commit: '111111111111',
+                },
+              ],
+            });
+          }
+          if (url.pathname === '/api/v1/source/releases') {
+            return Response.json({ packagePath: 'agents/invoice-agent', releases: [] });
+          }
+          if (
+            request.method === 'POST' &&
+            url.pathname === '/api/automations/agents.invoice-agent/sync'
+          ) {
+            syncCalls.push(url.pathname);
+            return Response.json({ ok: true });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(
+            ['git', 'release', 'patch', packageDir, '-m', 'Release builder branch'],
+            {
+              baseUrl,
+              cwd: packageDir,
+            }
+          );
+          expect(result.status).toBe(0);
+          expect(syncCalls).toEqual(['/api/automations/agents.invoice-agent/sync']);
+
+          const currentBranch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).stdout.trim();
+          expect(currentBranch).toBe('builder/invoice-agent/release-session');
+
+          const remoteBranch = spawnSync(
+            'git',
+            ['--git-dir', remote, 'rev-parse', 'builder/invoice-agent/release-session'],
+            { encoding: 'utf8' }
+          ).stdout.trim();
+          const remoteMain = spawnSync('git', ['--git-dir', remote, 'rev-parse', 'main'], {
+            encoding: 'utf8',
+          }).stdout.trim();
+          const tagCommit = spawnSync(
+            'git',
+            ['--git-dir', remote, 'rev-list', '-n', '1', 'agents.invoice-agent@1.0.1'],
+            { encoding: 'utf8' }
+          ).stdout.trim();
+          expect(remoteMain).toBe(remoteBranch);
+          expect(tagCommit).toBe(remoteMain);
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
   test('sync accepts bare agent slugs as shorthand', async () => {
     const { root } = makePublishedSourceRepo();
     const syncCalls: string[] = [];
@@ -723,7 +850,54 @@ describe('hidden git source commands', () => {
     }
   });
 
-  test('sync warns when the server sync endpoint is not available yet', async () => {
+  test('release uses a default tag message when -m is omitted', async () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo('resources/knowledge/facts');
+    try {
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'releaser@example.com',
+              name: 'Release User',
+              keyId: 'ak_release',
+            });
+          }
+          if (url.pathname === '/api/v1/source/releases') {
+            return Response.json({ packagePath: 'resources/knowledge/facts', releases: [] });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(['git', 'release', '1.0.0', packageDir], {
+            baseUrl,
+            cwd: packageDir,
+          });
+          expect(result.status).toBe(0);
+
+          const tagMessage = spawnSync(
+            'git',
+            [
+              '--git-dir',
+              remote,
+              'tag',
+              '-l',
+              '--format=%(contents)',
+              'resources.knowledge.facts@1.0.0',
+            ],
+            { encoding: 'utf8' }
+          ).stdout.trim();
+          expect(tagMessage).toBe('Release resources/knowledge/facts');
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('sync fails when the server sync endpoint is unavailable', async () => {
     await withApiServer(
       () =>
         new Response('<!doctype html><title>404</title>', {
@@ -731,9 +905,8 @@ describe('hidden git source commands', () => {
           headers: { 'content-type': 'text/html' },
         }),
       async (baseUrl) => {
-        const result = await cliAsync(['git', 'sync', 'agents.invoice-agent'], { baseUrl });
-        expect(result.status).toBe(0);
-        expect(result.stderr).toContain('sync endpoint is not available yet');
+        const result = await cliAsync(['agents', 'sync', 'agents.invoice-agent'], { baseUrl });
+        expect(result.status).not.toBe(0);
       }
     );
   });
@@ -867,6 +1040,32 @@ describe('hidden git source commands', () => {
 
       const lockfilePath = join(packageDir, '.eigenpal', 'eigenpal.lock');
       const validLockfile = readFileSync(lockfilePath, 'utf8');
+      writeFileSync(
+        join(packageDir, 'eigenpal.yaml'),
+        [
+          'schemaVersion: 1',
+          'name: Invoice Agent',
+          'description: Extract invoices',
+          'dependencies:',
+          '  workspace:resources.knowledge.jokes: 2.0.0',
+          '',
+        ].join('\n')
+      );
+      const frozenMismatch = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      expect(frozenMismatch.status).toBe(1);
+      expect(frozenMismatch.stderr).toContain('does not match current package inputs');
+      writeFileSync(
+        join(packageDir, 'eigenpal.yaml'),
+        [
+          'schemaVersion: 1',
+          'name: Invoice Agent',
+          'description: Extract invoices',
+          'dependencies:',
+          '  workspace:resources.knowledge.jokes: 1.0.0',
+          '',
+        ].join('\n')
+      );
+
       const invalidLockfile = JSON.parse(validLockfile);
       invalidLockfile.root.dependencies[0].packagePath = '../escape';
       writeFileSync(lockfilePath, `${JSON.stringify(invalidLockfile, null, 2)}\n`);
@@ -930,9 +1129,10 @@ describe('hidden git source commands', () => {
     }
   });
 
-  test('commit validates changed packages and push sends main to origin', async () => {
+  test('save validates, commits, and pushes current branch to origin', async () => {
     const { root, packageDir, remote } = makePublishedSourceRepo();
     try {
+      git(['checkout', '-b', 'builder/invoice-agent/test-session'], root);
       writeFileSync(join(packageDir, 'AGENT.md'), 'Changed instructions.\n');
       await withApiServer(
         (request) => {
@@ -948,17 +1148,26 @@ describe('hidden git source commands', () => {
           return Response.json({ error: 'not found' }, { status: 404 });
         },
         async (baseUrl) => {
-          const commit = await cliAsync(['git', 'commit', '-m', 'Update agent'], {
+          const save = await cliAsync(['git', 'save', '-m', 'Update agent'], {
             baseUrl,
-            cwd: packageDir,
+            cwd: root,
           });
-          expect(commit.status).toBe(0);
+          expect(save.status).toBe(0);
           expect(
             spawnSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' }).stdout
           ).toBe('');
 
-          const push = await cliAsync(['git', 'push'], { baseUrl, cwd: packageDir });
-          expect(push.status).toBe(0);
+          const remoteBranch = spawnSync(
+            'git',
+            ['--git-dir', remote, 'rev-parse', 'builder/invoice-agent/test-session'],
+            {
+              encoding: 'utf8',
+            }
+          ).stdout.trim();
+          const localHead = spawnSync('git', ['rev-parse', 'HEAD'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).stdout.trim();
           const remoteMain = spawnSync('git', ['--git-dir', remote, 'rev-parse', 'main'], {
             encoding: 'utf8',
           }).stdout.trim();
@@ -966,7 +1175,49 @@ describe('hidden git source commands', () => {
             cwd: root,
             encoding: 'utf8',
           }).stdout.trim();
+          expect(remoteBranch).toBe(localHead);
           expect(remoteMain).toBe(localMain);
+        }
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('commit includes dirty shared resources', async () => {
+    const { root, packageDir, remote } = makePublishedSourceRepo();
+    try {
+      mkdirSync(join(root, 'resources', 'knowledge'), { recursive: true });
+      writeFileSync(join(root, 'resources', 'knowledge', 'tone.md'), 'Prefer concise answers.\n');
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'author@example.com',
+              name: 'Source Author',
+              keyId: 'ak_source',
+            });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const commit = await cliAsync(['git', 'commit', '-m', 'Update shared resource'], {
+            baseUrl,
+            cwd: packageDir,
+          });
+          expect(commit.status).toBe(0);
+          expect(
+            spawnSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' }).stdout
+          ).toBe('');
+          expect(
+            spawnSync('git', ['show', '--name-only', '--format=', 'HEAD'], {
+              cwd: root,
+              encoding: 'utf8',
+            }).stdout
+          ).toContain('resources/knowledge/tone.md');
         }
       );
     } finally {
