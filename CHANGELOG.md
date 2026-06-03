@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.6.4
+
+### Patch Changes
+
+- c3486a5: Fix agent git cutover QA findings: dashboard runs now navigate to the created run, inbound email aliases preserve mixed-case organization qualifiers, sandbox source materializes under `/workspace/agent`, run artifact downloads use direct paths like `/files/eigenpal.lock`, wait-for-completion responses include source provenance, and CLI wait/watch commands exit nonzero for failed or cancelled runs.
+
 ## 0.6.2
 
 ### Patch Changes

@@ -292,7 +292,7 @@ function registerRunCommands(agent: Command): void {
     .option('--out <dir>', 'Output directory')
     .option(
       '--include <parts>',
-      'Comma-separated parts: feedback,expected,files,output,input,metadata,issues,trace,all',
+      'Comma-separated parts: feedback,expected,files,output,input,metadata,issues,trace,lockfile,all',
       'feedback,expected'
     )
     .option('--json', 'Output a JSON summary of written artifacts')
@@ -873,10 +873,13 @@ async function runExecution(
     });
   }
   const runId = String((payload as { runId?: string }).runId ?? '');
+  let waitedForTerminalRun = false;
   if (opts.wait && runId) {
     payload = await pollRun(client, runId, opts.interval ?? 2, opts.maxWait ?? 1800);
+    waitedForTerminalRun = true;
   }
   renderRunPayload(payload, opts);
+  if (waitedForTerminalRun) setExitCodeForFailedTerminalRun(payload);
 }
 
 async function runExample(
@@ -897,7 +900,9 @@ async function runExample(
   const runId = started.runs?.[0]?.runId;
   if (opts.wait && runId) {
     const payload = await pollRun(client, runId, opts.interval, opts.maxWait);
-    return renderRunPayload(payload, opts);
+    renderRunPayload(payload, opts);
+    setExitCodeForFailedTerminalRun(payload);
+    return;
   }
   const payload = {
     runId,
@@ -929,7 +934,9 @@ async function rerunRun(
   const rerunId = String((payload as { runId?: string }).runId ?? '');
   if (opts.wait && rerunId) {
     payload = await pollRun(client, rerunId, opts.interval, opts.maxWait);
-    return renderRunPayload(payload, opts);
+    renderRunPayload(payload, opts);
+    setExitCodeForFailedTerminalRun(payload);
+    return;
   }
   if (opts.json) return printJson(payload);
   success(`Started rerun ${ui.bold(rerunId)} from ${executionId}`);
@@ -1020,6 +1027,18 @@ async function pullRun(executionId: string, opts: BaseOpts & { include: string; 
     if (file) written.push(file);
     else skipped.push('trace.jsonl');
   }
+  if (include.has('files') || include.has('lockfile')) {
+    const file = await writeDiagnosticFile(
+      client,
+      executionId,
+      out,
+      'lockfile',
+      'eigenpal.lock',
+      run.lockfileFiles
+    );
+    if (file) written.push(file);
+    else skipped.push('eigenpal.lock');
+  }
   const summary = {
     runId: executionId,
     out,
@@ -1042,7 +1061,7 @@ async function pullRun(executionId: string, opts: BaseOpts & { include: string; 
 async function listRunArtifacts(executionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
   const payload = (await client.get(`/api/v1/agents/runs/${encodeURIComponent(executionId)}`, {
-    include: 'expected,files,input,output,issues,trace,metadata',
+    include: 'expected,files,input,output,issues,trace,lockfile,metadata',
   })) as { run?: Record<string, unknown> };
   const run = payload.run;
   if (!run) throw new Error(`Run ${executionId} not found`);
@@ -1052,6 +1071,7 @@ async function listRunArtifacts(executionId: string, opts: BaseOpts) {
     table(artifacts, [
       { key: 'kind', header: 'KIND' },
       { key: 'name', header: 'NAME' },
+      { key: 'path', header: 'PATH' },
       { key: 'present', header: 'PRESENT' },
     ])
   );
@@ -1413,6 +1433,7 @@ async function watchRunCommand(
   const client = buildClient(opts);
   const payload = await pollRun(client, executionId, opts.interval, opts.maxWait);
   renderRunPayload(payload, opts);
+  setExitCodeForFailedTerminalRun(payload);
 }
 
 async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }) {
@@ -2040,7 +2061,7 @@ async function writeDiagnosticFile(
   client: ApiClient,
   executionId: string,
   out: string,
-  kind: 'issues' | 'trace',
+  kind: 'issues' | 'trace' | 'lockfile',
   filename: string,
   files: unknown
 ): Promise<string | null> {
@@ -2048,7 +2069,11 @@ async function writeDiagnosticFile(
   const exists = rows.some((file) => String((file as { name?: unknown }).name ?? '') === filename);
   if (!exists) return null;
   const response = await client.getStream(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/files/${kind}/${filename}`
+    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/files/${encodeRunArtifactPath(
+      kind === 'issues' || kind === 'trace' || kind === 'lockfile'
+        ? filename
+        : `${kind}/${filename}`
+    )}`
   );
   await fs.writeFile(path.join(out, filename), Buffer.from(await response.arrayBuffer()));
   return filename;
@@ -2056,7 +2081,7 @@ async function writeDiagnosticFile(
 
 async function downloadTraceText(client: ApiClient, executionId: string): Promise<string> {
   const response = await client.getStream(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/files/trace/trace.jsonl`
+    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/files/trace.jsonl`
   );
   return Buffer.from(await response.arrayBuffer()).toString('utf-8');
 }
@@ -2116,25 +2141,40 @@ function fileNames(files: unknown): string[] {
     .sort();
 }
 
-function runArtifactInventory(run: Record<string, unknown>) {
-  const rows: Array<{ kind: string; name: string; present: string }> = [
-    { kind: 'metadata', name: 'run.json', present: 'yes' },
+export function runArtifactInventory(run: Record<string, unknown>) {
+  const rows: Array<{ kind: string; name: string; path: string; present: string }> = [
+    { kind: 'metadata', name: 'run.json', path: 'run.json', present: 'yes' },
   ];
-  if (run.inputJson != null) rows.push({ kind: 'input', name: 'input.json', present: 'yes' });
-  if (run.metadata != null) rows.push({ kind: 'metadata', name: 'metadata.json', present: 'yes' });
-  if (run.expected != null) rows.push({ kind: 'expected', name: 'expected.json', present: 'yes' });
-  for (const name of fileNames(run.inputFiles)) rows.push({ kind: 'input', name, present: 'yes' });
+  if (run.inputJson != null) {
+    rows.push({ kind: 'input', name: 'input.json', path: 'input.json', present: 'yes' });
+  }
+  if (run.metadata != null) {
+    rows.push({ kind: 'metadata', name: 'metadata.json', path: 'metadata.json', present: 'yes' });
+  }
+  if (run.expected != null) {
+    rows.push({ kind: 'expected', name: 'expected.json', path: 'expected.json', present: 'yes' });
+  }
+  for (const name of fileNames(run.inputFiles)) {
+    rows.push({ kind: 'input', name, path: `input/${name}`, present: 'yes' });
+  }
   for (const name of fileNames(run.resultFiles).filter(
     (name) => name !== 'issues.md' && name !== 'trace.jsonl'
   )) {
-    rows.push({ kind: 'output', name, present: 'yes' });
+    rows.push({ kind: 'output', name, path: `output/${name}`, present: 'yes' });
   }
   for (const name of fileNames(run.expectedFiles)) {
-    rows.push({ kind: 'expected', name, present: 'yes' });
+    rows.push({ kind: 'expected', name, path: `expected/${name}`, present: 'yes' });
   }
-  for (const name of fileNames(run.issueFiles)) rows.push({ kind: 'issues', name, present: 'yes' });
-  for (const name of fileNames(run.traceFiles)) rows.push({ kind: 'trace', name, present: 'yes' });
-  return rows.sort((a, b) => `${a.kind}/${a.name}`.localeCompare(`${b.kind}/${b.name}`));
+  for (const name of fileNames(run.issueFiles)) {
+    rows.push({ kind: 'issues', name, path: name, present: 'yes' });
+  }
+  for (const name of fileNames(run.traceFiles)) {
+    rows.push({ kind: 'trace', name, path: name, present: 'yes' });
+  }
+  for (const name of fileNames(run.lockfileFiles)) {
+    rows.push({ kind: 'lockfile', name, path: name, present: 'yes' });
+  }
+  return rows.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 async function buildAgentFileDiff(
@@ -2309,6 +2349,10 @@ function runFileUrl(side: { runId: string; kind: 'expected' | 'output' }, name: 
     : `/api/v1/agents/runs/${runId}/files/output/${filename}`;
 }
 
+function encodeRunArtifactPath(artifactPath: string): string {
+  return artifactPath.split('/').map(encodeURIComponent).join('/');
+}
+
 async function downloadStreamToFile(client: ApiClient, url: string, target: string): Promise<void> {
   await fs.mkdir(path.dirname(target), { recursive: true });
   const response = await client.getStream(url);
@@ -2461,6 +2505,13 @@ function renderRunPayload(payload: unknown, opts: BaseOpts) {
   const run = (payload as { run?: Record<string, unknown> }).run;
   if (!run) return printJson(payload);
   success(`Run ${run.id} is ${run.status}`);
+}
+
+function setExitCodeForFailedTerminalRun(payload: unknown): void {
+  const status = (payload as { run?: { status?: unknown } }).run?.status;
+  if (status === 'failed' || status === 'cancelled') {
+    process.exitCode = 1;
+  }
 }
 
 function renderGeneric(payload: unknown, opts: BaseOpts, message: string) {

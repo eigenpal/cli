@@ -809,12 +809,12 @@ Download run feedback, expected artifacts, files, and metadata.
 
 ### Options
 
-| Flag                | Required | Default               | Description                                                                           |
-| ------------------- | -------- | --------------------- | ------------------------------------------------------------------------------------- |
-| `--base-url <url>`  | no       |                       | Server base URL                                                                       |
-| `--out <dir>`       | no       |                       | Output directory                                                                      |
-| `--include <parts>` | no       | `"feedback,expected"` | Comma-separated parts: feedback,expected,files,output,input,metadata,issues,trace,all |
-| `--json`            | no       |                       | Output a JSON summary of written artifacts                                            |
+| Flag                | Required | Default               | Description                                                                                    |
+| ------------------- | -------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| `--base-url <url>`  | no       |                       | Server base URL                                                                                |
+| `--out <dir>`       | no       |                       | Output directory                                                                               |
+| `--include <parts>` | no       | `"feedback,expected"` | Comma-separated parts: feedback,expected,files,output,input,metadata,issues,trace,lockfile,all |
+| `--json`            | no       |                       | Output a JSON summary of written artifacts                                                     |
 
 ### `eigenpal agents|agent runs compare|diff [options] <reference-run-id> <run-id>`
 
