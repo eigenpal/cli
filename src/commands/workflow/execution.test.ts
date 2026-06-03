@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { ApiError } from '../lib/client';
+import { ApiError } from '../../lib/client';
 import { cancelExecution } from './execution';
 
 // ---------------------------------------------------------------------------

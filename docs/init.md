@@ -9,14 +9,12 @@ Scaffold a new workflow project. Without `[name]`, scaffolds into the current di
   - [Core](#core)
 - [Details](#details)
   - [`eigenpal init workflow [options] <name>`](#eigenpal-init-workflow-options-name)
-  - [`eigenpal init agent [options] <name>`](#eigenpal-init-agent-options-name)
 
 ## Surface
 
 ```
 init
-├── workflow <name>
-└── agent <name>
+└── workflow <name>
 ```
 
 ## Commands
@@ -26,7 +24,6 @@ init
 | Command                                   | Description                                                                                                                                                             |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eigenpal init workflow [options] <name>` | Alias of `eigenpal init <name>`. Kept so the `init {workflow,agent}` namespace stays visible — once the agent surface lights up, both kinds will live as siblings here. |
-| `eigenpal init agent [options] <name>`    | Deprecated: use `eigenpal agents init <name> --template agent`.                                                                                                         |
 
 ## Details
 
@@ -47,19 +44,3 @@ Alias of `eigenpal init <name>`. Kept so the `init {workflow,agent}` namespace s
 | `--template <name>` | no       |         | Skip the picker; use this template                 |
 | `--dir <dir>`       | no       |         | Target directory (default: ./<name>)               |
 | `--yes`             | no       |         | Non-interactive: pick the default template (blank) |
-
-### `eigenpal init agent [options] <name>`
-
-Deprecated: use `eigenpal agents init <name> --template agent`.
-
-### Arguments
-
-| Name   | Required | Variadic | Description |
-| ------ | -------- | -------- | ----------- |
-| `name` | yes      | no       |             |
-
-### Options
-
-| Flag          | Required | Default | Description                          |
-| ------------- | -------- | ------- | ------------------------------------ |
-| `--dir <dir>` | no       |         | Target directory (default: ./<name>) |

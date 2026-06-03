@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { normalizeBaseUrl } from './auth';
+import { normalizeBaseUrl } from './index';
 
 describe('normalizeBaseUrl', () => {
   describe('happy path', () => {

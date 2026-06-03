@@ -10,7 +10,7 @@ import {
   listSkillTools,
   uninstallSkill,
   uninstallSkillTools,
-} from './skill';
+} from './index';
 
 const tmpRoots: string[] = [];
 

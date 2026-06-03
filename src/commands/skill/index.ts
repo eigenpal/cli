@@ -39,7 +39,7 @@ import {
 } from 'node:fs';
 import { sep as PATH_SEP, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { error, info, success, table, ui } from '../lib/ui';
+import { error, info, success, table, ui } from '../../lib/ui';
 
 const SKILL_NAME = 'eigenpal';
 const MANIFEST_NAME = '.eigenpal-manifest.json';
@@ -142,10 +142,10 @@ interface Manifest {
 }
 
 function resolveSkillSource(): string {
-  // src layout: __dirname is packages/cli/src/commands/ → ../skill/
+  // src layout: __dirname is packages/cli/src/commands/skill/ → ../../skill/
   // dist layout: __dirname is dist/ → skill/
   const here = dirname(fileURLToPath(import.meta.url));
-  const srcCandidate = resolve(here, '..', 'skill');
+  const srcCandidate = resolve(here, '..', '..', 'skill');
   if (existsSync(srcCandidate)) return srcCandidate;
   const distCandidate = resolve(here, 'skill');
   if (existsSync(distCandidate)) return distCandidate;
@@ -658,14 +658,19 @@ function readManifest(target: string): Manifest | null {
 function readCliVersion(): string {
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    // src layout: ../../package.json from src/commands/
+    // src layout: ../../../package.json from src/commands/skill/
     const candidates = [
+      resolve(here, '..', '..', '..', 'package.json'),
       resolve(here, '..', '..', 'package.json'),
       resolve(here, '..', 'package.json'),
     ];
     for (const candidate of candidates) {
       if (existsSync(candidate)) {
-        const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as { version?: string };
+        const pkg = JSON.parse(readFileSync(candidate, 'utf-8')) as {
+          name?: string;
+          version?: string;
+        };
+        if (pkg.name && pkg.name !== '@eigenpal/cli') continue;
         if (pkg.version) return pkg.version;
       }
     }

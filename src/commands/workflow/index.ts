@@ -37,15 +37,9 @@ import {
   withPagination,
   type PaginationOpts,
 } from '../../lib/ui';
-import { clearEvalOutputs } from '../clear';
-import { registerWorkflowExecutionCommands } from '../execution';
-import {
-  printIssues,
-  registerAllValidateCommand,
-  registerDatasetValidateCommand,
-  registerEvaluatorsValidateCommand,
-} from '../validate';
+import { clearEvalOutputs } from './clear';
 import { registerEvaluatorTypeCommands } from './evaluator-type';
+import { registerWorkflowExecutionCommands } from './execution';
 import {
   buildBatchDiff,
   fetchEvalResults,
@@ -53,6 +47,12 @@ import {
   renderBatchDiffHuman,
 } from './experiment-compare';
 import { registerStepExecCommands } from './step-exec';
+import {
+  printIssues,
+  registerAllValidateCommand,
+  registerDatasetValidateCommand,
+  registerEvaluatorsValidateCommand,
+} from './validation';
 
 /**
  * Typed-slug-style TTY confirmation. The dashboard requires the user to

@@ -12,9 +12,9 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bumpReleaseVersion, resolveGitSourceContext, sortReleasesNewestFirst } from './git';
+import { bumpReleaseVersion, resolveGitSourceContext, sortReleasesNewestFirst } from './index';
 
-const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'cli.ts');
+const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
 
 function git(args: string[], cwd?: string): void {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -159,7 +159,7 @@ describe('git passthrough and agents source commands', () => {
   test('validate and doctor inspect source package structure', () => {
     const { root, packageDir } = makeSourceRepo();
     try {
-      const validate = spawnSync('bun', [CLI, 'git', 'validate', packageDir, '--json'], {
+      const validate = spawnSync('bun', [CLI, 'agents', 'validate', packageDir, '--json'], {
         encoding: 'utf8',
       });
       expect(validate.status).toBe(0);
@@ -168,7 +168,7 @@ describe('git passthrough and agents source commands', () => {
         packagePath: 'agents/invoice-agent',
       });
 
-      const doctor = spawnSync('bun', [CLI, 'git', 'doctor', '--dir', packageDir, '--json'], {
+      const doctor = spawnSync('bun', [CLI, 'agents', 'doctor', '--dir', packageDir, '--json'], {
         encoding: 'utf8',
       });
       expect(doctor.status).toBe(1);
@@ -184,15 +184,9 @@ describe('git passthrough and agents source commands', () => {
     }
   });
 
-  test('git trigger is removed and agents secret commands mutate source files locally', async () => {
+  test('agents secret commands mutate source files locally', async () => {
     const { root, packageDir } = makeSourceRepo();
     try {
-      const trigger = cli(['git', 'trigger', 'email', 'set', 'invoice@agent.eigenpal.com'], {
-        cwd: packageDir,
-      });
-      expect(trigger.status).toBe(2);
-      expect(trigger.stderr).toContain('Trigger CLI removed');
-
       const valueFile = join(root, 'secret-value.txt');
       writeFileSync(valueFile, 'sk-plaintext');
       await withApiServer(
@@ -301,7 +295,7 @@ describe('git passthrough and agents source commands', () => {
         )
       );
 
-      const result = cli(['git', 'validate'], { cwd: packageDir });
+      const result = cli(['agents', 'validate'], { cwd: packageDir });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain('secrets.enc.yaml must not contain plaintext secret values');
     } finally {
@@ -312,7 +306,7 @@ describe('git passthrough and agents source commands', () => {
   test('status from repo root reports repository state without package validation errors', () => {
     const { root } = makeSourceRepo();
     try {
-      const result = cli(['git', 'status', '--dir', root, '--json']);
+      const result = cli(['agents', 'status', '--dir', root, '--json']);
 
       expect(result.status).toBe(0);
       const body = JSON.parse(result.stdout);
@@ -345,7 +339,7 @@ describe('git passthrough and agents source commands', () => {
       mkdirSync(invalidPackage, { recursive: true });
       writeFileSync(join(invalidPackage, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Invalid\n');
 
-      const result = cli(['git', 'status', '--dir', invalidPackage, '--json']);
+      const result = cli(['agents', 'status', '--dir', invalidPackage, '--json']);
       const body = JSON.parse(result.stdout);
 
       expect(result.status).toBe(0);
@@ -381,7 +375,7 @@ describe('git passthrough and agents source commands', () => {
         ].join('\n')
       );
 
-      const result = spawnSync('bun', [CLI, 'git', 'validate', packageDir, '--json'], {
+      const result = spawnSync('bun', [CLI, 'agents', 'validate', packageDir, '--json'], {
         encoding: 'utf8',
       });
       const body = JSON.parse(result.stdout);
@@ -402,7 +396,7 @@ describe('git passthrough and agents source commands', () => {
   test('doctor checks configured remote and git auth reachability', () => {
     const { root, packageDir, remote } = makePublishedSourceRepo();
     try {
-      const doctor = cli(['git', 'doctor', '--dir', packageDir, '--json'], { cwd: packageDir });
+      const doctor = cli(['agents', 'doctor', '--dir', packageDir, '--json'], { cwd: packageDir });
       expect(doctor.status).toBe(0);
       const checks = JSON.parse(doctor.stdout).checks;
       expect(checks).toContainEqual(
@@ -493,6 +487,99 @@ describe('git passthrough and agents source commands', () => {
     }
   });
 
+  test('git passthrough configures raw git credential helper for Eigenpal remotes', async () => {
+    const { root } = makeSourceRepo();
+    const remoteUrl = 'https://git.eigenpal.com/orgs/repo_1.git';
+    try {
+      git(['remote', 'add', 'origin', remoteUrl], root);
+
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (url.pathname === '/api/v1/auth/check') {
+            return Response.json({
+              ok: true,
+              email: 'author@example.com',
+              name: 'Source Author',
+              keyId: 'ak_test',
+            });
+          }
+          return Response.json({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await cliAsync(['git', '--', '-C', root, 'status', '--short'], {
+            baseUrl,
+          });
+          expect(result.status).toBe(0);
+        }
+      );
+
+      const helper = spawnSync(
+        'git',
+        ['config', '--local', '--get-all', `credential.${remoteUrl}.helper`],
+        { cwd: root, encoding: 'utf8' }
+      );
+      expect(helper.status).toBe(0);
+      expect(helper.stdout).toContain('git-credential-helper');
+      expect(
+        spawnSync('git', ['config', '--local', '--get', 'credential.useHttpPath'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).stdout.trim()
+      ).toBe('true');
+      expect(
+        spawnSync('git', ['config', '--local', '--get', 'eigenpal.gitRemoteUrl'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).stdout.trim()
+      ).toBe(remoteUrl);
+      expect(
+        spawnSync('git', ['config', '--local', '--get', 'user.name'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).stdout.trim()
+      ).toBe('Source Author');
+      expect(
+        spawnSync('git', ['config', '--local', '--get', 'user.email'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).stdout.trim()
+      ).toBe('author@example.com');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('git credential helper returns env credentials only for matching Eigenpal remote', () => {
+    const { root } = makeSourceRepo();
+    const remoteUrl = 'https://git.eigenpal.com/orgs/repo_1.git';
+    try {
+      git(['remote', 'add', 'origin', remoteUrl], root);
+      git(['config', '--local', 'eigenpal.gitRemoteUrl', remoteUrl], root);
+
+      const matching = spawnSync('bun', [CLI, 'git-credential-helper', 'get'], {
+        cwd: root,
+        input: 'protocol=https\nhost=git.eigenpal.com\npath=orgs/repo_1.git\n\n',
+        encoding: 'utf8',
+        env: { ...process.env, EIGENPAL_API_KEY: 'eig_test_key' },
+      });
+      expect(matching.status).toBe(0);
+      expect(matching.stdout).toContain('username=eigenpal');
+      expect(matching.stdout).toContain('password=eig_test_key');
+
+      const mismatch = spawnSync('bun', [CLI, 'git-credential-helper', 'get'], {
+        cwd: root,
+        input: 'protocol=https\nhost=git.eigenpal.com\npath=orgs/other.git\n\n',
+        encoding: 'utf8',
+        env: { ...process.env, EIGENPAL_API_KEY: 'eig_test_key' },
+      });
+      expect(mismatch.status).toBe(0);
+      expect(mismatch.stdout).toBe('');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('clone fetches the organization repository URL and rejects top-level clone alias', async () => {
     const { root, remote } = makePublishedSourceRepo();
     const out = mkdtempSync(join(tmpdir(), 'eigenpal-clone-out-'));
@@ -508,15 +595,6 @@ describe('git passthrough and agents source commands', () => {
             baseUrl,
           });
           expect(clone.status).toBe(0);
-
-          const deprecatedGitClone = await cliAsync(
-            ['git', 'clone', '--out', join(out, 'deprecated')],
-            {
-              baseUrl,
-            }
-          );
-          expect(deprecatedGitClone.status).toBe(2);
-          expect(deprecatedGitClone.stderr).toContain('Use eigenpal agents clone');
 
           const topLevelClone = await cliAsync(['clone'], { baseUrl });
           expect(topLevelClone.status).not.toBe(0);
@@ -595,22 +673,21 @@ describe('git passthrough and agents source commands', () => {
         expect(list.status).toBe(0);
         expect(list.stdout).toContain('invoice-agent');
 
-        const deprecatedList = await cliAsync(['git', 'list', '--search', 'invoice'], { baseUrl });
-        expect(deprecatedList.status).toBe(2);
-        expect(deprecatedList.stderr).toContain('git list removed');
         expect(list.stdout).toContain('unregistered');
 
-        const show = await cliAsync(['git', 'show', 'agents.invoice-agent'], { baseUrl });
+        const show = await cliAsync(['agents', 'show', 'agents.invoice-agent'], { baseUrl });
         expect(show.status).toBe(0);
         expect(show.stdout).toContain('Extract invoices');
         expect(show.stdout).toContain('recent runs');
         expect(show.stdout).toContain('exec_1');
 
-        const showBySlug = await cliAsync(['git', 'show', 'invoice-agent', '--json'], { baseUrl });
+        const showBySlug = await cliAsync(['agents', 'show', 'invoice-agent', '--json'], {
+          baseUrl,
+        });
         expect(showBySlug.status).toBe(0);
         expect(JSON.parse(showBySlug.stdout).agent.slug).toBe('invoice-agent');
 
-        const versions = await cliAsync(['git', 'versions', 'agents.invoice-agent', '--json'], {
+        const versions = await cliAsync(['agents', 'versions', 'agents.invoice-agent', '--json'], {
           baseUrl,
         });
         expect(versions.status).toBe(0);
@@ -664,7 +741,7 @@ describe('git passthrough and agents source commands', () => {
         },
         async (baseUrl) => {
           const result = await cliAsync(
-            ['git', 'release', 'minor', packageDir, '-m', 'Release minor'],
+            ['agents', 'release', 'minor', packageDir, '-m', 'Release minor'],
             {
               baseUrl,
               cwd: packageDir,
@@ -738,7 +815,7 @@ describe('git passthrough and agents source commands', () => {
         },
         async (baseUrl) => {
           const result = await cliAsync(
-            ['git', 'release', 'patch', packageDir, '-m', 'Release builder branch'],
+            ['agents', 'release', 'patch', packageDir, '-m', 'Release builder branch'],
             {
               baseUrl,
               cwd: packageDir,
@@ -793,7 +870,7 @@ describe('git passthrough and agents source commands', () => {
           return Response.json({ error: 'not found' }, { status: 404 });
         },
         async (baseUrl) => {
-          const result = await cliAsync(['git', 'sync', 'invoice-agent', '--dir', root], {
+          const result = await cliAsync(['agents', 'sync', 'invoice-agent', '--dir', root], {
             baseUrl,
           });
           expect(result.status).toBe(0);
@@ -831,7 +908,7 @@ describe('git passthrough and agents source commands', () => {
         },
         async (baseUrl) => {
           const result = await cliAsync(
-            ['git', 'release', '1.0.0', packageDir, '-m', 'Release facts'],
+            ['agents', 'release', '1.0.0', packageDir, '-m', 'Release facts'],
             {
               baseUrl,
               cwd: packageDir,
@@ -870,7 +947,7 @@ describe('git passthrough and agents source commands', () => {
           return Response.json({ error: 'not found' }, { status: 404 });
         },
         async (baseUrl) => {
-          const result = await cliAsync(['git', 'release', '1.0.0', packageDir], {
+          const result = await cliAsync(['agents', 'release', '1.0.0', packageDir], {
             baseUrl,
             cwd: packageDir,
           });
@@ -919,7 +996,7 @@ describe('git passthrough and agents source commands', () => {
         () => Response.json({ packagePath: 'agents/invoice-agent', releases: [] }),
         async (baseUrl) => {
           const result = await cliAsync(
-            ['git', 'release', '1.0.0', dirty.packageDir, '-m', 'Release'],
+            ['agents', 'release', '1.0.0', dirty.packageDir, '-m', 'Release'],
             {
               baseUrl,
               cwd: dirty.packageDir,
@@ -943,7 +1020,7 @@ describe('git passthrough and agents source commands', () => {
         () => Response.json({ packagePath: 'agents/invoice-agent', releases: [] }),
         async (baseUrl) => {
           const result = await cliAsync(
-            ['git', 'release', '1.0.0', unpushed.packageDir, '-m', 'Release'],
+            ['agents', 'release', '1.0.0', unpushed.packageDir, '-m', 'Release'],
             {
               baseUrl,
               cwd: unpushed.packageDir,
@@ -966,7 +1043,7 @@ describe('git passthrough and agents source commands', () => {
         join(compatible.root, 'eigenpal.yaml'),
         'schemaVersion: 1\neigenpalVersion: 1.1.0\n'
       );
-      const result = cli(['git', 'validate', compatible.packageDir, '--json']);
+      const result = cli(['agents', 'validate', compatible.packageDir, '--json']);
       expect(result.status).toBe(0);
       expect(result.stderr).not.toContain('dev-compatible');
     } finally {
@@ -982,7 +1059,7 @@ describe('git passthrough and agents source commands', () => {
       git(['add', 'eigenpal.yaml'], incompatible.root);
       git(['commit', '-m', 'Bump repo format'], incompatible.root);
       git(['push', 'origin', 'main'], incompatible.root);
-      const result = cli(['git', 'release', '1.0.0', incompatible.packageDir, '-m', 'Release'], {
+      const result = cli(['agents', 'release', '1.0.0', incompatible.packageDir, '-m', 'Release'], {
         cwd: incompatible.packageDir,
       });
       expect(result.status).toBe(1);
@@ -1020,7 +1097,7 @@ describe('git passthrough and agents source commands', () => {
       git(['commit', '-m', 'Add packages'], root);
       git(['tag', '-a', 'resources.knowledge.jokes@1.0.0', '-m', 'Release jokes'], root);
 
-      const result = cli(['git', 'install'], { cwd: packageDir });
+      const result = cli(['agents', 'install'], { cwd: packageDir });
       expect(result.status).toBe(0);
       expect(
         existsSync(
@@ -1035,7 +1112,7 @@ describe('git passthrough and agents source commands', () => {
         resolvedRef: '1.0.0',
       });
 
-      const frozen = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      const frozen = cli(['agents', 'install', '--frozen-lockfile'], { cwd: packageDir });
       expect(frozen.status).toBe(0);
 
       const lockfilePath = join(packageDir, '.eigenpal', 'eigenpal.lock');
@@ -1051,7 +1128,7 @@ describe('git passthrough and agents source commands', () => {
           '',
         ].join('\n')
       );
-      const frozenMismatch = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      const frozenMismatch = cli(['agents', 'install', '--frozen-lockfile'], { cwd: packageDir });
       expect(frozenMismatch.status).toBe(1);
       expect(frozenMismatch.stderr).toContain('does not match current package inputs');
       writeFileSync(
@@ -1069,20 +1146,23 @@ describe('git passthrough and agents source commands', () => {
       const invalidLockfile = JSON.parse(validLockfile);
       invalidLockfile.root.dependencies[0].packagePath = '../escape';
       writeFileSync(lockfilePath, `${JSON.stringify(invalidLockfile, null, 2)}\n`);
-      const invalidFrozen = cli(['git', 'install', '--frozen-lockfile'], { cwd: packageDir });
+      const invalidFrozen = cli(['agents', 'install', '--frozen-lockfile'], { cwd: packageDir });
       expect(invalidFrozen.status).toBe(1);
       expect(invalidFrozen.stderr).toContain('Invalid lockfile');
       writeFileSync(lockfilePath, validLockfile);
 
       const out = mkdtempSync(join(tmpdir(), 'eigenpal-install-out-'));
-      const packageRef = cli(['git', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out], {
-        cwd: packageDir,
-      });
+      const packageRef = cli(
+        ['agents', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out],
+        {
+          cwd: packageDir,
+        }
+      );
       expect(packageRef.status).toBe(0);
       expect(existsSync(join(out, 'README.md'))).toBe(true);
       rmSync(join(out, 'README.md'), { force: true });
       const frozenPackageRef = cli(
-        ['git', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out, '--frozen-lockfile'],
+        ['agents', 'install', 'resources.knowledge.jokes@1.0.0', '--out', out, '--frozen-lockfile'],
         { cwd: packageDir }
       );
       expect(frozenPackageRef.status).toBe(0);
@@ -1099,7 +1179,7 @@ describe('git passthrough and agents source commands', () => {
           '',
         ].join('\n')
       );
-      const mismatch = cli(['git', 'install'], { cwd: packageDir });
+      const mismatch = cli(['agents', 'install'], { cwd: packageDir });
       expect(mismatch.status).toBe(1);
       expect(mismatch.stderr).toContain('does not match current package inputs');
     } finally {
@@ -1111,7 +1191,7 @@ describe('git passthrough and agents source commands', () => {
     const root = mkdtempSync(join(tmpdir(), 'eigenpal-init-'));
     try {
       const result = cli(
-        ['git', 'init', 'Dad Joke Generator', '--template', 'agent', '--dir', root],
+        ['agents', 'init', 'Dad Joke Generator', '--template', 'agent', '--dir', root],
         {
           cwd: root,
         }
@@ -1148,7 +1228,7 @@ describe('git passthrough and agents source commands', () => {
           return Response.json({ error: 'not found' }, { status: 404 });
         },
         async (baseUrl) => {
-          const save = await cliAsync(['git', 'save', '-m', 'Update agent'], {
+          const save = await cliAsync(['agents', 'save', '-m', 'Update agent'], {
             baseUrl,
             cwd: root,
           });
@@ -1204,7 +1284,7 @@ describe('git passthrough and agents source commands', () => {
           return Response.json({ error: 'not found' }, { status: 404 });
         },
         async (baseUrl) => {
-          const commit = await cliAsync(['git', 'commit', '-m', 'Update shared resource'], {
+          const commit = await cliAsync(['agents', 'commit', '-m', 'Update shared resource'], {
             baseUrl,
             cwd: packageDir,
           });
@@ -1230,7 +1310,7 @@ describe('git passthrough and agents source commands', () => {
     const { root, packageDir, remote } = makePublishedSourceRepo();
     try {
       writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 0.9.0\n');
-      const result = cli(['git', 'upgrade'], { cwd: packageDir });
+      const result = cli(['agents', 'upgrade'], { cwd: packageDir });
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Source repository changelog');
       expect(readFileSync(join(root, 'eigenpal.yaml'), 'utf8')).toContain('eigenpalVersion: 1.0.0');

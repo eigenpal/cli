@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { __testing, init, initAgent } from './init';
+import { __testing, init } from './index';
 
 function mkTmp(): string {
   return mkdtempSync(join(tmpdir(), 'eigenpal-init-test-'));
@@ -119,58 +119,6 @@ describe('init scaffold', () => {
       });
       const examples = readdirSync(join(root, 'sentiment', 'dataset', 'examples'));
       expect(examples.sort()).toEqual(['negative', 'positive']);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it('writes a Git-backed agent source package', async () => {
-    const root = mkTmp();
-    try {
-      await initAgent('invoice-agent', { dir: join(root, 'invoice-agent') });
-      const target = join(root, 'invoice-agent');
-
-      expect(statSync(join(target, 'eigenpal.yaml')).isFile()).toBe(true);
-      expect(statSync(join(target, 'agents', 'invoice-agent', 'eigenpal.yaml')).isFile()).toBe(
-        true
-      );
-      expect(statSync(join(target, 'agents', 'invoice-agent', 'AGENT.md')).isFile()).toBe(true);
-
-      const manifest = readFileSync(
-        join(target, 'agents', 'invoice-agent', 'eigenpal.yaml'),
-        'utf-8'
-      );
-      expect(manifest).toContain('schemaVersion: 1');
-      expect(manifest).toContain('triggers:');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it('adds an agent package to an existing source repository root', async () => {
-    const root = mkTmp();
-    try {
-      writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 1.0.0\n');
-      writeFileSync(join(root, 'README.md'), 'keep me\n');
-
-      await initAgent('invoice-agent', { dir: root });
-
-      expect(statSync(join(root, 'agents', 'invoice-agent', 'eigenpal.yaml')).isFile()).toBe(true);
-      expect(readFileSync(join(root, 'README.md'), 'utf-8')).toBe('keep me\n');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it('rejects duplicate agent packages in an existing source repository root', async () => {
-    const root = mkTmp();
-    try {
-      writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 1.0.0\n');
-      await initAgent('invoice-agent', { dir: root });
-
-      await expect(initAgent('invoice-agent', { dir: root })).rejects.toThrow(
-        /Agent package agents\/invoice-agent already exists/
-      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

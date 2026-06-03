@@ -36,8 +36,6 @@ For exact flags and defaults, prefer the generated references:
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
 - [`reference/cli/agents.md`](reference/cli/agents.md)
 - [`reference/cli/git.md`](reference/cli/git.md)
-- [`reference/cli/run.md`](reference/cli/run.md)
-- [`reference/cli/runs.md`](reference/cli/runs.md)
 
 ## Pick The Surface
 
@@ -112,51 +110,121 @@ a folder unless the user specifically asks for that placement.
 
 ## Agent Iteration Loop
 
-Git-backed agent source lives in the organization repository under `agents/<slug>/`.
-Edit source in Git, save builder work with `eigenpal agents save`, and ship with
-`eigenpal agents release` + `eigenpal agents sync`. Builder sessions usually work
-on `builder/<agent>/<session>` branches. This is all Git under the hood, but use
-the Eigenpal CLI whenever possible:
+Agents are Git-backed source packages. The server runs released source packages
+from the organization source repository; editing live files is not the normal
+workflow. Prefer the Eigenpal CLI over raw provider/API calls because it handles
+validation, source refs, release tags, and server sync consistently. Cloned
+source repos also work with raw Git and IDE source-control panels: `agents clone`
+and `eigenpal git -- ...` configure a repo-local credential helper for the
+Eigenpal Git remote, so `git status`, `git log`, `git pull`, and `git push`
+can authenticate without copying API keys into `.git/config`.
 
-- `eigenpal agents save` = validate changed packages, commit if dirty, and push the current branch.
-- `eigenpal agents release <version> agents/<slug>` = safely land the package onto the release/tag path. Treat this like the merge step.
-- `eigenpal agents sync agents.<slug>` = apply the latest released manifest, including triggers, to the server DB.
-- `eigenpal git -- <args>` = authenticated git passthrough. Use it for every git command, including nuanced/read-only commands (`status`, `diff`, `log`, `rev-parse HEAD`, `merge`) and conflict recovery. Do not call raw `git` directly in normal agent work.
+Core mental model:
 
-Do not use `eigenpal agents push` or `agents file put` — those targeted the legacy
-HTTP upload API. Configure triggers in `eigenpal.yaml`; `agents sync` applies the
-latest release manifest to the DB.
+- `agents/<slug>/` is one agent package.
+- `resources/skills/<slug>/`, `resources/knowledge/<slug>/`,
+  `resources/templates/<slug>/`, and `resources/rules/<slug>/` are shared
+  packages that agents depend on through `eigenpal.yaml`.
+- `eigenpal agents save` validates changed packages, commits if dirty, and
+  pushes the current branch.
+- `eigenpal agents release patch agents/<slug>` lands a package as an immutable
+  release tag.
+- `eigenpal agents sync agents.<slug>` applies the latest released agent
+  manifest to the server DB, including triggers.
+- `@latest` means latest released package, not your current branch.
+- To test current branch work before release, run the exact commit SHA from
+  `eigenpal git -- rev-parse HEAD`.
+
+Use branches. Do not casually edit `main` unless the user explicitly wants that:
 
 ```bash
-# 1. Clone org source and open the agent package.
+# 1. Clone org source and create a branch.
 eigenpal agents clone --out ./source
-cd source/agents/<slug>
-eigenpal agents install
+cd ./source
+eigenpal git -- switch -c <short-task-branch>
 
-# 2. Edit agent source.
-#    AGENT.md is the inference orchestrator. Schemas are plain JSON files.
-$EDITOR AGENT.md eigenpal.yaml input-schema.json output-schema.json
-$EDITOR skills/<skill>/SKILL.md skills/<skill>/run.py
-
-# 3. Validate layout, manifest, and schema files; then save durable source changes on the current branch.
-cd ../..   # repo root
+# 2. Inspect package state.
 eigenpal agents status
-eigenpal agents validate agents/<slug>
-eigenpal agents save -m "Improve invoice extraction prompts"
+eigenpal agents show agents.<slug> --json
+eigenpal agents versions agents.<slug> --json
 
-# 4. Run exactly what was saved.
+# 3. Edit source.
+$EDITOR agents/<slug>/AGENT.md
+$EDITOR agents/<slug>/eigenpal.yaml
+$EDITOR agents/<slug>/input-schema.json agents/<slug>/output-schema.json
+$EDITOR agents/<slug>/skills/<skill>/SKILL.md agents/<slug>/skills/<skill>/run.py
+
+# 4. Validate and save the branch.
+eigenpal agents validate agents/<slug>
+eigenpal agents deps --dir agents/<slug>
+eigenpal agents save -m "Improve <agent> behavior"
+
+# 5. Test the exact saved commit.
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --example example-name --wait
-eigenpal agents runs get <agent-execution-id> --json | jq '.run'
-eigenpal agents runs trace <agent-execution-id> --out ./trace.jsonl
+eigenpal agents runs get <run-id> --json | jq '.run | {status,schemaValid,error,requestedSourceRef,resolvedGitRef,resolvedGitTag,resolvedCommitSha,cost}'
+eigenpal agents runs artifacts list <run-id>
+eigenpal agents runs trace <run-id> --out ./review/<run-id>/trace.jsonl
 
-# 5. Release to main + tag when ready to ship (-m optional; defaults to "Release <packagePath>").
-#    Release tags are immutable — never move, delete, or force-update a published tag.
-#    If a release is wrong, ship a new patch (`eigenpal agents release patch`).
+# 6. Release and sync only when ready.
 eigenpal agents release patch agents/<slug>
 eigenpal agents sync agents.<slug>
+
+# 7. Verify the released package.
+eigenpal agents run agents.<slug>@latest --example example-name --wait --json
+eigenpal agents runs get <released-run-id> --json | jq '.run | {status,schemaValid,error,resolvedGitTag,resolvedCommitSha,cost}'
 ```
+
+File inputs must use schema field names when there is more than one file input:
+
+```bash
+eigenpal agents run agents.<slug>@latest \
+  --input-file start_info_doc=./ZFRP.docx \
+  --wait
+
+eigenpal agents run agents.<slug>@latest \
+  --input-file zfzal_doc=./ZFZAL.pdf \
+  --input-file lv_doc=./list_vlastnictva.pdf \
+  --input-json '{"skip_name_check":false}' \
+  --wait
+```
+
+There is no live file upload command for Git-backed agents. `agents file list/get/diff`
+are read/compare tools only. Source changes go through Git + `agents save` +
+`agents release` + `agents sync`.
+
+### Shared Resource Rollouts
+
+When you edit a shared resource, do not assume every dependent agent should move
+immediately. Find usage, then ask the user which dependents to bump:
+
+```bash
+# 1. Edit and validate the shared package.
+$EDITOR resources/skills/<slug>/SKILL.md resources/skills/<slug>/run.py
+eigenpal agents validate resources/skills/<slug>
+
+# 2. Find dependent agents/resources.
+rg '<slug>|resources/skills/<slug>|resources/knowledge/<slug>' agents/ resources/
+eigenpal agents deps --dir agents/<dependent-slug>
+
+# 3. Ask the user which dependents should move to the new resource version.
+
+# 4. Release the shared package.
+eigenpal agents save -m "Improve shared <slug>"
+eigenpal agents release patch resources/skills/<slug>
+
+# 5. Bump selected agents' eigenpal.yaml dependency refs, then release/sync them.
+$EDITOR agents/<dependent-slug>/eigenpal.yaml
+eigenpal agents validate agents/<dependent-slug>
+eigenpal agents save -m "Bump <slug> dependency"
+eigenpal agents release patch agents/<dependent-slug>
+eigenpal agents sync agents.<dependent-slug>
+```
+
+After a shared dependency rollout, run one affected agent and inspect
+`eigenpal.lock` via `agents runs artifacts fetch` to confirm the dependency
+version and commit that inference actually installed.
 
 ### Agent Datasets And Examples
 
@@ -194,9 +262,11 @@ Run a persisted example with `eigenpal agents run agents.<slug>@<ref> --example 
 ```bash
 eigenpal agents runs list agents.<slug> --compact
 eigenpal agents runs list agents.<slug> --status failed --compact
-eigenpal agents runs pull <agent-execution-id> --include all --out ./review/<agent-execution-id>
+eigenpal agents runs artifacts list <agent-execution-id>
+eigenpal agents runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
 eigenpal agents runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
-eigenpal agents runs rerun <agent-execution-id> --wait
+eigenpal agents rerun <agent-execution-id> --wait
+eigenpal agents rerun <agent-execution-id> --source-ref original --wait
 eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
   --normalize-dates
@@ -206,13 +276,15 @@ eigenpal agents runs feedback resolve <source-agent-execution-id> \
 ```
 
 Agent commands commonly accept `<agent-id-or-slug>`. Agent execution commands
-take an agent execution id. Execution pulls and comparisons write review
+take an agent execution id. Artifact fetches and comparisons write review
 artifacts under `.eigenpal/artifacts/...` by default. Unqualified run-list
 targets show all source refs; add `@<ref>` only when you want a specific
 release, branch, tag, semver range, or commit. `runs list --json` returns
 `{ runs, total, limit, offset }`; `runs get --json` returns `{ run }`.
 
-Root `eigenpal run` / `eigenpal runs` and `eigenpal git <cmd>` (for moved subcommands) exit with a deprecation message — use `agents run`, `agents runs list`, and `agents <cmd>` instead.
+`agents rerun <run-id>` reuses the previous input snapshot with `latest` source
+by default. Use `--source-ref original` only when you need to reproduce the
+previous resolved version exactly.
 
 Use source refs such as `latest`, `main`, exact versions/tags (`1.2.3`),
 semver ranges (`1.2.x`, `1.x`), or exact commit SHAs when you need provenance.
@@ -304,20 +376,26 @@ both batches must belong to the same workflow.
 
 ## Agent Recipes
 
-### Inspect And Edit Agent Files
+### Inspect Agent Source And Live Files
 
 ```bash
 eigenpal agents list
+eigenpal agents show agents.<slug> --json
+eigenpal agents versions agents.<slug> --json
+eigenpal agents clone --out ./source
+cd ./source
+eigenpal agents status
+eigenpal agents deps --dir agents/<slug>
+
+# Live file inspection only. Do not edit through this surface.
 eigenpal agents file list <agent-id-or-slug>
-eigenpal agents file list <agent-id-or-slug> --prefix agent/knowledge
+eigenpal agents file list <agent-id-or-slug> --path agent/knowledge
 eigenpal agents file get <agent-id-or-slug> agent/instructions.md --out instructions.md
 eigenpal agents file diff <agent-id-or-slug> agent/instructions.md instructions.md
-eigenpal agents file put <agent-id-or-slug> agent/instructions.md instructions.md --preview
-eigenpal agents file put <agent-id-or-slug> agent/instructions.md instructions.md
 ```
 
-Use `--preview` before writing substantial changes; it shows how the target file
-would change.
+Edit `agents/<slug>/...` in Git source, then `agents save`, `agents release`,
+and `agents sync`. Live file commands are read/compare tools.
 
 ### Inspect Agent Executions
 
@@ -325,8 +403,8 @@ would change.
 eigenpal agents runs list <agent-id-or-slug> --status failed --limit 10
 eigenpal agents runs list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
 eigenpal agents runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json | jq '.run'
-eigenpal agents runs pull <agent-execution-id> --include all
 eigenpal agents runs artifacts list <agent-execution-id>
+eigenpal agents runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
 ```
 
 Use `--compact` on execution lists when you only need triage rows.
@@ -365,7 +443,8 @@ used when comparing future runs.
 ### Rerun And Compare Agent Executions
 
 ```bash
-eigenpal agents runs rerun <agent-execution-id> --wait
+eigenpal agents rerun <agent-execution-id> --wait
+eigenpal agents rerun <agent-execution-id> --source-ref original --wait
 eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id>
 eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
@@ -375,6 +454,8 @@ eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id
 
 By default, compare a new output against the reference execution's expected
 artifacts. Use `--baseline` to compare actual outputs from both executions.
+By default, rerun uses the previous inputs with latest source. Use
+`--source-ref original` for provenance reproduction.
 
 ## Output And Exit Codes
 
@@ -413,8 +494,6 @@ CLI command references:
 
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
 - [`reference/cli/agents.md`](reference/cli/agents.md)
-- [`reference/cli/run.md`](reference/cli/run.md)
-- [`reference/cli/runs.md`](reference/cli/runs.md)
 - [`reference/cli/auth.md`](reference/cli/auth.md)
 - [`reference/cli/status.md`](reference/cli/status.md)
 
@@ -445,18 +524,50 @@ eigenpal
 │   ├── step-type
 │   └── evaluator-type
 ├── agents
+│   ├── run
+│   ├── rerun
 │   ├── list
-│   ├── push
-│   ├── pull
 │   ├── validate
+│   ├── clone
+│   ├── install
+│   ├── init
+│   ├── pull
+│   ├── commit
+│   ├── save
+│   ├── push
+│   ├── release
+│   ├── sync
+│   ├── status
+│   ├── deps
+│   ├── clean
+│   ├── doctor
+│   ├── show
+│   ├── versions
+│   ├── secret
+│   ├── env
 │   ├── file
-│   ├── trigger
-│   ├── execution
+│   ├── dataset
+│   ├── runs
 │   └── experiment
-├── run
-├── runs
+│   └── session
 └── skill
     ├── install
     ├── uninstall
     └── list
 ```
+
+Agent command roles:
+
+- `agents clone` — clone organization source and configure raw Git/IDE auth.
+- `agents pull` — fast-forward source from `origin/main`; not datasets or run artifacts.
+- `agents status` / `agents doctor` / `agents clean` — inspect source health.
+- `agents validate` / `agents deps` — validate one package and inspect workspace dependencies.
+- `agents save` — validate, commit if dirty, and push the current branch.
+- `agents release` — create immutable package release tags.
+- `agents sync` — apply latest released agent manifest/triggers to the server.
+- `agents run` — start a run from a source ref (`@latest`, version, branch, commit).
+- `agents rerun` — reuse a previous input snapshot; defaults to latest source.
+- `agents runs list/get/watch/cancel/compare/trace` — inspect and manage executions.
+- `agents runs artifacts list/fetch` — inventory and download run artifacts by path.
+- `agents dataset` — manage persisted agent examples; runtime data, not Git source.
+- `agents file` — live read/diff inspection only.

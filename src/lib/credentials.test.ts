@@ -4,9 +4,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
 import {
   DEFAULT_PROFILE_NAME,
@@ -100,5 +100,41 @@ describe('credentials (profile-based)', () => {
 
     expect(deleteProfile('only')).toBe(true);
     expect(existsSync(getCredentialsPath())).toBe(false);
+  });
+
+  it('writes credentials file with 0600 and parent dir with 0700', () => {
+    upsertProfile({ apiKey: 'k1', baseUrl: 'http://h1' }, 'acme');
+
+    const path = getCredentialsPath();
+    // Low 12 bits hold the POSIX permission triple; mask off type bits.
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(dirname(path)).mode & 0o777).toBe(0o700);
+  });
+
+  it('tightens the parent dir when the last profile is deleted', () => {
+    upsertProfile({ apiKey: 'k1', baseUrl: 'http://h1' }, 'only');
+    const dir = dirname(getCredentialsPath());
+    // Loosen the dir so we can prove deleteProfile re-tightens it.
+    chmodSync(dir, 0o755);
+
+    expect(deleteProfile('only')).toBe(true);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it('re-tightens pre-existing loose permissions on the next write', () => {
+    const path = getCredentialsPath();
+    const dir = dirname(path);
+
+    // Simulate a stale install from an older CLI that wrote at the user's
+    // umask: dir is 0755, file (after first write) is 0644.
+    mkdirSync(dir, { recursive: true, mode: 0o755 });
+    upsertProfile({ apiKey: 'k1', baseUrl: 'http://h1' }, 'acme');
+    chmodSync(path, 0o644);
+    chmodSync(dir, 0o755);
+
+    // Any subsequent write through the helpers must re-tighten both.
+    upsertProfile({ apiKey: 'k2', baseUrl: 'http://h2' }, 'staging');
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
   });
 });

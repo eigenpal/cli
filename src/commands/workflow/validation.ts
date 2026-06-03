@@ -29,7 +29,7 @@ import type { Command } from 'commander';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { error, success, ui, warn } from '../lib/ui';
+import { error, success, ui, warn } from '../../lib/ui';
 
 interface ValidationIssue {
   field: string;

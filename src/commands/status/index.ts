@@ -15,10 +15,10 @@
  *     the headline question ("am I authenticated?") was answered.
  */
 
-import { ApiClient, ApiError } from '../lib/client';
-import { resolveConfig, resolveSource } from '../lib/config';
-import { listProfiles } from '../lib/credentials';
-import { error, ui, warn } from '../lib/ui';
+import { ApiClient, ApiError } from '../../lib/client';
+import { resolveConfig, resolveSource } from '../../lib/config';
+import { listProfiles } from '../../lib/credentials';
+import { error, ui, warn } from '../../lib/ui';
 
 interface StatusOpts {
   baseUrl?: string;

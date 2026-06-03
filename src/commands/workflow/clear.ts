@@ -11,8 +11,8 @@
 
 import { existsSync, readdirSync, rmSync, statSync } from 'fs';
 import { basename, join } from 'path';
-import { resolveEvalBaseDir } from '../lib/payload';
-import { error, success, ui, warn } from '../lib/ui';
+import { resolveEvalBaseDir } from '../../lib/payload';
+import { error, success, ui, warn } from '../../lib/ui';
 
 interface ClearRetentionOptions {
   removeAll?: boolean;

@@ -6,10 +6,10 @@
  */
 
 import type { Command } from 'commander';
-import { ApiClient } from '../lib/client';
-import { requireApiKey, resolveConfig } from '../lib/config';
-import { formatEigenpalDirIfAvailable } from '../lib/format-eigenpal';
-import { resolveWorkflowId } from '../lib/resolve-workflow';
+import { ApiClient } from '../../lib/client';
+import { requireApiKey, resolveConfig } from '../../lib/config';
+import { formatEigenpalDirIfAvailable } from '../../lib/format-eigenpal';
+import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
   error,
@@ -24,8 +24,8 @@ import {
   withBaseUrl,
   withPagination,
   type PaginationOpts,
-} from '../lib/ui';
-import { renderFrame, watchExecution, type ExecutionSnapshot } from '../lib/watch';
+} from '../../lib/ui';
+import { renderFrame, watchExecution, type ExecutionSnapshot } from '../../lib/watch';
 import { runExec } from './exec';
 
 export function registerWorkflowExecutionCommands(parent: Command): void {

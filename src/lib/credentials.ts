@@ -25,7 +25,7 @@
  *   EIGENPAL_PROFILE=staging <cmd>     # switch for one shell / one command
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
@@ -83,12 +83,30 @@ function readFile(): CredentialsFile | null {
   return null;
 }
 
+// Defense in depth around `credentials.json`. `writeFileSync`'s `mode:` is
+// masked by the user's umask on POSIX, and a pre-existing dir/file from an
+// older CLI is never re-tightened by either `mkdirSync` or `writeFileSync`.
+// The trailing chmod is load-bearing on both counts. Best-effort: non-POSIX
+// filesystems (Windows, some network mounts) reject chmod, and a stricter
+// mode there would do nothing useful anyway.
+function tighten(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // intentional no-op
+  }
+}
+
 function writeFile(file: CredentialsFile): void {
-  mkdirSync(dirname(credentialsFilePath()), { recursive: true });
-  writeFileSync(credentialsFilePath(), JSON.stringify(file, null, 2) + '\n', {
+  const path = credentialsFilePath();
+  const dir = dirname(path);
+  mkdirSync(dir, { recursive: true });
+  tighten(dir, 0o700);
+  writeFileSync(path, JSON.stringify(file, null, 2) + '\n', {
     encoding: 'utf-8',
     mode: 0o600,
   });
+  tighten(path, 0o600);
 }
 
 /** Return all profiles + which one is current. Empty profiles map if not set up. */
@@ -166,7 +184,10 @@ export function deleteProfile(name?: string): boolean {
     file.current = remaining[0];
   }
   if (Object.keys(file.profiles).length === 0) {
-    unlinkSync(credentialsFilePath());
+    const path = credentialsFilePath();
+    unlinkSync(path);
+    // The dir lingers; tighten it so a stale 0755 install doesn't survive logout.
+    tighten(dirname(path), 0o700);
   } else {
     writeFile(file);
   }

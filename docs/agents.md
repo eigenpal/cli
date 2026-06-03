@@ -17,6 +17,7 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
   - [Secrets](#secrets)
 - [Details](#details)
   - [`eigenpal agents|agent run [options] <target>`](#eigenpal-agentsagent-run-options-target)
+  - [`eigenpal agents|agent rerun [options] <run-id>`](#eigenpal-agentsagent-rerun-options-run-id)
   - [`eigenpal agents|agent list|ls [options]`](#eigenpal-agentsagent-listls-options)
   - [`eigenpal agents|agent validate [options] [dir]`](#eigenpal-agentsagent-validate-options-dir)
   - [`eigenpal agents|agent clone [options]`](#eigenpal-agentsagent-clone-options)
@@ -37,7 +38,6 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
   - [`eigenpal agents|agent sync [options] [automation]`](#eigenpal-agentsagent-sync-options-automation)
   - [`eigenpal agents|agent file list|ls [options] <agent-id-or-slug>`](#eigenpal-agentsagent-file-listls-options-agent-id-or-slug)
   - [`eigenpal agents|agent file get [options] <agent-id-or-slug> <remote-path>`](#eigenpal-agentsagent-file-get-options-agent-id-or-slug-remote-path)
-  - [`eigenpal agents|agent file put [options] <agent-id-or-slug> <remote-path> <local-path>`](#eigenpal-agentsagent-file-put-options-agent-id-or-slug-remote-path-local-path)
   - [`eigenpal agents|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>`](#eigenpal-agentsagent-file-diff-options-agent-id-or-slug-remote-path-local-path)
   - [`eigenpal agents|agent secret set [options] <name>`](#eigenpal-agentsagent-secret-set-options-name)
   - [`eigenpal agents|agent secret unset [options] <name>`](#eigenpal-agentsagent-secret-unset-options-name)
@@ -48,10 +48,9 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
   - [`eigenpal agents|agent dataset validate [options] [path]`](#eigenpal-agentsagent-dataset-validate-options-path)
   - [`eigenpal agents|agent runs list|ls [options] <target>`](#eigenpal-agentsagent-runs-listls-options-target)
   - [`eigenpal agents|agent runs get [options] <run-id>`](#eigenpal-agentsagent-runs-get-options-run-id)
-  - [`eigenpal agents|agent runs rerun [options] <run-id>`](#eigenpal-agentsagent-runs-rerun-options-run-id)
-  - [`eigenpal agents|agent runs pull [options] <run-id>`](#eigenpal-agentsagent-runs-pull-options-run-id)
   - [`eigenpal agents|agent runs compare|diff [options] <reference-run-id> <run-id>`](#eigenpal-agentsagent-runs-comparediff-options-reference-run-id-run-id)
   - [`eigenpal agents|agent runs artifacts|artifact list|ls [options] <run-id>`](#eigenpal-agentsagent-runs-artifactsartifact-listls-options-run-id)
+  - [`eigenpal agents|agent runs artifacts|artifact fetch [options] <run-id>`](#eigenpal-agentsagent-runs-artifactsartifact-fetch-options-run-id)
   - [`eigenpal agents|agent runs trace [options] <run-id>`](#eigenpal-agentsagent-runs-trace-options-run-id)
   - [`eigenpal agents|agent runs feedback|fb update [options] <run-id>`](#eigenpal-agentsagent-runs-feedbackfb-update-options-run-id)
   - [`eigenpal agents|agent runs feedback|fb resolve [options] <run-id>`](#eigenpal-agentsagent-runs-feedbackfb-resolve-options-run-id)
@@ -83,11 +82,11 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
 ```
 agents
 ├── run <target>
+├── rerun <run-id>
 ├── list|ls
 ├── file
 │   ├── list|ls <agent-id-or-slug>
 │   ├── get <agent-id-or-slug> <remote-path>
-│   ├── put <agent-id-or-slug> <remote-path> <local-path>
 │   └── diff <agent-id-or-slug> <remote-path> <local-path>
 ├── validate [dir]
 ├── clone
@@ -118,11 +117,10 @@ agents
 ├── runs
 │   ├── list|ls <target>
 │   ├── get <run-id>
-│   ├── rerun <run-id>
-│   ├── pull <run-id>
 │   ├── compare|diff <reference-run-id> <run-id>
 │   ├── artifacts|artifact
-│   │   └── list|ls <run-id>
+│   │   ├── list|ls <run-id>
+│   │   └── fetch <run-id>
 │   ├── trace <run-id>
 │   ├── feedback|fb
 │   │   ├── update <run-id>
@@ -160,36 +158,36 @@ agents
 
 ### Core
 
-| Command                                                    | Description                                                                                                                             |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents\|agent run [options] <target>`            | Run an agent target, e.g. agents.invoice-agent@latest.                                                                                  |
-| `eigenpal agents\|agent list\|ls [options]`                | List agents.                                                                                                                            |
-| `eigenpal agents\|agent validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                       |
-| `eigenpal agents\|agent clone [options]`                   | Clone the organization source repository.                                                                                               |
-| `eigenpal agents\|agent install [options] [packageRef]`    | Materialize a source package and its workspace dependencies.                                                                            |
-| `eigenpal agents\|agent init [options] <name>`             | Create a new source package scaffold.                                                                                                   |
-| `eigenpal agents\|agent pull [options]`                    | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs pull. |
-| `eigenpal agents\|agent commit [options]`                  | Validate changed source packages and commit them.                                                                                       |
-| `eigenpal agents\|agent save [options]`                    | Validate, commit if dirty, and push the current source branch.                                                                          |
-| `eigenpal agents\|agent push [options]`                    | Push the current organization source branch and tags.                                                                                   |
-| `eigenpal agents\|agent upgrade [options]`                 | Upgrade the source repository schema in place.                                                                                          |
-| `eigenpal agents\|agent doctor [options]`                  | Check organization source repository health.                                                                                            |
-| `eigenpal agents\|agent status [options]`                  | Show source repo and package status.                                                                                                    |
-| `eigenpal agents\|agent deps [options]`                    | List package workspace dependencies.                                                                                                    |
-| `eigenpal agents\|agent clean [options]`                   | Require a clean source working tree.                                                                                                    |
-| `eigenpal agents\|agent show [options] <automation>`       | Show Git-backed automation details.                                                                                                     |
-| `eigenpal agents\|agent versions [options] <package>`      | List package release versions.                                                                                                          |
-| `eigenpal agents\|agent release [options] <version> [dir]` | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                 |
-| `eigenpal agents\|agent sync [options] [automation]`       | Sync an automation from the latest Git source release.                                                                                  |
+| Command                                                    | Description                                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal agents\|agent run [options] <target>`            | Run an agent target, e.g. agents.invoice-agent@latest.                                                                                             |
+| `eigenpal agents\|agent rerun [options] <run-id>`          | Create a new run from a previous run's stored input snapshot.                                                                                      |
+| `eigenpal agents\|agent list\|ls [options]`                | List agents.                                                                                                                                       |
+| `eigenpal agents\|agent validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                                  |
+| `eigenpal agents\|agent clone [options]`                   | Clone the organization source repository.                                                                                                          |
+| `eigenpal agents\|agent install [options] [packageRef]`    | Materialize a source package and its workspace dependencies.                                                                                       |
+| `eigenpal agents\|agent init [options] <name>`             | Create a new source package scaffold.                                                                                                              |
+| `eigenpal agents\|agent pull [options]`                    | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs artifacts fetch. |
+| `eigenpal agents\|agent commit [options]`                  | Validate changed source packages and commit them.                                                                                                  |
+| `eigenpal agents\|agent save [options]`                    | Validate, commit if dirty, and push the current source branch.                                                                                     |
+| `eigenpal agents\|agent push [options]`                    | Push the current organization source branch and tags.                                                                                              |
+| `eigenpal agents\|agent upgrade [options]`                 | Upgrade the source repository schema in place.                                                                                                     |
+| `eigenpal agents\|agent doctor [options]`                  | Check organization source repository health.                                                                                                       |
+| `eigenpal agents\|agent status [options]`                  | Show source repo and package status.                                                                                                               |
+| `eigenpal agents\|agent deps [options]`                    | List package workspace dependencies.                                                                                                               |
+| `eigenpal agents\|agent clean [options]`                   | Require a clean source working tree.                                                                                                               |
+| `eigenpal agents\|agent show [options] <automation>`       | Show Git-backed automation details.                                                                                                                |
+| `eigenpal agents\|agent versions [options] <package>`      | List package release versions.                                                                                                                     |
+| `eigenpal agents\|agent release [options] <version> [dir]` | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                            |
+| `eigenpal agents\|agent sync [options] [automation]`       | Sync an automation from the latest Git source release.                                                                                             |
 
 ### File
 
-| Command                                                                                    | Description                                                                      |
-| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `eigenpal agents\|agent file list\|ls [options] <agent-id-or-slug>`                        | List live files for an agent.                                                    |
-| `eigenpal agents\|agent file get [options] <agent-id-or-slug> <remote-path>`               | Download one live agent file.                                                    |
-| `eigenpal agents\|agent file put [options] <agent-id-or-slug> <remote-path> <local-path>`  | [removed] Git-backed agents — edit source in Git and run `eigenpal agents save`. |
-| `eigenpal agents\|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>` | Compare one live agent file against a local file.                                |
+| Command                                                                                    | Description                                       |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `eigenpal agents\|agent file list\|ls [options] <agent-id-or-slug>`                        | List live files for an agent.                     |
+| `eigenpal agents\|agent file get [options] <agent-id-or-slug> <remote-path>`               | Download one live agent file.                     |
+| `eigenpal agents\|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>` | Compare one live agent file against a local file. |
 
 ### Secret
 
@@ -214,10 +212,9 @@ agents
 | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `eigenpal agents\|agent runs list\|ls [options] <target>`                              | List runs for an agent target; unqualified targets include all source refs.                                      |
 | `eigenpal agents\|agent runs get [options] <run-id>`                                   | Get one agent run.                                                                                               |
-| `eigenpal agents\|agent runs rerun [options] <run-id>`                                 | Create a new run from a previous run's stored input snapshot.                                                    |
-| `eigenpal agents\|agent runs pull [options] <run-id>`                                  | Download run feedback, expected artifacts, files, and metadata.                                                  |
 | `eigenpal agents\|agent runs compare\|diff [options] <reference-run-id> <run-id>`      | Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks. |
 | `eigenpal agents\|agent runs artifacts\|artifact list\|ls [options] <run-id>`          | List available run artifacts without downloading them.                                                           |
+| `eigenpal agents\|agent runs artifacts\|artifact fetch [options] <run-id>`             | Download run artifacts by canonical artifact path.                                                               |
 | `eigenpal agents\|agent runs trace [options] <run-id>`                                 | Print raw trace.jsonl for a run, or write it with --out.                                                         |
 | `eigenpal agents\|agent runs feedback\|fb update [options] <run-id>`                   | Edit feedback state, rating, message, or expected JSON for a run.                                                |
 | `eigenpal agents\|agent runs feedback\|fb resolve [options] <run-id>`                  | Mark run feedback as resolved.                                                                                   |
@@ -278,16 +275,37 @@ Run an agent target, e.g. agents.invoice-agent@latest.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                  |
-| ---------------------- | -------- | ------- | -------------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                              |
-| `--json`               | no       |         | Output the raw server response as JSON       |
-| `--input-json <json>`  | no       |         | JSON input object                            |
-| `--input-file <path>`  | no       |         | Input file to upload as multipart form-data  |
-| `--example <name>`     | no       |         | Run a persisted dataset example by name      |
-| `--wait`               | no       |         | Poll until the run reaches a terminal status |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                  |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                |
+| Flag                        | Required | Default | Description                                                                                          |
+| --------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`          | no       |         | Server base URL                                                                                      |
+| `--json`                    | no       |         | Output the raw server response as JSON                                                               |
+| `--input-json <json>`       | no       |         | JSON input object                                                                                    |
+| `--input-file <field=path>` | no       | `[]`    | Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file". |
+| `--example <name>`          | no       |         | Run a persisted dataset example by name                                                              |
+| `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                         |
+| `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
+| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exiting 2                                                                        |
+
+### `eigenpal agents|agent rerun [options] <run-id>`
+
+Create a new run from a previous run's stored input snapshot.
+
+### Arguments
+
+| Name     | Required | Variadic | Description |
+| -------- | -------- | -------- | ----------- |
+| `run-id` | yes      | no       |             |
+
+### Options
+
+| Flag                   | Required | Default | Description                                                                                              |
+| ---------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`     | no       |         | Server base URL                                                                                          |
+| `--json`               | no       |         | Output the raw server response as JSON                                                                   |
+| `--source-ref <ref>`   | no       |         | Source ref for the new run (default: latest). Use "original" to reproduce the previous resolved version. |
+| `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                           |
+| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                              |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                            |
 
 ### `eigenpal agents|agent list|ls [options]`
 
@@ -369,7 +387,7 @@ Create a new source package scaffold.
 
 ### `eigenpal agents|agent pull [options]`
 
-Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs pull.
+Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs artifacts fetch.
 
 ### Options
 
@@ -573,25 +591,6 @@ Download one live agent file.
 | `--json`           | no       |         | Output the raw server response as JSON |
 | `--out <file>`     | no       |         | Output file path                       |
 
-### `eigenpal agents|agent file put [options] <agent-id-or-slug> <remote-path> <local-path>`
-
-[removed] Git-backed agents — edit source in Git and run `eigenpal agents save`.
-
-### Arguments
-
-| Name               | Required | Variadic | Description |
-| ------------------ | -------- | -------- | ----------- |
-| `agent-id-or-slug` | yes      | no       |             |
-| `remote-path`      | yes      | no       |             |
-| `local-path`       | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-
 ### `eigenpal agents|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>`
 
 Compare one live agent file against a local file.
@@ -777,45 +776,6 @@ Get one agent run.
 | `--json`            | no       |              | Output the raw server response as JSON                            |
 | `--include <parts>` | no       | `"feedback"` | Comma-separated extra parts: feedback,expected,files,trace,issues |
 
-### `eigenpal agents|agent runs rerun [options] <run-id>`
-
-Create a new run from a previous run's stored input snapshot.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                   | Required | Default | Description                                    |
-| ---------------------- | -------- | ------- | ---------------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                                |
-| `--json`               | no       |         | Output the raw server response as JSON         |
-| `--wait`               | no       |         | Poll until the rerun reaches a terminal status |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                    |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                  |
-
-### `eigenpal agents|agent runs pull [options] <run-id>`
-
-Download run feedback, expected artifacts, files, and metadata.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default               | Description                                                                                    |
-| ------------------- | -------- | --------------------- | ---------------------------------------------------------------------------------------------- |
-| `--base-url <url>`  | no       |                       | Server base URL                                                                                |
-| `--out <dir>`       | no       |                       | Output directory                                                                               |
-| `--include <parts>` | no       | `"feedback,expected"` | Comma-separated parts: feedback,expected,files,output,input,metadata,issues,trace,lockfile,all |
-| `--json`            | no       |                       | Output a JSON summary of written artifacts                                                     |
-
 ### `eigenpal agents|agent runs compare|diff [options] <reference-run-id> <run-id>`
 
 Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks.
@@ -854,6 +814,26 @@ List available run artifacts without downloading them.
 | ------------------ | -------- | ------- | -------------------------------------- |
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal agents|agent runs artifacts|artifact fetch [options] <run-id>`
+
+Download run artifacts by canonical artifact path.
+
+### Arguments
+
+| Name     | Required | Variadic | Description |
+| -------- | -------- | -------- | ----------- |
+| `run-id` | yes      | no       |             |
+
+### Options
+
+| Flag                | Required | Default | Description                                                                     |
+| ------------------- | -------- | ------- | ------------------------------------------------------------------------------- |
+| `--base-url <url>`  | no       |         | Server base URL                                                                 |
+| `--out <dir>`       | no       |         | Output directory                                                                |
+| `--include <parts>` | no       | `"all"` | Comma-separated parts: output,input,metadata,issues,trace,lockfile,expected,all |
+| `--path <path>`     | no       | `[]`    | Fetch one exact artifact path from `artifacts list`; repeatable                 |
+| `--json`            | no       |         | Output a JSON summary of written artifacts                                      |
 
 ### `eigenpal agents|agent runs trace [options] <run-id>`
 

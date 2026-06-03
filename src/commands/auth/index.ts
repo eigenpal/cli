@@ -12,10 +12,15 @@ import {
   text,
 } from '@clack/prompts';
 import { exec } from 'child_process';
-import { env } from '../env';
-import { ApiClient } from '../lib/client';
-import { deleteProfile, listProfiles, setCurrentProfile, upsertProfile } from '../lib/credentials';
-import { dim, error, success, ui } from '../lib/ui';
+import { env } from '../../env';
+import { ApiClient } from '../../lib/client';
+import {
+  deleteProfile,
+  listProfiles,
+  setCurrentProfile,
+  upsertProfile,
+} from '../../lib/credentials';
+import { dim, error, success, ui } from '../../lib/ui';
 
 const CLOUD_BASE_URL = 'https://studio.eigenpal.com';
 

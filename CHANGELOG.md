@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.6.6
+
+### Patch Changes
+
+- 245f347: Clean up the agent CLI surface by removing obsolete compatibility commands, moving reruns to `agents rerun`, and replacing run pulls with canonical artifact fetching.
+- 5ab00ee: Tighten permissions on `~/.config/eigenpal/credentials.json` and its parent directory to owner-only (0600 / 0700). Previously the file was written 0600 but the parent directory inherited the user's umask (typically 0755), allowing other local users to list the directory and stat the file. The CLI now also re-tightens permissions on every write, so installs created with older versions are corrected on the next `auth login` / `auth use`.
+
 ## 0.6.4
 
 ### Patch Changes
