@@ -44,15 +44,18 @@ function assertNotHtml(res: Response, resolvedUrl: string): void {
 export class ApiClient {
   private baseUrl: string;
   private apiKey: string;
+  private tenantId?: string;
 
   constructor(config: CliConfig) {
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
+    this.tenantId = config.tenantId;
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return {
       Authorization: `Bearer ${this.apiKey}`,
+      ...(this.tenantId ? { 'x-eigenpal-tenant-id': this.tenantId } : {}),
       ...extra,
     };
   }

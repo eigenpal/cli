@@ -7,6 +7,7 @@ import { error, ui } from './ui';
 export interface CliConfig {
   baseUrl: string;
   apiKey: string;
+  tenantId?: string;
   dir: string;
 }
 
@@ -42,17 +43,23 @@ const DEFAULT_BASE_URL = 'https://studio.eigenpal.com';
  * never works). To target an on-prem server in CI, set both the API key
  * and `EIGENPAL_BASE_URL`. Otherwise the bypass uses the cloud default.
  */
-export function resolveConfig(flags: { baseUrl?: string; dir?: string }): CliConfig {
+export function resolveConfig(flags: {
+  baseUrl?: string;
+  dir?: string;
+  tenantId?: string;
+}): CliConfig {
   const usingEnvKey = !!env.EIGENPAL_API_KEY;
   const profile = usingEnvKey ? null : readActiveCredentials();
 
   const baseUrl = flags.baseUrl || env.EIGENPAL_BASE_URL || profile?.baseUrl || DEFAULT_BASE_URL;
   const apiKey = env.EIGENPAL_API_KEY || profile?.apiKey || '';
+  const tenantId = flags.tenantId || env.EIGENPAL_TENANT_ID || profile?.tenantId;
   const dir = flags.dir || env.EIGENPAL_DIR || './eigenpal';
 
   return {
     baseUrl: baseUrl.replace(/\/+$/, ''),
     apiKey,
+    tenantId,
     dir,
   };
 }

@@ -11,6 +11,7 @@ export const env = createEnv({
   server: {
     EIGENPAL_BASE_URL: z.string().optional(),
     EIGENPAL_API_KEY: z.string().optional(),
+    EIGENPAL_TENANT_ID: z.string().optional(),
     EIGENPAL_DIR: z.string().optional(),
     /** Per-shell profile override. See `eigenpal auth use <name>` for the
      *  persisted equivalent. */

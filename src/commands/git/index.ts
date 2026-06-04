@@ -597,7 +597,11 @@ async function syncLatestAutomation(
   success(`Synced ${automation} to latest release.`);
 }
 
-async function cloneSource(opts: { out?: string; baseUrl?: string }): Promise<void> {
+async function cloneSource(opts: {
+  out?: string;
+  baseUrl?: string;
+  tenantId?: string;
+}): Promise<void> {
   const config = resolveConfig(opts);
   const repo = await getSourceRepository(config);
   const outDir = opts.out ?? path.basename(repo.gitRepositoryPath);
@@ -1101,6 +1105,7 @@ export function registerAgentSourceCommands(agent: Command): void {
   withBaseUrl(agent.command('clone'))
     .description('Clone the organization source repository.')
     .option('--out <dir>', 'Output directory')
+    .option('--tenant-id <tenantId>', 'Target tenant id for admin-token source clones')
     .action(action(cloneSource));
 
   withBaseUrl(agent.command('install [packageRef]'))

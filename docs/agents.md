@@ -343,10 +343,11 @@ Clone the organization source repository.
 
 ### Options
 
-| Flag               | Required | Default | Description      |
-| ------------------ | -------- | ------- | ---------------- |
-| `--base-url <url>` | no       |         | Server base URL  |
-| `--out <dir>`      | no       |         | Output directory |
+| Flag                     | Required | Default | Description                                    |
+| ------------------------ | -------- | ------- | ---------------------------------------------- |
+| `--base-url <url>`       | no       |         | Server base URL                                |
+| `--out <dir>`            | no       |         | Output directory                               |
+| `--tenant-id <tenantId>` | no       |         | Target tenant id for admin-token source clones |
 
 ### `eigenpal agents|agent install [options] [packageRef]`
 
