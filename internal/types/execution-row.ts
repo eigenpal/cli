@@ -20,6 +20,103 @@ export const EXECUTION_STATUSES = [
 ] as const;
 export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
 
+export const EXECUTION_PHASES = [
+  'queued',
+  'starting',
+  'preparing_inputs',
+  'preparing_environment',
+  'installing_dependencies',
+  'running',
+  'collecting_outputs',
+  'finalizing',
+] as const;
+export type ExecutionPhase = (typeof EXECUTION_PHASES)[number];
+
+export const EXECUTION_PHASE_ORDER: Record<ExecutionPhase, number> = {
+  queued: 10,
+  starting: 20,
+  preparing_inputs: 30,
+  preparing_environment: 40,
+  installing_dependencies: 50,
+  running: 60,
+  collecting_outputs: 70,
+  finalizing: 80,
+};
+
+export const EXECUTION_PHASE_STATUSES = [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'skipped',
+  'cancelled',
+] as const;
+export type ExecutionPhaseStatus = (typeof EXECUTION_PHASE_STATUSES)[number];
+
+export const EXECUTION_FAILURE_CATEGORIES = [
+  'input',
+  'source',
+  'environment',
+  'runtime',
+  'output',
+  'finalization',
+  'system',
+] as const;
+export type ExecutionFailureCategory = (typeof EXECUTION_FAILURE_CATEGORIES)[number];
+
+export interface InternalExecutionFailure {
+  phase: ExecutionPhase;
+  code: string;
+  category: ExecutionFailureCategory;
+  provider?: string;
+  retryable: boolean;
+  userMessage: string;
+  operatorMessage: string;
+  rawMessage?: string;
+  occurredAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type PublicExecutionFailure = Pick<
+  InternalExecutionFailure,
+  'phase' | 'code' | 'category' | 'provider' | 'retryable' | 'userMessage' | 'occurredAt'
+>;
+
+export interface ExecutionPhaseSpan {
+  executionId: string;
+  phase: ExecutionPhase;
+  phaseOrder: number;
+  status: ExecutionPhaseStatus;
+  startedAt: string | Date | null;
+  completedAt: string | Date | null;
+  message?: string | null;
+  metadata?: Record<string, unknown> | null;
+  failureCode?: string | null;
+  durationMs?: number | null;
+}
+
+export interface ExecutionObservability {
+  phases: ExecutionPhaseSpan[];
+  currentPhase?: ExecutionPhase;
+  failure?: PublicExecutionFailure;
+  derived: boolean;
+}
+
+export function executionPhaseDurationMs(
+  startedAt: Date | string | null | undefined,
+  completedAt: Date | string | null | undefined
+): number | null {
+  return executionWallClockMs(startedAt, completedAt);
+}
+
+export function publicExecutionFailure(
+  failure: InternalExecutionFailure | null | undefined
+): PublicExecutionFailure | undefined {
+  if (!failure) return undefined;
+  const { phase, code, category, provider, retryable, userMessage, occurredAt } = failure;
+  return { phase, code, category, provider, retryable, userMessage, occurredAt };
+}
+
 /**
  * Terminal statuses: no further lifecycle transitions except archival/cleanup.
  * Callers treating “finished” runs should accept all of these.
