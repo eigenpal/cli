@@ -46,6 +46,22 @@ export const EXECUTION_PHASE_ORDER: Record<ExecutionPhase, number> = {
   finalizing: 80,
 };
 
+/** User-facing phase names for run timelines and error copy. */
+export const EXECUTION_PHASE_LABELS: Record<ExecutionPhase, string> = {
+  queued: 'Waiting in line',
+  starting: 'Starting run',
+  preparing_inputs: 'Preparing inputs',
+  preparing_environment: 'Preparing environment',
+  installing_dependencies: 'Installing dependencies',
+  running: 'Running',
+  collecting_outputs: 'Collecting outputs',
+  finalizing: 'Finalizing',
+};
+
+export function executionPhaseLabel(phase: ExecutionPhase): string {
+  return EXECUTION_PHASE_LABELS[phase];
+}
+
 export const EXECUTION_PHASE_STATUSES = [
   'pending',
   'running',
