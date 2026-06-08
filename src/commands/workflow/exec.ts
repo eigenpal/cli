@@ -24,9 +24,10 @@ interface ExecutionStatus {
 async function pollExecution(client: ApiClient, executionId: string): Promise<ExecutionStatus> {
   const start = Date.now();
   while (Date.now() - start < MAX_POLL_MS) {
-    const res = (await client.get(
-      `/api/v1/workflows/executions/${executionId}`
-    )) as ExecutionStatus;
+    const payload = (await client.get(`/api/v1/runs/${executionId}?include=detail`)) as
+      | { run?: ExecutionStatus }
+      | ExecutionStatus;
+    const res = 'run' in payload && payload.run ? payload.run : (payload as ExecutionStatus);
     if (['completed', 'failed', 'cancelled', 'rejected'].includes(res.status)) return res;
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
@@ -139,7 +140,7 @@ export async function runExec(
 
         // Surface the id immediately — if polling or artifact-write fails
         // below, the user still has a handle to recover with
-        // `eigenpal workflow execution get <id>`.
+        // `eigenpal runs get <id>`.
         process.stderr.write(`  ${ui.dim(`→ ${name}: ${executionId}`)}\n`);
 
         const result = await pollExecution(client, executionId);
@@ -156,9 +157,13 @@ export async function runExec(
         // Write artifact folder: executions/<executionId>/output.json + files.
         // Failure here doesn't change pass/fail — surface a warning only.
         try {
-          const artifact = (await client.get(
-            `/api/v1/workflows/executions/${executionId}?includeSteps=true`
-          )) as ExecutionArtifactPayload;
+          const artifactPayload = (await client.get(
+            `/api/v1/runs/${executionId}?include=detail`
+          )) as { run?: ExecutionArtifactPayload } | ExecutionArtifactPayload;
+          const artifact =
+            'run' in artifactPayload && artifactPayload.run
+              ? artifactPayload.run
+              : (artifactPayload as ExecutionArtifactPayload);
           const artifactDir = await writeExecutionArtifacts(client, exampleDir, artifact);
           if (!interactive) console.log(ui.dim(`  Artifacts: ${artifactDir}`));
         } catch (artErr) {

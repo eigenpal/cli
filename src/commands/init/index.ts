@@ -5,7 +5,7 @@
  * `__NAME__` placeholders rewritten to the project name.
  *
  * Templates ship with the §4 dataset folder convention pre-baked, so a
- * fresh project is `eigenpal workflow execution run` ready out of the box.
+ * fresh project is `eigenpal workflow run` ready out of the box.
  *
  * Git-backed agent packages are scaffolded with `eigenpal agents init`.
  */
@@ -111,7 +111,7 @@ export async function init(name: string, opts: InitOptions): Promise<void> {
   info('Next steps:');
   dim(`  cd ${targetDisplay}`);
   dim(`  eigenpal workflow validate                    # all three local checks`);
-  dim(`  eigenpal workflow execution run ${name} sample`);
+  dim(`  eigenpal workflow run ${name} sample`);
 }
 
 function assertSafeTargetDir(target: string, dir: string | undefined): void {

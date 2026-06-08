@@ -26,17 +26,8 @@ describe('command aliases', () => {
       ['workflow', 'dataset', 'ls', '--help'],
       ['workflow', 'versions', 'ls', '--help'],
       ['workflow', 'step-type', 'ls', '--help'],
-      ['workflow', 'execution', 'ls', '--help'],
-      ['workflow', 'execution', 'diff', '--help'],
       ['workflow', 'experiment', 'ls', '--help'],
       ['workflow', 'experiment', 'diff', '--help'],
-      ['agent', 'ls', '--help'],
-      ['agent', 'file', 'ls', '--help'],
-      ['agent', 'dataset', 'ls', '--help'],
-      ['agent', 'execution', 'ls', '--help'],
-      ['agent', 'execution', 'diff', '--help'],
-      ['agent', 'execution', 'expected', 'ls', '--help'],
-      ['agent', 'trigger', 'ls', '--help'],
     ]) {
       const result = spawnSync('bun', [CLI, ...args], { encoding: 'utf8' });
       expect(result.status).toBe(0);
@@ -46,17 +37,17 @@ describe('command aliases', () => {
   test('keeps explicit high-value workflow aliases', () => {
     const workflow = spawnSync('bun', [CLI, 'workflow', '--help'], { encoding: 'utf8' });
     expect(workflow.status).toBe(0);
-    expect(workflow.stdout).toContain('execution');
+    expect(workflow.stdout).toContain('run');
     expect(workflow.stdout).toContain('experiment');
 
-    const execution = spawnSync('bun', [CLI, 'workflow', 'exec', '--help'], { encoding: 'utf8' });
-    expect(execution.status).toBe(0);
-    expect(
-      spawnSync('bun', [CLI, 'workflow', 'exec', 'ls', '--help'], { encoding: 'utf8' }).status
-    ).toBe(0);
-    expect(
-      spawnSync('bun', [CLI, 'workflow', 'exec', 'diff', '--help'], { encoding: 'utf8' }).status
-    ).toBe(0);
+    const run = spawnSync('bun', [CLI, 'workflow', 'run', '--help'], { encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain('<workflow-id> [examples...]');
+
+    const execution = spawnSync('bun', [CLI, 'workflow', 'execution', 'run', 'wf_abc123'], {
+      encoding: 'utf8',
+    });
+    expect(execution.status).not.toBe(0);
 
     const experiment = spawnSync('bun', [CLI, 'workflow', 'exp', '--help'], { encoding: 'utf8' });
     expect(experiment.status).toBe(0);
@@ -234,7 +225,7 @@ describe('renderExperimentFailures', () => {
     expect(stripAnsi(captured.stderr)).toContain('ex-1');
     expect(stripAnsi(captured.stderr)).toContain('boom stack');
     expect(stripAnsi(captured.stderr)).toContain('exec_2');
-    expect(stripAnsi(captured.stderr)).toContain('eigenpal workflow execution get exec_1');
+    expect(stripAnsi(captured.stderr)).toContain('eigenpal runs get exec_1');
   });
 
   test('no-op when there are no failures', () => {

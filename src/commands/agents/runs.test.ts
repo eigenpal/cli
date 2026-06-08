@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';
 import { buildAgentExecutionRunFormData } from './run-form-data';
-import { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from './runs';
 import { parseAgentTarget } from './target';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
@@ -27,13 +27,49 @@ async function withAgentRunServer(
       if (request.method === 'POST' && url.pathname === '/api/v1/agents/invoice-agent/run') {
         return json({ runId: 'run_terminal' });
       }
-      if (request.method === 'GET' && url.pathname === '/api/v1/agents/runs/run_terminal') {
+      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_terminal') {
         return json({
           run: {
             id: 'run_terminal',
             status,
             error: status === 'failed' ? 'boom' : null,
           },
+        });
+      }
+      return json({ error: `Unexpected ${request.method} ${url.pathname}` }, { status: 404 });
+    },
+  });
+  try {
+    await fn(`http://127.0.0.1:${server.port}`);
+  } finally {
+    await server.stop(true);
+  }
+}
+
+async function withRunsListServer(fn: (baseUrl: string) => void | Promise<void>): Promise<void> {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      const json = (body: unknown, init?: ResponseInit) =>
+        new Response(JSON.stringify(body), {
+          ...init,
+          headers: { 'content-type': 'application/json', ...init?.headers },
+        });
+
+      if (request.method === 'GET' && url.pathname === '/api/v1/runs') {
+        return json({
+          runs: [
+            {
+              id: 'run_1',
+              type: 'workflow',
+              status: 'completed',
+              sourceId: 'wf_1',
+              sourceName: 'Invoice Workflow',
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          nextCursor: null,
         });
       }
       return json({ error: `Unexpected ${request.method} ${url.pathname}` }, { status: 404 });
@@ -159,26 +195,41 @@ describe('agent run command helpers', () => {
     }
   );
 
-  test('--no-feedback serializes as server noFeedback query param', () => {
-    expect(buildRunListParams({ feedback: false })).toMatchObject({ noFeedback: 'true' });
-    expect(buildRunListParams({ noFeedback: true })).toMatchObject({ noFeedback: 'true' });
-    expect(buildRunListParams({ feedback: false })).not.toHaveProperty('feedback');
-  });
-
   test('run list omits client-only compact param', () => {
     expect(buildRunListParams({ compact: true } as { compact: boolean })).not.toHaveProperty(
       'compact'
     );
   });
 
-  test('run list includes source provenance filter', () => {
-    expect(buildRunListParams({ sourceRef: '1.2.3' })).toMatchObject({
-      sourceRef: '1.2.3',
-    });
+  test('run list includes shared run filters', () => {
     expect(
-      buildRunListParams({ sourceRef: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
+      buildRunListParams({
+        type: 'agent',
+        status: 'failed',
+        sourceRef: '1.2.3',
+        batchId: 'batch_1',
+        exampleId: 'example_1',
+        from: 'now()-7d',
+        limit: 25,
+      })
     ).toMatchObject({
-      sourceRef: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      type: 'agent',
+      status: 'failed',
+      sourceRef: '1.2.3',
+      batchId: 'batch_1',
+      exampleId: 'example_1',
+      from: 'now()-7d',
+      limit: '25',
+    });
+  });
+
+  test('runs list renders sourceName in human output', async () => {
+    await withRunsListServer(async (baseUrl) => {
+      const result = await runCli(['runs', 'list', '--base-url', baseUrl], { baseUrl });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('SOURCE');
+      expect(result.stdout).toContain('Invoice Workflow');
     });
   });
 

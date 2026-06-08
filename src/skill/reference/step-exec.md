@@ -20,7 +20,7 @@ Until EIG-104 lands, single-step iteration goes through the queue:
 
 ```bash
 # Run the whole workflow once with a specific example.
-eigenpal workflow execution run <workflow-id>
+eigenpal workflow run <workflow-id>
 
 # Or iterate on one example via the experiment surface.
 eigenpal workflow experiment run <workflow-id> --example-id <name>
@@ -36,7 +36,7 @@ To inspect what a step actually produced (input / output / resolved
 config), use:
 
 ```bash
-eigenpal workflow execution get <executionId> --json --include input,output,config
+eigenpal runs get <executionId> --json --include input,output,config
 ```
 
 The server returns `inputData` / `outputData` / `resolvedConfig` per
@@ -47,7 +47,7 @@ names (`input` / `output` / `config`).
 
 | Code | When |
 | --- | --- |
-| 2 | Always — the command is disabled and redirects to `workflow execution run` / `experiment run`. |
+| 2 | Always — the command is disabled and redirects to `workflow run` / `experiment run`. |
 
 ## When this comes back
 

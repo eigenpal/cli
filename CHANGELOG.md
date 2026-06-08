@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.6.10
+
+### Patch Changes
+
+- 99ca1b4: Unify agent and workflow run commands and SDK helpers on the shared `/api/v1/runs` API, including the public `client.runs` facade and regenerated SDK reference docs.
+
 ## 0.6.6
 
 ### Patch Changes

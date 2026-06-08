@@ -11,7 +11,7 @@
  *   eigenpal workflow dataset    validate [path]   ./dataset/
  *
  * Verbs live UNDER the noun, never above it — consistent with push/pull/list,
- * and ready for `eigenpal agent <noun> validate` to mirror 1:1.
+ * and ready for `eigenpal agents <noun> validate` to mirror 1:1.
  *
  * Each subcommand exits 0 on success, 1 on any issue, and prints structured
  * `field: message` lines so an agent can target specific fixes.

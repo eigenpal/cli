@@ -42,7 +42,7 @@ export const HELP_GROUPS: CommandGroup[] = [
   },
   {
     title: 'Workflows',
-    description: 'Definition, evaluators, dataset, experiments, executions — all in one tree',
+    description: 'Definition, evaluators, dataset, experiments, and local runs',
     commands: ['workflow'],
   },
   {

@@ -10,79 +10,59 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
   - [File](#file)
   - [Secret](#secret)
   - [Dataset](#dataset)
-  - [Runs](#runs)
   - [Experiment](#experiment)
   - [Session](#session)
   - [Env](#env)
   - [Secrets](#secrets)
 - [Details](#details)
-  - [`eigenpal agents|agent run [options] <target>`](#eigenpal-agentsagent-run-options-target)
-  - [`eigenpal agents|agent rerun [options] <run-id>`](#eigenpal-agentsagent-rerun-options-run-id)
-  - [`eigenpal agents|agent list|ls [options]`](#eigenpal-agentsagent-listls-options)
-  - [`eigenpal agents|agent validate [options] [dir]`](#eigenpal-agentsagent-validate-options-dir)
-  - [`eigenpal agents|agent clone [options]`](#eigenpal-agentsagent-clone-options)
-  - [`eigenpal agents|agent install [options] [packageRef]`](#eigenpal-agentsagent-install-options-packageref)
-  - [`eigenpal agents|agent init [options] <name>`](#eigenpal-agentsagent-init-options-name)
-  - [`eigenpal agents|agent pull [options]`](#eigenpal-agentsagent-pull-options)
-  - [`eigenpal agents|agent commit [options]`](#eigenpal-agentsagent-commit-options)
-  - [`eigenpal agents|agent save [options]`](#eigenpal-agentsagent-save-options)
-  - [`eigenpal agents|agent push [options]`](#eigenpal-agentsagent-push-options)
-  - [`eigenpal agents|agent upgrade [options]`](#eigenpal-agentsagent-upgrade-options)
-  - [`eigenpal agents|agent doctor [options]`](#eigenpal-agentsagent-doctor-options)
-  - [`eigenpal agents|agent status [options]`](#eigenpal-agentsagent-status-options)
-  - [`eigenpal agents|agent deps [options]`](#eigenpal-agentsagent-deps-options)
-  - [`eigenpal agents|agent clean [options]`](#eigenpal-agentsagent-clean-options)
-  - [`eigenpal agents|agent show [options] <automation>`](#eigenpal-agentsagent-show-options-automation)
-  - [`eigenpal agents|agent versions [options] <package>`](#eigenpal-agentsagent-versions-options-package)
-  - [`eigenpal agents|agent release [options] <version> [dir]`](#eigenpal-agentsagent-release-options-version-dir)
-  - [`eigenpal agents|agent sync [options] [automation]`](#eigenpal-agentsagent-sync-options-automation)
-  - [`eigenpal agents|agent file list|ls [options] <agent-id-or-slug>`](#eigenpal-agentsagent-file-listls-options-agent-id-or-slug)
-  - [`eigenpal agents|agent file get [options] <agent-id-or-slug> <remote-path>`](#eigenpal-agentsagent-file-get-options-agent-id-or-slug-remote-path)
-  - [`eigenpal agents|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>`](#eigenpal-agentsagent-file-diff-options-agent-id-or-slug-remote-path-local-path)
-  - [`eigenpal agents|agent secret set [options] <name>`](#eigenpal-agentsagent-secret-set-options-name)
-  - [`eigenpal agents|agent secret unset [options] <name>`](#eigenpal-agentsagent-secret-unset-options-name)
-  - [`eigenpal agents|agent secret import [options] <env-file>`](#eigenpal-agentsagent-secret-import-options-env-file)
-  - [`eigenpal agents|agent dataset list|ls [options] <agent-id-or-slug>`](#eigenpal-agentsagent-dataset-listls-options-agent-id-or-slug)
-  - [`eigenpal agents|agent dataset push [options] <agent-id-or-slug>`](#eigenpal-agentsagent-dataset-push-options-agent-id-or-slug)
-  - [`eigenpal agents|agent dataset pull [options] <agent-id-or-slug>`](#eigenpal-agentsagent-dataset-pull-options-agent-id-or-slug)
-  - [`eigenpal agents|agent dataset validate [options] [path]`](#eigenpal-agentsagent-dataset-validate-options-path)
-  - [`eigenpal agents|agent runs list|ls [options] <target>`](#eigenpal-agentsagent-runs-listls-options-target)
-  - [`eigenpal agents|agent runs get [options] <run-id>`](#eigenpal-agentsagent-runs-get-options-run-id)
-  - [`eigenpal agents|agent runs compare|diff [options] <reference-run-id> <run-id>`](#eigenpal-agentsagent-runs-comparediff-options-reference-run-id-run-id)
-  - [`eigenpal agents|agent runs artifacts|artifact list|ls [options] <run-id>`](#eigenpal-agentsagent-runs-artifactsartifact-listls-options-run-id)
-  - [`eigenpal agents|agent runs artifacts|artifact fetch [options] <run-id>`](#eigenpal-agentsagent-runs-artifactsartifact-fetch-options-run-id)
-  - [`eigenpal agents|agent runs trace [options] <run-id>`](#eigenpal-agentsagent-runs-trace-options-run-id)
-  - [`eigenpal agents|agent runs feedback|fb update [options] <run-id>`](#eigenpal-agentsagent-runs-feedbackfb-update-options-run-id)
-  - [`eigenpal agents|agent runs feedback|fb resolve [options] <run-id>`](#eigenpal-agentsagent-runs-feedbackfb-resolve-options-run-id)
-  - [`eigenpal agents|agent runs feedback|fb clear [options] <run-id>`](#eigenpal-agentsagent-runs-feedbackfb-clear-options-run-id)
-  - [`eigenpal agents|agent runs expected list|ls [options] <run-id>`](#eigenpal-agentsagent-runs-expected-listls-options-run-id)
-  - [`eigenpal agents|agent runs expected pull [options] <run-id>`](#eigenpal-agentsagent-runs-expected-pull-options-run-id)
-  - [`eigenpal agents|agent runs expected upload [options] <run-id> <file>`](#eigenpal-agentsagent-runs-expected-upload-options-run-id-file)
-  - [`eigenpal agents|agent runs expected copy-output [options] <run-id> <output-file>`](#eigenpal-agentsagent-runs-expected-copy-output-options-run-id-output-file)
-  - [`eigenpal agents|agent runs expected rename [options] <run-id> <old-name> <new-name>`](#eigenpal-agentsagent-runs-expected-rename-options-run-id-old-name-new-name)
-  - [`eigenpal agents|agent runs expected delete [options] <run-id> <name>`](#eigenpal-agentsagent-runs-expected-delete-options-run-id-name)
-  - [`eigenpal agents|agent runs watch [options] <run-id>`](#eigenpal-agentsagent-runs-watch-options-run-id)
-  - [`eigenpal agents|agent runs cancel [options] <run-id>`](#eigenpal-agentsagent-runs-cancel-options-run-id)
-  - [`eigenpal agents|agent experiment|exp run [options] <agent-id-or-slug>`](#eigenpal-agentsagent-experimentexp-run-options-agent-id-or-slug)
-  - [`eigenpal agents|agent experiment|exp status [options] <agent-id-or-slug> <batch-id>`](#eigenpal-agentsagent-experimentexp-status-options-agent-id-or-slug-batch-id)
-  - [`eigenpal agents|agent experiment|exp results [options] <agent-id-or-slug> [batch-id]`](#eigenpal-agentsagent-experimentexp-results-options-agent-id-or-slug-batch-id)
-  - [`eigenpal agents|agent experiment|exp list|ls [options] <agent-id-or-slug>`](#eigenpal-agentsagent-experimentexp-listls-options-agent-id-or-slug)
-  - [`eigenpal agents|agent experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`](#eigenpal-agentsagent-experimentexp-comparediff-options-batch-id-a-batch-id-b)
-  - [`eigenpal agents|agent experiment|exp cancel [options] <agent-id-or-slug> <batch-id>`](#eigenpal-agentsagent-experimentexp-cancel-options-agent-id-or-slug-batch-id)
-  - [`eigenpal agents|agent session list|ls [options] <agent-id-or-slug>`](#eigenpal-agentsagent-session-listls-options-agent-id-or-slug)
-  - [`eigenpal agents|agent session get [options] <session-id>`](#eigenpal-agentsagent-session-get-options-session-id)
-  - [`eigenpal agents|agent session start [options] <agent-id-or-slug>`](#eigenpal-agentsagent-session-start-options-agent-id-or-slug)
-  - [`eigenpal agents|agent session message [options] <session-id>`](#eigenpal-agentsagent-session-message-options-session-id)
-  - [`eigenpal agents|agent session stop [options] <session-id>`](#eigenpal-agentsagent-session-stop-options-session-id)
-  - [`eigenpal agents|agent env pull [options] [target]`](#eigenpal-agentsagent-env-pull-options-target)
-  - [`eigenpal agents|agent secrets export [options] [target]`](#eigenpal-agentsagent-secrets-export-options-target)
+  - [`eigenpal agents run [options] <target>`](#eigenpal-agents-run-options-target)
+  - [`eigenpal agents list|ls [options]`](#eigenpal-agents-listls-options)
+  - [`eigenpal agents validate [options] [dir]`](#eigenpal-agents-validate-options-dir)
+  - [`eigenpal agents clone [options]`](#eigenpal-agents-clone-options)
+  - [`eigenpal agents install [options] [packageRef]`](#eigenpal-agents-install-options-packageref)
+  - [`eigenpal agents init [options] <name>`](#eigenpal-agents-init-options-name)
+  - [`eigenpal agents pull [options]`](#eigenpal-agents-pull-options)
+  - [`eigenpal agents commit [options]`](#eigenpal-agents-commit-options)
+  - [`eigenpal agents save [options]`](#eigenpal-agents-save-options)
+  - [`eigenpal agents push [options]`](#eigenpal-agents-push-options)
+  - [`eigenpal agents upgrade [options]`](#eigenpal-agents-upgrade-options)
+  - [`eigenpal agents doctor [options]`](#eigenpal-agents-doctor-options)
+  - [`eigenpal agents status [options]`](#eigenpal-agents-status-options)
+  - [`eigenpal agents deps [options]`](#eigenpal-agents-deps-options)
+  - [`eigenpal agents clean [options]`](#eigenpal-agents-clean-options)
+  - [`eigenpal agents show [options] <automation>`](#eigenpal-agents-show-options-automation)
+  - [`eigenpal agents versions [options] <package>`](#eigenpal-agents-versions-options-package)
+  - [`eigenpal agents release [options] <version> [dir]`](#eigenpal-agents-release-options-version-dir)
+  - [`eigenpal agents sync [options] [automation]`](#eigenpal-agents-sync-options-automation)
+  - [`eigenpal agents file list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-file-listls-options-agent-id-or-slug)
+  - [`eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`](#eigenpal-agents-file-get-options-agent-id-or-slug-remote-path)
+  - [`eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>`](#eigenpal-agents-file-diff-options-agent-id-or-slug-remote-path-local-path)
+  - [`eigenpal agents secret set [options] <name>`](#eigenpal-agents-secret-set-options-name)
+  - [`eigenpal agents secret unset [options] <name>`](#eigenpal-agents-secret-unset-options-name)
+  - [`eigenpal agents secret import [options] <env-file>`](#eigenpal-agents-secret-import-options-env-file)
+  - [`eigenpal agents dataset list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-listls-options-agent-id-or-slug)
+  - [`eigenpal agents dataset push [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-push-options-agent-id-or-slug)
+  - [`eigenpal agents dataset pull [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-pull-options-agent-id-or-slug)
+  - [`eigenpal agents dataset validate [options] [path]`](#eigenpal-agents-dataset-validate-options-path)
+  - [`eigenpal agents experiment|exp run [options] <agent-id-or-slug>`](#eigenpal-agents-experimentexp-run-options-agent-id-or-slug)
+  - [`eigenpal agents experiment|exp status [options] <agent-id-or-slug> <batch-id>`](#eigenpal-agents-experimentexp-status-options-agent-id-or-slug-batch-id)
+  - [`eigenpal agents experiment|exp results [options] <agent-id-or-slug> [batch-id]`](#eigenpal-agents-experimentexp-results-options-agent-id-or-slug-batch-id)
+  - [`eigenpal agents experiment|exp list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-experimentexp-listls-options-agent-id-or-slug)
+  - [`eigenpal agents experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`](#eigenpal-agents-experimentexp-comparediff-options-batch-id-a-batch-id-b)
+  - [`eigenpal agents experiment|exp cancel [options] <agent-id-or-slug> <batch-id>`](#eigenpal-agents-experimentexp-cancel-options-agent-id-or-slug-batch-id)
+  - [`eigenpal agents session list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-session-listls-options-agent-id-or-slug)
+  - [`eigenpal agents session get [options] <session-id>`](#eigenpal-agents-session-get-options-session-id)
+  - [`eigenpal agents session start [options] <agent-id-or-slug>`](#eigenpal-agents-session-start-options-agent-id-or-slug)
+  - [`eigenpal agents session message [options] <session-id>`](#eigenpal-agents-session-message-options-session-id)
+  - [`eigenpal agents session stop [options] <session-id>`](#eigenpal-agents-session-stop-options-session-id)
+  - [`eigenpal agents env pull [options] [target]`](#eigenpal-agents-env-pull-options-target)
+  - [`eigenpal agents secrets export [options] [target]`](#eigenpal-agents-secrets-export-options-target)
 
 ## Surface
 
 ```
 agents
 ├── run <target>
-├── rerun <run-id>
 ├── list|ls
 ├── file
 │   ├── list|ls <agent-id-or-slug>
@@ -114,27 +94,6 @@ agents
 │   ├── push <agent-id-or-slug>
 │   ├── pull <agent-id-or-slug>
 │   └── validate [path]
-├── runs
-│   ├── list|ls <target>
-│   ├── get <run-id>
-│   ├── compare|diff <reference-run-id> <run-id>
-│   ├── artifacts|artifact
-│   │   ├── list|ls <run-id>
-│   │   └── fetch <run-id>
-│   ├── trace <run-id>
-│   ├── feedback|fb
-│   │   ├── update <run-id>
-│   │   ├── resolve <run-id>
-│   │   └── clear <run-id>
-│   ├── expected
-│   │   ├── list|ls <run-id>
-│   │   ├── pull <run-id>
-│   │   ├── upload <run-id> <file>
-│   │   ├── copy-output <run-id> <output-file>
-│   │   ├── rename <run-id> <old-name> <new-name>
-│   │   └── delete <run-id> <name>
-│   ├── watch <run-id>
-│   └── cancel <run-id>
 ├── experiment|exp
 │   ├── run <agent-id-or-slug>
 │   ├── status <agent-id-or-slug> <batch-id>
@@ -158,112 +117,89 @@ agents
 
 ### Core
 
-| Command                                                    | Description                                                                                                                                        |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents\|agent run [options] <target>`            | Run an agent target, e.g. agents.invoice-agent@latest.                                                                                             |
-| `eigenpal agents\|agent rerun [options] <run-id>`          | Create a new run from a previous run's stored input snapshot.                                                                                      |
-| `eigenpal agents\|agent list\|ls [options]`                | List agents.                                                                                                                                       |
-| `eigenpal agents\|agent validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                                  |
-| `eigenpal agents\|agent clone [options]`                   | Clone the organization source repository.                                                                                                          |
-| `eigenpal agents\|agent install [options] [packageRef]`    | Materialize a source package and its workspace dependencies.                                                                                       |
-| `eigenpal agents\|agent init [options] <name>`             | Create a new source package scaffold.                                                                                                              |
-| `eigenpal agents\|agent pull [options]`                    | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs artifacts fetch. |
-| `eigenpal agents\|agent commit [options]`                  | Validate changed source packages and commit them.                                                                                                  |
-| `eigenpal agents\|agent save [options]`                    | Validate, commit if dirty, and push the current source branch.                                                                                     |
-| `eigenpal agents\|agent push [options]`                    | Push the current organization source branch and tags.                                                                                              |
-| `eigenpal agents\|agent upgrade [options]`                 | Upgrade the source repository schema in place.                                                                                                     |
-| `eigenpal agents\|agent doctor [options]`                  | Check organization source repository health.                                                                                                       |
-| `eigenpal agents\|agent status [options]`                  | Show source repo and package status.                                                                                                               |
-| `eigenpal agents\|agent deps [options]`                    | List package workspace dependencies.                                                                                                               |
-| `eigenpal agents\|agent clean [options]`                   | Require a clean source working tree.                                                                                                               |
-| `eigenpal agents\|agent show [options] <automation>`       | Show Git-backed automation details.                                                                                                                |
-| `eigenpal agents\|agent versions [options] <package>`      | List package release versions.                                                                                                                     |
-| `eigenpal agents\|agent release [options] <version> [dir]` | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                            |
-| `eigenpal agents\|agent sync [options] [automation]`       | Sync an automation from the latest Git source release.                                                                                             |
+| Command                                             | Description                                                                                                                                 |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal agents run [options] <target>`            | Run an agent target, e.g. agents.invoice-agent@latest.                                                                                      |
+| `eigenpal agents list\|ls [options]`                | List agents.                                                                                                                                |
+| `eigenpal agents validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                           |
+| `eigenpal agents clone [options]`                   | Clone the organization source repository.                                                                                                   |
+| `eigenpal agents install [options] [packageRef]`    | Materialize a source package and its workspace dependencies.                                                                                |
+| `eigenpal agents init [options] <name>`             | Create a new source package scaffold.                                                                                                       |
+| `eigenpal agents pull [options]`                    | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use runs artifacts fetch. |
+| `eigenpal agents commit [options]`                  | Validate changed source packages and commit them.                                                                                           |
+| `eigenpal agents save [options]`                    | Validate, commit if dirty, and push the current source branch.                                                                              |
+| `eigenpal agents push [options]`                    | Push the current organization source branch and tags.                                                                                       |
+| `eigenpal agents upgrade [options]`                 | Upgrade the source repository schema in place.                                                                                              |
+| `eigenpal agents doctor [options]`                  | Check organization source repository health.                                                                                                |
+| `eigenpal agents status [options]`                  | Show source repo and package status.                                                                                                        |
+| `eigenpal agents deps [options]`                    | List package workspace dependencies.                                                                                                        |
+| `eigenpal agents clean [options]`                   | Require a clean source working tree.                                                                                                        |
+| `eigenpal agents show [options] <automation>`       | Show Git-backed automation details.                                                                                                         |
+| `eigenpal agents versions [options] <package>`      | List package release versions.                                                                                                              |
+| `eigenpal agents release [options] <version> [dir]` | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                     |
+| `eigenpal agents sync [options] [automation]`       | Sync an automation from the latest Git source release.                                                                                      |
 
 ### File
 
-| Command                                                                                    | Description                                       |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `eigenpal agents\|agent file list\|ls [options] <agent-id-or-slug>`                        | List live files for an agent.                     |
-| `eigenpal agents\|agent file get [options] <agent-id-or-slug> <remote-path>`               | Download one live agent file.                     |
-| `eigenpal agents\|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>` | Compare one live agent file against a local file. |
+| Command                                                                             | Description                                       |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `eigenpal agents file list\|ls [options] <agent-id-or-slug>`                        | List live files for an agent.                     |
+| `eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`               | Download one live agent file.                     |
+| `eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>` | Compare one live agent file against a local file. |
 
 ### Secret
 
-| Command                                                     | Description                                                      |
-| ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `eigenpal agents\|agent secret set [options] <name>`        | Encrypt and set a secret value in secrets.enc.yaml.              |
-| `eigenpal agents\|agent secret unset [options] <name>`      | Remove a secret from secrets.enc.yaml.                           |
-| `eigenpal agents\|agent secret import [options] <env-file>` | Import KEY=value entries from an env file into secrets.enc.yaml. |
+| Command                                              | Description                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| `eigenpal agents secret set [options] <name>`        | Encrypt and set a secret value in secrets.enc.yaml.              |
+| `eigenpal agents secret unset [options] <name>`      | Remove a secret from secrets.enc.yaml.                           |
+| `eigenpal agents secret import [options] <env-file>` | Import KEY=value entries from an env file into secrets.enc.yaml. |
 
 ### Dataset
 
-| Command                                                                | Description                                                                |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `eigenpal agents\|agent dataset list\|ls [options] <agent-id-or-slug>` | List dataset examples for an agent.                                        |
-| `eigenpal agents\|agent dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory.                    |
-| `eigenpal agents\|agent dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset directory.                                       |
-| `eigenpal agents\|agent dataset validate [options] [path]`             | Validate a local dataset directory against the agent input/output schemas. |
-
-### Runs
-
-| Command                                                                                | Description                                                                                                      |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents\|agent runs list\|ls [options] <target>`                              | List runs for an agent target; unqualified targets include all source refs.                                      |
-| `eigenpal agents\|agent runs get [options] <run-id>`                                   | Get one agent run.                                                                                               |
-| `eigenpal agents\|agent runs compare\|diff [options] <reference-run-id> <run-id>`      | Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks. |
-| `eigenpal agents\|agent runs artifacts\|artifact list\|ls [options] <run-id>`          | List available run artifacts without downloading them.                                                           |
-| `eigenpal agents\|agent runs artifacts\|artifact fetch [options] <run-id>`             | Download run artifacts by canonical artifact path.                                                               |
-| `eigenpal agents\|agent runs trace [options] <run-id>`                                 | Print raw trace.jsonl for a run, or write it with --out.                                                         |
-| `eigenpal agents\|agent runs feedback\|fb update [options] <run-id>`                   | Edit feedback state, rating, message, or expected JSON for a run.                                                |
-| `eigenpal agents\|agent runs feedback\|fb resolve [options] <run-id>`                  | Mark run feedback as resolved.                                                                                   |
-| `eigenpal agents\|agent runs feedback\|fb clear [options] <run-id>`                    | Delete feedback, expected.json, and expected files for a run.                                                    |
-| `eigenpal agents\|agent runs expected list\|ls [options] <run-id>`                     | List expected JSON and files attached to a run.                                                                  |
-| `eigenpal agents\|agent runs expected pull [options] <run-id>`                         | Download expected JSON and files attached to a run.                                                              |
-| `eigenpal agents\|agent runs expected upload [options] <run-id> <file>`                | Upload a local file as an expected artifact.                                                                     |
-| `eigenpal agents\|agent runs expected copy-output [options] <run-id> <output-file>`    | Copy a generated output file into expected artifacts.                                                            |
-| `eigenpal agents\|agent runs expected rename [options] <run-id> <old-name> <new-name>` | Rename an expected artifact.                                                                                     |
-| `eigenpal agents\|agent runs expected delete [options] <run-id> <name>`                | Delete an expected artifact.                                                                                     |
-| `eigenpal agents\|agent runs watch [options] <run-id>`                                 | Watch a run until it reaches a terminal status.                                                                  |
-| `eigenpal agents\|agent runs cancel [options] <run-id>`                                | Cancel an agent run.                                                                                             |
+| Command                                                         | Description                                                                |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>` | List dataset examples for an agent.                                        |
+| `eigenpal agents dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory.                    |
+| `eigenpal agents dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset directory.                                       |
+| `eigenpal agents dataset validate [options] [path]`             | Validate a local dataset directory against the agent input/output schemas. |
 
 ### Experiment
 
-| Command                                                                                    | Description                                     |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| `eigenpal agents\|agent experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.      |
-| `eigenpal agents\|agent experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                          |
-| `eigenpal agents\|agent experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.        |
-| `eigenpal agents\|agent experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                               |
-| `eigenpal agents\|agent experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Compare two experiment batches.                 |
-| `eigenpal agents\|agent experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment. |
+| Command                                                                             | Description                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `eigenpal agents experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.      |
+| `eigenpal agents experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                          |
+| `eigenpal agents experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.        |
+| `eigenpal agents experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                               |
+| `eigenpal agents experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Compare two experiment batches.                 |
+| `eigenpal agents experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment. |
 
 ### Session
 
-| Command                                                                | Description                            |
-| ---------------------------------------------------------------------- | -------------------------------------- |
-| `eigenpal agents\|agent session list\|ls [options] <agent-id-or-slug>` | List builder sessions for an agent.    |
-| `eigenpal agents\|agent session get [options] <session-id>`            | Get a builder session and messages.    |
-| `eigenpal agents\|agent session start [options] <agent-id-or-slug>`    | Start a builder session.               |
-| `eigenpal agents\|agent session message [options] <session-id>`        | Append a message to a builder session. |
-| `eigenpal agents\|agent session stop [options] <session-id>`           | Stop a builder session.                |
+| Command                                                         | Description                            |
+| --------------------------------------------------------------- | -------------------------------------- |
+| `eigenpal agents session list\|ls [options] <agent-id-or-slug>` | List builder sessions for an agent.    |
+| `eigenpal agents session get [options] <session-id>`            | Get a builder session and messages.    |
+| `eigenpal agents session start [options] <agent-id-or-slug>`    | Start a builder session.               |
+| `eigenpal agents session message [options] <session-id>`        | Append a message to a builder session. |
+| `eigenpal agents session stop [options] <session-id>`           | Stop a builder session.                |
 
 ### Env
 
-| Command                                              | Description                                     |
-| ---------------------------------------------------- | ----------------------------------------------- |
-| `eigenpal agents\|agent env pull [options] [target]` | Decrypt source secrets and print shell exports. |
+| Command                                       | Description                                     |
+| --------------------------------------------- | ----------------------------------------------- |
+| `eigenpal agents env pull [options] [target]` | Decrypt source secrets and print shell exports. |
 
 ### Secrets
 
-| Command                                                    | Description                                     |
-| ---------------------------------------------------------- | ----------------------------------------------- |
-| `eigenpal agents\|agent secrets export [options] [target]` | Decrypt source secrets and print shell exports. |
+| Command                                             | Description                                     |
+| --------------------------------------------------- | ----------------------------------------------- |
+| `eigenpal agents secrets export [options] [target]` | Decrypt source secrets and print shell exports. |
 
 ## Details
 
-### `eigenpal agents|agent run [options] <target>`
+### `eigenpal agents run [options] <target>`
 
 Run an agent target, e.g. agents.invoice-agent@latest.
 
@@ -286,28 +222,7 @@ Run an agent target, e.g. agents.invoice-agent@latest.
 | `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
 | `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exiting 2                                                                        |
 
-### `eigenpal agents|agent rerun [options] <run-id>`
-
-Create a new run from a previous run's stored input snapshot.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                   | Required | Default | Description                                                                                              |
-| ---------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                                                                                          |
-| `--json`               | no       |         | Output the raw server response as JSON                                                                   |
-| `--source-ref <ref>`   | no       |         | Source ref for the new run (default: latest). Use "original" to reproduce the previous resolved version. |
-| `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                           |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                              |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                            |
-
-### `eigenpal agents|agent list|ls [options]`
+### `eigenpal agents list|ls [options]`
 
 List agents.
 
@@ -321,7 +236,7 @@ List agents.
 | `--json`           | no       |         | Output the raw server response as JSON |
 | `--search <q>`     | no       |         | Search by slug, name, or description   |
 
-### `eigenpal agents|agent validate [options] [dir]`
+### `eigenpal agents validate [options] [dir]`
 
 Validate a local agent package (layout, manifest, schemas, and Git source rules).
 
@@ -337,7 +252,7 @@ Validate a local agent package (layout, manifest, schemas, and Git source rules)
 | -------- | -------- | ------- | -------------------------------------- |
 | `--json` | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent clone [options]`
+### `eigenpal agents clone [options]`
 
 Clone the organization source repository.
 
@@ -349,7 +264,7 @@ Clone the organization source repository.
 | `--out <dir>`            | no       |         | Output directory                               |
 | `--tenant-id <tenantId>` | no       |         | Target tenant id for admin-token source clones |
 
-### `eigenpal agents|agent install [options] [packageRef]`
+### `eigenpal agents install [options] [packageRef]`
 
 Materialize a source package and its workspace dependencies.
 
@@ -369,7 +284,7 @@ Materialize a source package and its workspace dependencies.
 | `--frozen-lockfile`  | no       |         | Install exactly from the existing lockfile   |
 | `--remote-url <url>` | no       |         | Use an explicit organization Git remote URL  |
 
-### `eigenpal agents|agent init [options] <name>`
+### `eigenpal agents init [options] <name>`
 
 Create a new source package scaffold.
 
@@ -386,9 +301,9 @@ Create a new source package scaffold.
 | `--template <template>` | yes      |         | Package template     |
 | `--dir <dir>`           | no       |         | Repository directory |
 
-### `eigenpal agents|agent pull [options]`
+### `eigenpal agents pull [options]`
 
-Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs artifacts fetch.
+Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use runs artifacts fetch.
 
 ### Options
 
@@ -397,7 +312,7 @@ Pull organization source from origin/main with --ff-only. For datasets use agent
 | `--base-url <url>` | no       |         | Server base URL      |
 | `--dir <dir>`      | no       |         | Repository directory |
 
-### `eigenpal agents|agent commit [options]`
+### `eigenpal agents commit [options]`
 
 Validate changed source packages and commit them.
 
@@ -409,7 +324,7 @@ Validate changed source packages and commit them.
 | `-m, --message <message>` | yes      |         | Commit message       |
 | `--dir <dir>`             | no       |         | Repository directory |
 
-### `eigenpal agents|agent save [options]`
+### `eigenpal agents save [options]`
 
 Validate, commit if dirty, and push the current source branch.
 
@@ -421,7 +336,7 @@ Validate, commit if dirty, and push the current source branch.
 | `-m, --message <message>` | no       |         | Commit message when source changes are dirty |
 | `--dir <dir>`             | no       |         | Repository directory                         |
 
-### `eigenpal agents|agent push [options]`
+### `eigenpal agents push [options]`
 
 Push the current organization source branch and tags.
 
@@ -432,7 +347,7 @@ Push the current organization source branch and tags.
 | `--base-url <url>` | no       |         | Server base URL      |
 | `--dir <dir>`      | no       |         | Repository directory |
 
-### `eigenpal agents|agent upgrade [options]`
+### `eigenpal agents upgrade [options]`
 
 Upgrade the source repository schema in place.
 
@@ -443,7 +358,7 @@ Upgrade the source repository schema in place.
 | `--dir <dir>` | no       |         | Repository directory                         |
 | `--dry-run`   | no       |         | Print upgrade actions without changing files |
 
-### `eigenpal agents|agent doctor [options]`
+### `eigenpal agents doctor [options]`
 
 Check organization source repository health.
 
@@ -454,7 +369,7 @@ Check organization source repository health.
 | `--json`      | no       |         | Output the raw server response as JSON |
 | `--dir <dir>` | no       |         | Directory to inspect                   |
 
-### `eigenpal agents|agent status [options]`
+### `eigenpal agents status [options]`
 
 Show source repo and package status.
 
@@ -465,7 +380,7 @@ Show source repo and package status.
 | `--json`      | no       |         | Output the raw server response as JSON |
 | `--dir <dir>` | no       |         | Directory to inspect                   |
 
-### `eigenpal agents|agent deps [options]`
+### `eigenpal agents deps [options]`
 
 List package workspace dependencies.
 
@@ -476,7 +391,7 @@ List package workspace dependencies.
 | `--json`      | no       |         | Output the raw server response as JSON |
 | `--dir <dir>` | no       |         | Directory to inspect                   |
 
-### `eigenpal agents|agent clean [options]`
+### `eigenpal agents clean [options]`
 
 Require a clean source working tree.
 
@@ -486,7 +401,7 @@ Require a clean source working tree.
 | ------------- | -------- | ------- | -------------------- |
 | `--dir <dir>` | no       |         | Directory to inspect |
 
-### `eigenpal agents|agent show [options] <automation>`
+### `eigenpal agents show [options] <automation>`
 
 Show Git-backed automation details.
 
@@ -503,7 +418,7 @@ Show Git-backed automation details.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent versions [options] <package>`
+### `eigenpal agents versions [options] <package>`
 
 List package release versions.
 
@@ -520,7 +435,7 @@ List package release versions.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent release [options] <version> [dir]`
+### `eigenpal agents release [options] <version> [dir]`
 
 Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.
 
@@ -538,7 +453,7 @@ Create and push an immutable package release tag. Never move or overwrite an exi
 | `--base-url <url>`        | no       |         | Server base URL                                        |
 | `-m, --message <message>` | no       |         | Annotated tag message (default: Release <packagePath>) |
 
-### `eigenpal agents|agent sync [options] [automation]`
+### `eigenpal agents sync [options] [automation]`
 
 Sync an automation from the latest Git source release.
 
@@ -555,7 +470,7 @@ Sync an automation from the latest Git source release.
 | `--base-url <url>` | no       |         | Server base URL      |
 | `--dir <dir>`      | no       |         | Directory to inspect |
 
-### `eigenpal agents|agent file list|ls [options] <agent-id-or-slug>`
+### `eigenpal agents file list|ls [options] <agent-id-or-slug>`
 
 List live files for an agent.
 
@@ -573,7 +488,7 @@ List live files for an agent.
 | `--json`           | no       |         | Output the raw server response as JSON     |
 | `--path <prefix>`  | no       |         | Only list files beneath this relative path |
 
-### `eigenpal agents|agent file get [options] <agent-id-or-slug> <remote-path>`
+### `eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`
 
 Download one live agent file.
 
@@ -592,7 +507,7 @@ Download one live agent file.
 | `--json`           | no       |         | Output the raw server response as JSON |
 | `--out <file>`     | no       |         | Output file path                       |
 
-### `eigenpal agents|agent file diff [options] <agent-id-or-slug> <remote-path> <local-path>`
+### `eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>`
 
 Compare one live agent file against a local file.
 
@@ -611,7 +526,7 @@ Compare one live agent file against a local file.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent secret set [options] <name>`
+### `eigenpal agents secret set [options] <name>`
 
 Encrypt and set a secret value in secrets.enc.yaml.
 
@@ -630,7 +545,7 @@ Encrypt and set a secret value in secrets.enc.yaml.
 | `--value-file <path>`  | no       |         | Read the secret value from a file |
 | `--description <text>` | no       |         | Secret description                |
 
-### `eigenpal agents|agent secret unset [options] <name>`
+### `eigenpal agents secret unset [options] <name>`
 
 Remove a secret from secrets.enc.yaml.
 
@@ -646,7 +561,7 @@ Remove a secret from secrets.enc.yaml.
 | ------------- | -------- | ------- | -------------------- |
 | `--dir <dir>` | no       |         | Directory to inspect |
 
-### `eigenpal agents|agent secret import [options] <env-file>`
+### `eigenpal agents secret import [options] <env-file>`
 
 Import KEY=value entries from an env file into secrets.enc.yaml.
 
@@ -662,7 +577,7 @@ Import KEY=value entries from an env file into secrets.enc.yaml.
 | ------------- | -------- | ------- | -------------------- |
 | `--dir <dir>` | no       |         | Directory to inspect |
 
-### `eigenpal agents|agent dataset list|ls [options] <agent-id-or-slug>`
+### `eigenpal agents dataset list|ls [options] <agent-id-or-slug>`
 
 List dataset examples for an agent.
 
@@ -681,7 +596,7 @@ List dataset examples for an agent.
 | `--offset <n>`     | no       | `0`     | Page offset                            |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent dataset push [options] <agent-id-or-slug>`
+### `eigenpal agents dataset push [options] <agent-id-or-slug>`
 
 Upload dataset examples from a local dataset directory.
 
@@ -701,7 +616,7 @@ Upload dataset examples from a local dataset directory.
 | `--mode <append\|replace>` | no       | `"append"` | Upload mode                                          |
 | `--yes`                    | no       |            | Confirm replace mode in non-interactive environments |
 
-### `eigenpal agents|agent dataset pull [options] <agent-id-or-slug>`
+### `eigenpal agents dataset pull [options] <agent-id-or-slug>`
 
 Download an agent dataset directory.
 
@@ -718,7 +633,7 @@ Download an agent dataset directory.
 | `--base-url <url>` | no       |             | Server base URL  |
 | `--out <dir>`      | no       | `"dataset"` | Output directory |
 
-### `eigenpal agents|agent dataset validate [options] [path]`
+### `eigenpal agents dataset validate [options] [path]`
 
 Validate a local dataset directory against the agent input/output schemas.
 
@@ -735,335 +650,7 @@ Validate a local dataset directory against the agent input/output schemas.
 | `--json`            | no       |         | Output the raw server response as JSON                  |
 | `--agent-dir <dir>` | no       | `"."`   | Agent package directory containing input/output schemas |
 
-### `eigenpal agents|agent runs list|ls [options] <target>`
-
-List runs for an agent target; unqualified targets include all source refs.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `target` | yes      | no       |             |
-
-### Options
-
-| Flag                  | Required | Default | Description                            |
-| --------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`    | no       |         | Server base URL                        |
-| `--limit <n>`         | no       | `50`    | Page size                              |
-| `--offset <n>`        | no       | `0`     | Page offset                            |
-| `--json`              | no       |         | Output the raw server response as JSON |
-| `--status <status>`   | no       |         | Filter by run status                   |
-| `--include <items>`   | no       |         | Comma-separated include list           |
-| `--compact`           | no       |         | Render compact run rows                |
-| `--sort <field>`      | no       |         | Sort field                             |
-| `--order <asc\|desc>` | no       |         | Sort order                             |
-
-### `eigenpal agents|agent runs get [options] <run-id>`
-
-Get one agent run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default      | Description                                                       |
-| ------------------- | -------- | ------------ | ----------------------------------------------------------------- |
-| `--base-url <url>`  | no       |              | Server base URL                                                   |
-| `--json`            | no       |              | Output the raw server response as JSON                            |
-| `--include <parts>` | no       | `"feedback"` | Comma-separated extra parts: feedback,expected,files,trace,issues |
-
-### `eigenpal agents|agent runs compare|diff [options] <reference-run-id> <run-id>`
-
-Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks.
-
-### Arguments
-
-| Name               | Required | Variadic | Description |
-| ------------------ | -------- | -------- | ----------- |
-| `reference-run-id` | yes      | no       |             |
-| `run-id`           | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default | Description                                                         |
-| ------------------- | -------- | ------- | ------------------------------------------------------------------- |
-| `--base-url <url>`  | no       |         | Server base URL                                                     |
-| `--json`            | no       |         | Output the raw server response as JSON                              |
-| `--baseline`        | no       |         | Compare actual outputs from both runs instead of expected artifacts |
-| `--out <dir>`       | no       |         | Write comparison artifacts to this directory                        |
-| `--normalize-dates` | no       |         | Normalize YYYYMMDD and YYYY-MM-DD tokens in filenames/text          |
-| `--fail-on-diff`    | no       |         | Exit 1 when comparison status is fail                               |
-
-### `eigenpal agents|agent runs artifacts|artifact list|ls [options] <run-id>`
-
-List available run artifacts without downloading them.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-
-### `eigenpal agents|agent runs artifacts|artifact fetch [options] <run-id>`
-
-Download run artifacts by canonical artifact path.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default | Description                                                                     |
-| ------------------- | -------- | ------- | ------------------------------------------------------------------------------- |
-| `--base-url <url>`  | no       |         | Server base URL                                                                 |
-| `--out <dir>`       | no       |         | Output directory                                                                |
-| `--include <parts>` | no       | `"all"` | Comma-separated parts: output,input,metadata,issues,trace,lockfile,expected,all |
-| `--path <path>`     | no       | `[]`    | Fetch one exact artifact path from `artifacts list`; repeatable                 |
-| `--json`            | no       |         | Output a JSON summary of written artifacts                                      |
-
-### `eigenpal agents|agent runs trace [options] <run-id>`
-
-Print raw trace.jsonl for a run, or write it with --out.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description      |
-| ------------------ | -------- | ------- | ---------------- |
-| `--base-url <url>` | no       |         | Server base URL  |
-| `--out <file>`     | no       |         | Output file path |
-
-### `eigenpal agents|agent runs feedback|fb update [options] <run-id>`
-
-Edit feedback state, rating, message, or expected JSON for a run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                                   | Required | Default | Description                               |
-| -------------------------------------- | -------- | ------- | ----------------------------------------- |
-| `--base-url <url>`                     | no       |         | Server base URL                           |
-| `--json`                               | no       |         | Output the raw server response as JSON    |
-| `--status <open\|resolved\|ignored>`   | no       |         | Set feedback status                       |
-| `--rating <pass\|fail\|partial\|none>` | no       |         | Set feedback rating                       |
-| `--message <text>`                     | no       |         | Set feedback message body                 |
-| `--message-file <path>`                | no       |         | Read feedback message body from a file    |
-| `--expected-json <json>`               | no       |         | Set structured expected JSON              |
-| `--expected-json-file <path>`          | no       |         | Read structured expected JSON from a file |
-| `--clear-message`                      | no       |         | Clear the feedback message body           |
-| `--clear-rating`                       | no       |         | Clear feedback rating                     |
-| `--clear-expected-json`                | no       |         | Delete structured expected JSON           |
-
-### `eigenpal agents|agent runs feedback|fb resolve [options] <run-id>`
-
-Mark run feedback as resolved.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                    | Required | Default | Description                            |
-| ----------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`      | no       |         | Server base URL                        |
-| `--json`                | no       |         | Output the raw server response as JSON |
-| `--message <text>`      | no       |         | Set feedback message body              |
-| `--message-file <path>` | no       |         | Read feedback message body from a file |
-
-### `eigenpal agents|agent runs feedback|fb clear [options] <run-id>`
-
-Delete feedback, expected.json, and expected files for a run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
-
-### `eigenpal agents|agent runs expected list|ls [options] <run-id>`
-
-List expected JSON and files attached to a run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-
-### `eigenpal agents|agent runs expected pull [options] <run-id>`
-
-Download expected JSON and files attached to a run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description      |
-| ------------------ | -------- | ------- | ---------------- |
-| `--base-url <url>` | no       |         | Server base URL  |
-| `--out <dir>`      | no       |         | Output directory |
-
-### `eigenpal agents|agent runs expected upload [options] <run-id> <file>`
-
-Upload a local file as an expected artifact.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-| `file`   | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--name <name>`    | no       |         | Expected artifact name                 |
-
-### `eigenpal agents|agent runs expected copy-output [options] <run-id> <output-file>`
-
-Copy a generated output file into expected artifacts.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `run-id`      | yes      | no       |             |
-| `output-file` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--name <name>`    | no       |         | Expected artifact name                 |
-
-### `eigenpal agents|agent runs expected rename [options] <run-id> <old-name> <new-name>`
-
-Rename an expected artifact.
-
-### Arguments
-
-| Name       | Required | Variadic | Description |
-| ---------- | -------- | -------- | ----------- |
-| `run-id`   | yes      | no       |             |
-| `old-name` | yes      | no       |             |
-| `new-name` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-
-### `eigenpal agents|agent runs expected delete [options] <run-id> <name>`
-
-Delete an expected artifact.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-| `name`   | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
-
-### `eigenpal agents|agent runs watch [options] <run-id>`
-
-Watch a run until it reaches a terminal status.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                   | Required | Default | Description                            |
-| ---------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                        |
-| `--json`               | no       |         | Output the raw server response as JSON |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2          |
-
-### `eigenpal agents|agent runs cancel [options] <run-id>`
-
-Cancel an agent run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
-
-### `eigenpal agents|agent experiment|exp run [options] <agent-id-or-slug>`
+### `eigenpal agents experiment|exp run [options] <agent-id-or-slug>`
 
 Start an experiment over dataset examples.
 
@@ -1083,7 +670,7 @@ Start an experiment over dataset examples.
 | `--wait`               | no       |         | Poll until the experiment reaches a terminal status |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds                         |
 
-### `eigenpal agents|agent experiment|exp status [options] <agent-id-or-slug> <batch-id>`
+### `eigenpal agents experiment|exp status [options] <agent-id-or-slug> <batch-id>`
 
 Get experiment status.
 
@@ -1105,7 +692,7 @@ Get experiment status.
 | `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2          |
 | `--include <parts>`    | no       |         | Reserved for future detailed parts     |
 
-### `eigenpal agents|agent experiment|exp results [options] <agent-id-or-slug> [batch-id]`
+### `eigenpal agents experiment|exp results [options] <agent-id-or-slug> [batch-id]`
 
 Print experiment results as JSON or CSV.
 
@@ -1124,7 +711,7 @@ Print experiment results as JSON or CSV.
 | `--format <csv\|json>` | yes      |         | Output format        |
 | `--out <path>`         | no       |         | Write output to file |
 
-### `eigenpal agents|agent experiment|exp list|ls [options] <agent-id-or-slug>`
+### `eigenpal agents experiment|exp list|ls [options] <agent-id-or-slug>`
 
 List experiments.
 
@@ -1144,7 +731,7 @@ List experiments.
 | `--json`           | no       |         | Output the raw server response as JSON |
 | `--batch-id <id>`  | no       |         | Filter to one batch id                 |
 
-### `eigenpal agents|agent experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`
+### `eigenpal agents experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`
 
 Compare two experiment batches.
 
@@ -1164,7 +751,7 @@ Compare two experiment batches.
 | `--sort <mode>`              | no       |         | Accepted for compatibility; sorting happens client-side later |
 | `--regression-threshold <n>` | no       |         | Accepted for compatibility                                    |
 
-### `eigenpal agents|agent experiment|exp cancel [options] <agent-id-or-slug> <batch-id>`
+### `eigenpal agents experiment|exp cancel [options] <agent-id-or-slug> <batch-id>`
 
 Cancel every active execution in an experiment.
 
@@ -1183,7 +770,7 @@ Cancel every active execution in an experiment.
 | `--json`           | no       |         | Output the raw server response as JSON   |
 | `--yes`            | no       |         | Required in non-interactive environments |
 
-### `eigenpal agents|agent session list|ls [options] <agent-id-or-slug>`
+### `eigenpal agents session list|ls [options] <agent-id-or-slug>`
 
 List builder sessions for an agent.
 
@@ -1202,7 +789,7 @@ List builder sessions for an agent.
 | `--offset <n>`     | no       | `0`     | Page offset                            |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent session get [options] <session-id>`
+### `eigenpal agents session get [options] <session-id>`
 
 Get a builder session and messages.
 
@@ -1219,7 +806,7 @@ Get a builder session and messages.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents|agent session start [options] <agent-id-or-slug>`
+### `eigenpal agents session start [options] <agent-id-or-slug>`
 
 Start a builder session.
 
@@ -1237,7 +824,7 @@ Start a builder session.
 | `--json`           | no       |         | Output the raw server response as JSON |
 | `--title <title>`  | no       |         | Session title                          |
 
-### `eigenpal agents|agent session message [options] <session-id>`
+### `eigenpal agents session message [options] <session-id>`
 
 Append a message to a builder session.
 
@@ -1256,7 +843,7 @@ Append a message to a builder session.
 | `--text <message>` | yes      |         | Message text                                               |
 | `--wait`           | no       |         | Reserved; server acknowledges after enqueueing the message |
 
-### `eigenpal agents|agent session stop [options] <session-id>`
+### `eigenpal agents session stop [options] <session-id>`
 
 Stop a builder session.
 
@@ -1274,7 +861,7 @@ Stop a builder session.
 | `--json`           | no       |         | Output the raw server response as JSON   |
 | `--yes`            | no       |         | Required in non-interactive environments |
 
-### `eigenpal agents|agent env pull [options] [target]`
+### `eigenpal agents env pull [options] [target]`
 
 Decrypt source secrets and print shell exports.
 
@@ -1292,7 +879,7 @@ Decrypt source secrets and print shell exports.
 | `--dir <dir>`       | no       | `"."`     | Installed agent package directory |
 | `--format <format>` | no       | `"shell"` | Output format: shell or dotenv    |
 
-### `eigenpal agents|agent secrets export [options] [target]`
+### `eigenpal agents secrets export [options] [target]`
 
 Decrypt source secrets and print shell exports.
 

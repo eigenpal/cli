@@ -8,7 +8,7 @@ then run:
 eigenpal workflow validate
 
 # Run an example end-to-end against the configured base URL
-eigenpal workflow execution run __NAME__ sample
+eigenpal workflow run __NAME__ sample
 ```
 
 Add more examples under `dataset/examples/<name>/`. Each example needs an

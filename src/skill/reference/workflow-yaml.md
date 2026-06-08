@@ -38,11 +38,11 @@ folder.
 
 Required. Each entry is an object that adds an invocation surface:
 
-- `{ type: api }` — the workflow can be called via REST or the CLI's `workflow execution run`
+- `{ type: api }` — the workflow can be called via REST or the CLI's `workflow run`
 - `{ type: manual }` — the workflow can be started manually
 - `{ type: email, whitelist?: ... }` — inbound email
 
-If `{ type: api }` is missing, `eigenpal workflow execution run` rejects with a
+If `{ type: api }` is missing, `eigenpal workflow run` rejects with a
 403 / "Workflow does not have API trigger enabled."
 
 ### `inputs`

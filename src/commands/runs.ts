@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { ApiClient } from '../../lib/client';
-import { action } from '../../lib/format-error';
+import { ApiClient } from '../lib/client';
+import { action } from '../lib/format-error';
+import { resolveWorkflowId } from '../lib/resolve-workflow';
 import {
   addJsonFlag,
   dim,
@@ -18,8 +19,9 @@ import {
   withBaseUrl,
   withPagination,
   type PaginationOpts,
-} from '../../lib/ui';
-import { buildAgentExecutionRunFormData } from './run-form-data';
+} from '../lib/ui';
+import { renderFrame, watchExecution, type ExecutionSnapshot } from '../lib/watch';
+import { buildAgentExecutionRunFormData } from './agents/run-form-data';
 import {
   ArtifactInventoryRow,
   BaseOpts,
@@ -32,34 +34,44 @@ import {
   renderGeneric,
   renderRunPayload,
   setExitCodeForFailedTerminalRun,
-} from './shared';
-import { parseAgentTarget } from './target';
+} from './agents/shared';
+import { parseAgentTarget } from './agents/target';
 
-export function registerRunCommands(agent: Command): void {
-  const runs = agent
+export function registerRunsCommands(program: Command): void {
+  const runs = program
     .command('runs')
-    .description('Inspect, watch, and manage agent runs.')
+    .description('Inspect, watch, and manage workflow, agent, and eval runs.')
     .action(() => {
-      process.stderr.write(
-        '`eigenpal agents runs` requires a subcommand. Run `eigenpal agents runs --help`.\n'
-      );
+      process.stderr.write('`eigenpal runs` requires a subcommand. Run `eigenpal runs --help`.\n');
       process.exit(2);
     });
 
-  const listRunsCmd = addJsonFlag(withPagination(withBaseUrl(runs.command('list <target>')), 50))
-    .description('List runs for an agent target; unqualified targets include all source refs.')
+  const listRunsCmd = addJsonFlag(withPagination(withBaseUrl(runs.command('list [source]')), 50))
+    .alias('ls')
+    .description('List runs across workflows and agents, optionally scoped to one source.')
+    .option('--type <type>', 'Filter by run type: workflow|agent')
     .option('--status <status>', 'Filter by run status')
-    .option('--include <items>', 'Comma-separated include list')
+    .option('--source-ref <ref>', 'Filter agent runs by source ref')
+    .option('--batch-id <id>', 'Filter eval/experiment runs by batch id')
+    .option('--example-id <id>', 'Filter eval runs by example id')
+    .option('--example-id-contains <text>', 'Filter eval runs by example id substring')
+    .option('--from <date>', 'Created at or after this ISO timestamp or relative date')
+    .option('--to <date>', 'Created before this ISO timestamp or relative date')
+    .option('--created-after <date>', 'Alias for --from')
+    .option('--created-before <date>', 'Alias for --to')
+    .option('--completed-after <date>', 'Completed at or after this ISO timestamp or relative date')
+    .option('--completed-before <date>', 'Completed before this ISO timestamp or relative date')
     .option('--compact', 'Render compact run rows')
-    .option('--sort <field>', 'Sort field')
-    .option('--order <asc|desc>', 'Sort order');
-  listRunsCmd.action(action(listRunsTarget));
+    .option('--sort <field>', 'Sort field; only createdAt is supported')
+    .option('--order <asc|desc>', 'Sort order; only desc is supported');
+  listRunsCmd.action(action(listRuns));
 
   addJsonFlag(withBaseUrl(runs.command('get <run-id>')))
-    .description('Get one agent run.')
+    .description('Get one run.')
+    .option('--step <name>', 'For workflow runs, show only this step (or comma-separated list)')
     .option(
       '--include <parts>',
-      'Comma-separated extra parts: feedback,expected,files,trace,issues',
+      'Comma-separated extra parts or workflow step fields: feedback,expected,files,trace,issues,input,output,error,duration,inputRef',
       'feedback'
     )
     .action(action(getRun));
@@ -69,27 +81,39 @@ export function registerRunCommands(agent: Command): void {
       'Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks.'
     )
     .option('--baseline', 'Compare actual outputs from both runs instead of expected artifacts')
+    .option('--step <name>', 'For workflow runs, restrict comparison to one step')
     .option('--out <dir>', 'Write comparison artifacts to this directory')
     .option('--normalize-dates', 'Normalize YYYYMMDD and YYYY-MM-DD tokens in filenames/text')
     .option('--fail-on-diff', 'Exit 1 when comparison status is fail')
     .action(action(compareRun));
 
+  addJsonFlag(withBaseUrl(runs.command('rerun <run-id>')))
+    .description("Create a new run from a previous run's stored input snapshot.")
+    .option(
+      '--source-ref <ref>',
+      'Source ref for the new run: latest (default) or original. Workflow runs support only latest/original.'
+    )
+    .option('--wait', 'Poll until the rerun reaches a terminal status')
+    .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
+    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .action(action(rerunRun));
+
   const artifacts = runs
     .command('artifacts')
-    .description('Inspect run artifact inventory.')
+    .description('Inspect agent run artifacts.')
     .action(() => {
       process.stderr.write(
-        '`eigenpal agents runs artifacts` requires a subcommand. Run `eigenpal agents runs artifacts --help`.\n'
+        '`eigenpal runs artifacts` requires a subcommand. Run `eigenpal runs artifacts --help`.\n'
       );
       process.exit(2);
     });
 
   addJsonFlag(withBaseUrl(artifacts.command('list <run-id>')))
-    .description('List available run artifacts without downloading them.')
+    .description('List available agent run artifacts without downloading them.')
     .action(action(listRunArtifacts));
 
   withBaseUrl(artifacts.command('fetch <run-id>'))
-    .description('Download run artifacts by canonical artifact path.')
+    .description('Download agent run artifacts by canonical artifact path.')
     .option('--out <dir>', 'Output directory')
     .option(
       '--include <parts>',
@@ -119,8 +143,12 @@ export function registerRunCommands(agent: Command): void {
     .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
     .action(action(watchRunCommand));
 
+  addJsonFlag(withBaseUrl(runs.command('resume <run-id>')))
+    .description('Resume a workflow run that is waiting for approval.')
+    .action(action(resumeRun));
+
   addJsonFlag(withBaseUrl(runs.command('cancel <run-id>')))
-    .description('Cancel an agent run.')
+    .description('Cancel a run.')
     .option('--yes', 'Required in non-interactive environments')
     .action(action(cancelRun));
 }
@@ -128,10 +156,10 @@ export function registerRunCommands(agent: Command): void {
 function registerRunFeedbackCommands(runs: Command): void {
   const feedback = runs
     .command('feedback')
-    .description('Update or clear feedback attached to an agent run.')
+    .description('Update or clear feedback attached to a run.')
     .action(() => {
       process.stderr.write(
-        '`eigenpal agents runs feedback` requires a subcommand. Run `eigenpal agents runs feedback --help`.\n'
+        '`eigenpal runs feedback` requires a subcommand. Run `eigenpal runs feedback --help`.\n'
       );
       process.exit(2);
     });
@@ -168,10 +196,10 @@ function registerRunFeedbackCommands(runs: Command): void {
 function registerRunExpectedCommands(runs: Command): void {
   const expected = runs
     .command('expected')
-    .description('Manage expected artifacts attached to an agent run.')
+    .description('Manage expected artifacts attached to a run.')
     .action(() => {
       process.stderr.write(
-        '`eigenpal agents runs expected` requires a subcommand. Run `eigenpal agents runs expected --help`.\n'
+        '`eigenpal runs expected` requires a subcommand. Run `eigenpal runs expected --help`.\n'
       );
       process.exit(2);
     });
@@ -203,11 +231,6 @@ function registerRunExpectedCommands(runs: Command): void {
     .description('Delete an expected artifact.')
     .option('--yes', 'Required in non-interactive environments')
     .action(action(deleteRunExpected));
-}
-
-async function listRunsTarget(target: string, opts: Parameters<typeof listRuns>[1]) {
-  const parsed = parseAgentTarget(target);
-  return listRuns(parsed.slug, { ...opts, sourceRef: parsed.sourceRef });
 }
 
 export async function runExecution(
@@ -277,12 +300,180 @@ export async function runExample(
   success(`Run ${runId ?? ''} queued for example ${opts.example}`);
 }
 
-async function getRun(executionId: string, opts: BaseOpts & { include?: string }) {
+async function getRun(executionId: string, opts: BaseOpts & { include?: string; step?: string }) {
   const client = buildClient(opts);
-  const payload = await client.get(`/api/v1/agents/runs/${encodeURIComponent(executionId)}`, {
-    ...(opts.include ? { include: opts.include } : {}),
-  });
+  const include = opts.include ? `detail,${opts.include}` : 'detail';
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include,
+  })) as { run?: Record<string, unknown> };
+  const run = payload.run;
+  if (!run) return renderRunPayload(payload, opts);
+
+  if (opts.step && !isWorkflowRun(run)) {
+    throw new Error(
+      'Agent runs do not have workflow steps. Use `eigenpal runs get <run-id> --json` to inspect the agent run payload.'
+    );
+  }
+
+  if (isWorkflowRun(run)) {
+    const steps = filterWorkflowSteps(run.stepExecutions, opts.step);
+    const projectionIncludes = workflowStepProjectionIncludes(opts.include);
+    if (opts.step) {
+      return printJson({
+        ...payload,
+        run: { ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) },
+      });
+    }
+    if (opts.json) {
+      return printJson(payload);
+    }
+    console.log(renderFrame(toExecutionSnapshot(run, executionId)));
+    process.stderr.write(
+      `${ui.dim(`use --json for the full payload, then pipe to jq for field projection`)}\n`
+    );
+    return;
+  }
+
   renderRunPayload(payload, opts);
+}
+
+type WorkflowStepRow = Record<string, unknown> & {
+  stepName?: string;
+  status?: string;
+  durationMs?: number | null;
+  inputData?: unknown;
+  outputData?: unknown;
+  resolvedConfig?: unknown;
+  error?: string | null;
+  overrideMode?: string | null;
+};
+
+function isWorkflowRun(run: Record<string, unknown>): boolean {
+  return Array.isArray(run.stepExecutions);
+}
+
+function isAgentRun(run: Record<string, unknown>): boolean {
+  return run.type === 'agent';
+}
+
+function ensureAgentRun(run: Record<string, unknown>, feature: string): void {
+  if (isAgentRun(run)) return;
+  throw new Error(
+    `${feature} is only available for agent runs. Workflow runs do not have agent artifacts, feedback, or expected files.`
+  );
+}
+
+async function getRunForCompatibilityCheck(
+  client: ApiClient,
+  executionId: string
+): Promise<Record<string, unknown>> {
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail',
+  })) as { run?: Record<string, unknown> };
+  if (!payload.run) throw new Error(`Run ${executionId} not found`);
+  return payload.run;
+}
+
+async function ensureAgentRunById(
+  client: ApiClient,
+  executionId: string,
+  feature: string
+): Promise<void> {
+  ensureAgentRun(await getRunForCompatibilityCheck(client, executionId), feature);
+}
+
+function workflowSteps(value: unknown): WorkflowStepRow[] {
+  return Array.isArray(value) ? (value as WorkflowStepRow[]) : [];
+}
+
+function filterWorkflowSteps(value: unknown, stepFilter: string | undefined): WorkflowStepRow[] {
+  const steps = workflowSteps(value);
+  if (!stepFilter) return steps;
+  const wanted = new Set(
+    stepFilter
+      .split(',')
+      .map((step) => step.trim())
+      .filter(Boolean)
+  );
+  return steps.filter((step) => typeof step.stepName === 'string' && wanted.has(step.stepName));
+}
+
+function projectWorkflowSteps(
+  steps: WorkflowStepRow[],
+  includes: string | undefined
+): Record<string, unknown>[] {
+  return steps.map((step) => projectWorkflowStep(step, includes));
+}
+
+function workflowStepProjectionIncludes(includes: string | undefined): string | undefined {
+  if (!includes) return undefined;
+  const parts = new Set(includes.split(',').map((part) => part.trim()));
+  const workflowFields = [
+    'input',
+    'config',
+    'resolvedConfig',
+    'inputRef',
+    'inputData',
+    'output',
+    'outputData',
+    'error',
+    'duration',
+  ];
+  return workflowFields.some((field) => parts.has(field)) ? includes : undefined;
+}
+
+function projectWorkflowStep(
+  step: WorkflowStepRow,
+  includes: string | undefined
+): Record<string, unknown> {
+  if (!includes) return step;
+  const wanted = new Set(includes.split(',').map((part) => part.trim()));
+  const out: Record<string, unknown> = { stepName: step.stepName, status: step.status };
+  if (wanted.has('input') || wanted.has('config') || wanted.has('resolvedConfig')) {
+    out.input = step.resolvedConfig;
+  }
+  if (wanted.has('inputRef') || wanted.has('inputData')) out.inputRef = step.inputData;
+  if (wanted.has('output') || wanted.has('outputData')) out.output = step.outputData;
+  if (wanted.has('error')) out.error = step.error;
+  if (wanted.has('duration')) out.durationMs = step.durationMs;
+  if ('overrideMode' in step) out.overrideMode = step.overrideMode;
+  return out;
+}
+
+function toExecutionSnapshot(run: Record<string, unknown>, fallbackId: string): ExecutionSnapshot {
+  return {
+    id: String(run.id ?? run.executionId ?? fallbackId),
+    status: String(run.status ?? 'unknown'),
+    startedAt: typeof run.startedAt === 'string' ? run.startedAt : null,
+    completedAt: typeof run.completedAt === 'string' ? run.completedAt : null,
+    durationMs: typeof run.durationMs === 'number' ? run.durationMs : null,
+    stepExecutions: workflowSteps(run.stepExecutions).map((step) => ({
+      stepName: String(step.stepName ?? ''),
+      status: String(step.status ?? 'unknown'),
+      durationMs: typeof step.durationMs === 'number' ? step.durationMs : null,
+      error: typeof step.error === 'string' ? step.error : null,
+      outputPreview: previewOutput(step.outputData),
+    })),
+    error: typeof run.error === 'string' ? run.error : null,
+  };
+}
+
+const PREVIEW_MAX = 120;
+function previewOutput(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    if (value.length === 0) return null;
+    return value.length > PREVIEW_MAX ? `${value.slice(0, PREVIEW_MAX - 3)}...` : value;
+  }
+  let json: string;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    return null;
+  }
+  if (!json || json === '{}' || json === '[]' || json === 'null') return null;
+  const flat = json.replace(/\s+/g, ' ');
+  return flat.length > PREVIEW_MAX ? `${flat.slice(0, PREVIEW_MAX - 3)}...` : flat;
 }
 
 export async function rerunRun(
@@ -292,10 +483,14 @@ export async function rerunRun(
   const client = buildClient(opts);
   const sourceRef = await resolveRerunSourceRef(client, executionId, opts.sourceRef);
   let payload: unknown = await client.post(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/rerun`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/rerun`,
     sourceRef ? { sourceRef } : {}
   );
-  const rerunId = String((payload as { runId?: string }).runId ?? '');
+  const rerunId = String(
+    (payload as { runId?: string; executionId?: string }).runId ??
+      (payload as { executionId?: string }).executionId ??
+      ''
+  );
   if (opts.wait && rerunId) {
     payload = await pollRun(client, rerunId, opts.interval, opts.maxWait);
     renderRunPayload(payload, opts);
@@ -313,7 +508,9 @@ async function resolveRerunSourceRef(
 ): Promise<string | undefined> {
   if (!requested) return undefined;
   if (requested !== 'original') return requested;
-  const payload = (await client.get(`/api/v1/agents/runs/${encodeURIComponent(executionId)}`)) as {
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail',
+  })) as {
     run?: Record<string, unknown>;
   };
   const run = payload.run;
@@ -332,11 +529,12 @@ async function fetchRunArtifacts(
   opts: BaseOpts & { include: string; out?: string; path?: string[] }
 ) {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/agents/runs/${encodeURIComponent(executionId)}`, {
-    include: 'expected,files,input,output,issues,trace,lockfile,metadata',
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail,expected,files,input,output,issues,trace,lockfile,metadata',
   })) as { run?: Record<string, unknown> };
   const run = payload.run;
   if (!run) throw new Error(`Run ${executionId} not found`);
+  ensureAgentRun(run, 'Artifact download');
   const out = path.resolve(opts.out ?? path.join('.eigenpal', 'artifacts', 'runs', executionId));
   await fs.mkdir(out, { recursive: true });
   const written: string[] = [];
@@ -380,11 +578,12 @@ async function fetchRunArtifacts(
 
 async function listRunArtifacts(executionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/agents/runs/${encodeURIComponent(executionId)}`, {
-    include: 'expected,files,input,output,issues,trace,lockfile,metadata',
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail,expected,files,input,output,issues,trace,lockfile,metadata',
   })) as { run?: Record<string, unknown> };
   const run = payload.run;
   if (!run) throw new Error(`Run ${executionId} not found`);
+  ensureAgentRun(run, 'Artifact inventory');
   const artifacts = runArtifactInventory(run);
   if (opts.json) return printJson({ runId: executionId, artifacts });
   console.log(
@@ -435,10 +634,9 @@ async function writeDownloadedRunArtifact(
   routePrefix: 'files' | 'expected'
 ) {
   const routePath = routePrefix === 'files' ? artifactPath : artifactPath.slice('expected/'.length);
+  const routeBase = routePrefix === 'files' ? 'artifact' : 'expected';
   const response = await client.getStream(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/${routePrefix}/${encodeRunArtifactPath(
-      routePath
-    )}`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/${routeBase}/${encodeRunArtifactPath(routePath)}`
   );
   const outPath = path.join(out, artifactPath);
   await fs.mkdir(path.dirname(outPath), { recursive: true });
@@ -481,6 +679,7 @@ async function writeRunArtifact(
 
 async function traceRun(executionId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Trace download');
   const text = await downloadTraceText(client, executionId);
   if (!opts.out) {
     process.stdout.write(text);
@@ -497,26 +696,49 @@ async function compareRun(
   executionId: string,
   opts: BaseOpts & {
     baseline?: boolean;
+    step?: string;
     out?: string;
     normalizeDates?: boolean;
     failOnDiff?: boolean;
   }
 ) {
   const client = buildClient(opts);
-  const targetPayload = (await client.get(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}`,
-    { include: 'files,output' }
-  )) as { run?: Record<string, unknown> };
+  const targetPayload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail,files,output',
+  })) as { run?: Record<string, unknown> };
   const target = targetPayload.run;
   if (!target) throw new Error(`Run ${executionId} not found`);
 
   const mode = opts.baseline ? 'baseline' : 'expected';
   const reference = (
-    (await client.get(`/api/v1/agents/runs/${encodeURIComponent(referenceId)}`, {
-      include: mode === 'baseline' ? 'files,output' : 'expected',
+    (await client.get(`/api/v1/runs/${encodeURIComponent(referenceId)}`, {
+      include: mode === 'baseline' ? 'detail,files,output' : 'detail,expected',
     })) as { run?: Record<string, unknown> }
   ).run;
   if (!reference) throw new Error(`Reference run ${referenceId} not found`);
+
+  if (isWorkflowRun(reference) && isWorkflowRun(target)) {
+    const report = compareWorkflowRuns(referenceId, reference, executionId, target, opts.step);
+    if (opts.json) {
+      printJson(report);
+    } else {
+      renderWorkflowComparisonReport(report);
+    }
+    if (opts.failOnDiff && report.status === 'fail') process.exit(1);
+    return;
+  }
+
+  if (opts.step) {
+    throw new Error(
+      '`--step` is only supported when both runs are workflow runs. Agent runs do not have workflow steps.'
+    );
+  }
+
+  if (isWorkflowRun(reference) || isWorkflowRun(target)) {
+    throw new Error(
+      'Mixed workflow/agent comparisons are not supported. Compare two workflow runs or two agent runs.'
+    );
+  }
 
   const out = path.resolve(
     opts.out ?? path.join('.eigenpal', 'artifacts', 'comparisons', `${referenceId}..${executionId}`)
@@ -583,52 +805,173 @@ async function compareRun(
   if (opts.failOnDiff && report.status === 'fail') process.exit(1);
 }
 
+interface WorkflowComparisonReport {
+  status: 'pass' | 'fail';
+  runId: string;
+  comparedWithRunId: string;
+  steps: Array<{
+    stepName: string;
+    referenceStatus: string;
+    targetStatus: string;
+    durationDeltaMs: number | null;
+    outputState: string;
+  }>;
+  finalOutputState: string;
+}
+
+function compareWorkflowRuns(
+  referenceId: string,
+  reference: Record<string, unknown>,
+  targetId: string,
+  target: Record<string, unknown>,
+  stepFilter: string | undefined
+): WorkflowComparisonReport {
+  const referenceSteps = workflowSteps(reference.stepExecutions);
+  const targetSteps = workflowSteps(target.stepExecutions);
+  const stepNames = new Set<string>();
+  for (const step of referenceSteps) if (step.stepName) stepNames.add(step.stepName);
+  for (const step of targetSteps) if (step.stepName) stepNames.add(step.stepName);
+  const wanted = stepFilter
+    ? new Set(
+        stepFilter
+          .split(',')
+          .map((step) => step.trim())
+          .filter(Boolean)
+      )
+    : null;
+  const steps = [...stepNames]
+    .sort()
+    .filter((stepName) => !wanted || wanted.has(stepName))
+    .map((stepName) => {
+      const referenceStep = referenceSteps.find((step) => step.stepName === stepName);
+      const targetStep = targetSteps.find((step) => step.stepName === stepName);
+      const referenceDuration =
+        typeof referenceStep?.durationMs === 'number' ? referenceStep.durationMs : null;
+      const targetDuration =
+        typeof targetStep?.durationMs === 'number' ? targetStep.durationMs : null;
+      return {
+        stepName,
+        referenceStatus: String(referenceStep?.status ?? '-'),
+        targetStatus: String(targetStep?.status ?? '-'),
+        durationDeltaMs:
+          referenceDuration != null && targetDuration != null
+            ? targetDuration - referenceDuration
+            : null,
+        outputState: compareOutputs(referenceStep?.outputData, targetStep?.outputData),
+      };
+    });
+  const finalOutputState = compareOutputs(reference.output, target.output);
+  const status =
+    finalOutputState === 'identical' &&
+    steps.every(
+      (step) =>
+        step.referenceStatus === step.targetStatus &&
+        (step.outputState === 'identical' || step.outputState === '-')
+    )
+      ? 'pass'
+      : 'fail';
+  return {
+    status,
+    runId: targetId,
+    comparedWithRunId: referenceId,
+    steps,
+    finalOutputState,
+  };
+}
+
+function renderWorkflowComparisonReport(report: WorkflowComparisonReport): void {
+  console.log(
+    `${ui.dim('A =')} ${ui.bold(report.comparedWithRunId)}   ${ui.dim('B =')} ${ui.bold(report.runId)}`
+  );
+  console.log('');
+  console.log(ui.dim(`step                         A status    B status    Δ duration   output`));
+  console.log(ui.dim(`------------------------     ---------   ---------   ----------   ------`));
+  for (const step of report.steps) {
+    const delta =
+      step.durationDeltaMs == null
+        ? '-'
+        : `${step.durationDeltaMs >= 0 ? '+' : ''}${step.durationDeltaMs}ms`;
+    console.log(
+      `${step.stepName.padEnd(28)} ${padColored(colorStatus(step.referenceStatus), step.referenceStatus, 11)} ${padColored(colorStatus(step.targetStatus), step.targetStatus, 11)} ${delta.padEnd(12)} ${colorOutputState(step.outputState)}`
+    );
+  }
+  console.log('');
+  console.log(`${ui.dim('final output:')} ${colorOutputState(report.finalOutputState)}`);
+}
+
+function padColored(colored: string, plain: string, width: number): string {
+  const pad = Math.max(0, width - plain.length);
+  return colored + ' '.repeat(pad);
+}
+
+function colorStatus(status: string | undefined): string {
+  if (!status) return '-';
+  if (status === 'completed') return ui.ok(status);
+  if (status === 'failed' || status === 'cancelled') return ui.err(status);
+  if (status === 'running' || status === 'pending') return ui.info(status);
+  return status;
+}
+
+function colorOutputState(state: string): string {
+  if (state === 'identical') return ui.ok(state);
+  if (state === '-') return ui.dim(state);
+  if (state.startsWith('differs')) return ui.warn(state);
+  return state;
+}
+
+function compareOutputs(reference: unknown, target: unknown): string {
+  if (reference === undefined && target === undefined) return '-';
+  if (reference === undefined) return 'B only';
+  if (target === undefined) return 'A only';
+  const referenceJson = JSON.stringify(reference);
+  const targetJson = JSON.stringify(target);
+  if (referenceJson === targetJson) return 'identical';
+  return `differs (A=${referenceJson.length}b, B=${targetJson.length}b)`;
+}
+
 async function listRuns(
-  agentId: string,
+  source: string | undefined,
   opts: BaseOpts &
     PaginationOpts & {
+      type?: string;
       status?: string;
       batchId?: string;
-      exampleName?: string;
-      exampleNameContains?: string;
+      exampleId?: string;
+      exampleIdContains?: string;
+      from?: string;
+      to?: string;
       createdAfter?: string;
       createdBefore?: string;
       completedAfter?: string;
       completedBefore?: string;
-      feedbackStatus?: string;
-      feedbackRating?: string;
-      feedbackBodyContains?: string;
-      feedbackCreatedAfter?: string;
-      feedbackCreatedBefore?: string;
-      feedbackUpdatedAfter?: string;
-      feedbackUpdatedBefore?: string;
-      feedbackResolvedAfter?: string;
-      feedbackResolvedBefore?: string;
-      hasFeedback?: boolean;
-      noFeedback?: boolean;
-      feedback?: boolean;
-      hasExpected?: boolean;
-      hasExpectedJson?: boolean;
-      hasExpectedFiles?: boolean;
-      promotedToExample?: boolean;
-      promotedExampleName?: string;
-      sinceLastResolved?: boolean;
-      include?: string;
       compact?: boolean;
       sort?: string;
       order?: string;
-      scanLimit?: number;
       sourceRef?: string;
     }
 ) {
   const client = buildClient(opts);
-  const params = buildRunListParams(opts);
-  const payload = (await client.get(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/runs`,
-    params
-  )) as {
+  const parsedAgentTarget =
+    source && (opts.type === 'agent' || source.startsWith('agents.') || source.includes('@'))
+      ? parseAgentTarget(source)
+      : null;
+  const resolvedWorkflowSource =
+    source && opts.type === 'workflow' ? await resolveWorkflowId(client, source) : undefined;
+  const params = {
+    ...buildRunListParams(opts),
+    ...(parsedAgentTarget
+      ? { type: opts.type ?? 'agent', source: parsedAgentTarget.slug }
+      : resolvedWorkflowSource
+        ? { source: resolvedWorkflowSource }
+        : source
+          ? { source }
+          : {}),
+    ...(parsedAgentTarget?.sourceRef ? { sourceRef: parsedAgentTarget.sourceRef } : {}),
+  };
+  const payload = (await client.get('/api/v1/runs', params)) as {
     runs: Record<string, unknown>[];
-    total: number;
+    total?: number;
+    nextCursor?: string | null;
     scanLimited?: boolean;
     noResolvedAnchor?: boolean;
   };
@@ -647,7 +990,13 @@ async function listRuns(
   console.log(
     table(rows, [
       { key: 'id', header: 'ID' },
+      { key: 'type', header: 'TYPE' },
       { key: 'status', header: 'STATUS' },
+      {
+        key: 'sourceName',
+        header: 'SOURCE',
+        format: (value, row) => String(value ?? row.sourceId ?? ''),
+      },
       { key: 'exampleId', header: 'EXAMPLE' },
       {
         key: 'feedback',
@@ -664,17 +1013,29 @@ async function listRuns(
 
 export function buildRunListParams<T extends object>(
   opts: T & {
-    noFeedback?: boolean;
-    feedback?: boolean;
     json?: boolean;
     baseUrl?: string;
     yes?: boolean;
+    compact?: boolean;
   }
 ): Record<string, string> {
   return compactParams({
-    ...opts,
-    feedback: undefined,
-    noFeedback: opts.noFeedback ?? (opts.feedback === false ? true : undefined),
+    type: 'type' in opts ? opts.type : undefined,
+    sourceRef: 'sourceRef' in opts ? opts.sourceRef : undefined,
+    status: 'status' in opts ? opts.status : undefined,
+    batchId: 'batchId' in opts ? opts.batchId : undefined,
+    exampleId: 'exampleId' in opts ? opts.exampleId : undefined,
+    exampleIdContains: 'exampleIdContains' in opts ? opts.exampleIdContains : undefined,
+    from: 'from' in opts ? opts.from : undefined,
+    to: 'to' in opts ? opts.to : undefined,
+    createdAfter: 'createdAfter' in opts ? opts.createdAfter : undefined,
+    createdBefore: 'createdBefore' in opts ? opts.createdBefore : undefined,
+    completedAfter: 'completedAfter' in opts ? opts.completedAfter : undefined,
+    completedBefore: 'completedBefore' in opts ? opts.completedBefore : undefined,
+    limit: 'limit' in opts ? opts.limit : undefined,
+    offset: 'offset' in opts ? opts.offset : undefined,
+    sort: 'sort' in opts ? opts.sort : undefined,
+    order: 'order' in opts ? opts.order : undefined,
   });
 }
 
@@ -693,6 +1054,7 @@ async function updateRunFeedback(
   }
 ) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Feedback');
   const body: Record<string, unknown> = {};
   if (opts.status) body.status = opts.status;
   if (opts.rating) body.rating = opts.rating === 'none' ? null : opts.rating;
@@ -705,7 +1067,7 @@ async function updateRunFeedback(
   if (opts.expectedJson !== undefined) body.expected = JSON.parse(opts.expectedJson);
   if (opts.clearExpectedJson) body.expected = null;
   const payload = await client.patch(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/feedback`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback`,
     body
   );
   renderGeneric(payload, opts, `Updated feedback for ${executionId}`);
@@ -739,17 +1101,20 @@ async function clearRunFeedback(executionId: string, opts: BaseOpts & { yes?: bo
     throw new Error('Clear cancelled');
   }
   const client = buildClient(opts);
-  const payload = await client.delete(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/feedback`
-  );
+  await ensureAgentRunById(client, executionId, 'Feedback');
+  const payload = await client.delete(`/api/v1/runs/${encodeURIComponent(executionId)}/feedback`);
   renderGeneric(payload, opts, `Cleared feedback for ${executionId}`);
 }
 
 async function listRunExpected(executionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const payload = (await client.get(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected`
-  )) as { expected?: unknown; files?: Record<string, unknown>[] };
+    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`
+  )) as {
+    expected?: unknown;
+    files?: Record<string, unknown>[];
+  };
   if (opts.json) return printJson(payload);
   console.log(table(payload.files ?? [], [{ key: 'name', header: 'NAME' }]));
   if (payload.expected != null) dim('expected.json present');
@@ -757,9 +1122,13 @@ async function listRunExpected(executionId: string, opts: BaseOpts) {
 
 async function pullRunExpected(executionId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const payload = (await client.get(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected`
-  )) as { expected?: unknown; files?: Record<string, unknown>[] };
+    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`
+  )) as {
+    expected?: unknown;
+    files?: Record<string, unknown>[];
+  };
   const out = path.resolve(opts.out ?? path.join(executionId, 'expected'));
   await fs.mkdir(out, { recursive: true });
   if (payload.expected != null) {
@@ -781,7 +1150,7 @@ async function downloadExpectedFiles(
       const name = String((file as { name?: unknown }).name ?? '');
       if (!name || name.includes('/') || name.includes('..')) return null;
       const response = await client.getStream(
-        `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
+        `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
       );
       await fs.mkdir(out, { recursive: true });
       await fs.writeFile(path.join(out, name), Buffer.from(await response.arrayBuffer()));
@@ -797,12 +1166,13 @@ async function uploadRunExpected(
   opts: BaseOpts & { name?: string }
 ) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const form = new FormData();
   const data = await fs.readFile(file);
   form.append('file', new Blob([data]), path.basename(file));
   if (opts.name) form.append('name', opts.name);
   const payload = await client.postFormData(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`,
     form
   );
   renderGeneric(payload, opts, `Uploaded expected file for ${executionId}`);
@@ -814,10 +1184,11 @@ async function copyOutputToExpected(
   opts: BaseOpts & { name?: string }
 ) {
   const client = buildClient(opts);
-  const payload = await client.post(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected`,
-    { outputFileName: outputFile, ...(opts.name ? { expectedName: opts.name } : {}) }
-  );
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
+  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/expected`, {
+    outputFileName: outputFile,
+    ...(opts.name ? { expectedName: opts.name } : {}),
+  });
   renderGeneric(payload, opts, `Copied output file to expected for ${executionId}`);
 }
 
@@ -828,8 +1199,9 @@ async function renameRunExpected(
   opts: BaseOpts
 ) {
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const payload = await client.patch(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(oldName)}`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(oldName)}`,
     { name: newName }
   );
   renderGeneric(payload, opts, `Renamed expected file for ${executionId}`);
@@ -844,8 +1216,9 @@ async function deleteRunExpected(
     throw new Error('Delete cancelled');
   }
   const client = buildClient(opts);
+  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   await client.delete(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
   );
   renderGeneric({ ok: true }, opts, `Deleted expected file ${name}`);
 }
@@ -855,25 +1228,51 @@ async function watchRunCommand(
   opts: BaseOpts & { interval: number; maxWait: number; json?: boolean }
 ) {
   const client = buildClient(opts);
-  const payload = await pollRun(client, executionId, opts.interval, opts.maxWait);
-  renderRunPayload(payload, opts);
-  setExitCodeForFailedTerminalRun(payload);
+  if (opts.json) {
+    const payload = await pollRun(client, executionId, opts.interval, opts.maxWait);
+    renderRunPayload(payload, opts);
+    setExitCodeForFailedTerminalRun(payload);
+    return;
+  }
+  const result = await watchExecution({
+    fetch: async () => {
+      const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+        include: 'detail',
+      })) as { run?: Record<string, unknown> };
+      return toExecutionSnapshot(payload.run ?? {}, executionId);
+    },
+    maxMs: opts.maxWait * 1000,
+    transitionIntervalMs: opts.interval * 1000,
+    steadyIntervalMs: Math.max(opts.interval, 5) * 1000,
+  });
+  if (result.detached) {
+    process.stderr.write(
+      `\nDetached after ${opts.maxWait}s without reaching terminal status. Re-run \`eigenpal runs watch ${executionId}\` to resume.\n`
+    );
+    process.exit(2);
+  }
+  if (result.final.status === 'failed' || result.final.status === 'cancelled') {
+    process.exitCode = 1;
+  }
 }
 
 async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }) {
   if (!(opts.yes || process.stdin.isTTY))
     throw new Error('Pass --yes to cancel in non-interactive mode');
   const client = buildClient(opts);
-  const payload = await client.post(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/cancel`,
-    {}
-  );
+  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
+  renderRunPayload(payload, opts);
+}
+
+async function resumeRun(executionId: string, opts: BaseOpts) {
+  const client = buildClient(opts);
+  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/resume`, {});
   renderRunPayload(payload, opts);
 }
 
 async function downloadTraceText(client: ApiClient, executionId: string): Promise<string> {
   const response = await client.getStream(
-    `/api/v1/agents/runs/${encodeURIComponent(executionId)}/files/trace.jsonl`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/artifact/trace.jsonl`
   );
   return Buffer.from(await response.arrayBuffer()).toString('utf-8');
 }
@@ -1057,8 +1456,8 @@ function runFileUrl(side: { runId: string; kind: 'expected' | 'output' }, name: 
   const runId = encodeURIComponent(side.runId);
   const filename = encodeURIComponent(name);
   return side.kind === 'expected'
-    ? `/api/v1/agents/runs/${runId}/expected/${filename}`
-    : `/api/v1/agents/runs/${runId}/files/output/${filename}`;
+    ? `/api/v1/runs/${runId}/expected/${filename}`
+    : `/api/v1/runs/${runId}/artifact/output/${filename}`;
 }
 
 function encodeRunArtifactPath(artifactPath: string): string {

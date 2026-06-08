@@ -1120,7 +1120,7 @@ export function registerAgentSourceCommands(agent: Command): void {
 
   withBaseUrl(agent.command('pull'))
     .description(
-      'Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use agents runs artifacts fetch.'
+      'Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use runs artifacts fetch.'
     )
     .option('--dir <dir>', 'Repository directory')
     .action(action(pullSource));

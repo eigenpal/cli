@@ -7,6 +7,9 @@
 export const DURABLE_EXECUTION_TYPES = ['workflow', 'agent'] as const;
 export type DurableExecutionType = (typeof DURABLE_EXECUTION_TYPES)[number];
 
+/** Sentinel for `GET /api/v1/runs?triggeredBy=` — matches runs with no `created_by`. */
+export const RUNS_TRIGGERED_BY_SYSTEM = '__system__';
+
 export const EXECUTION_STATUSES = [
   'created',
   'pending',

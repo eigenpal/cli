@@ -39,7 +39,7 @@ import {
 } from '../../lib/ui';
 import { clearEvalOutputs } from './clear';
 import { registerEvaluatorTypeCommands } from './evaluator-type';
-import { registerWorkflowExecutionCommands } from './execution';
+import { registerWorkflowRunCommand } from './execution';
 import {
   buildBatchDiff,
   fetchEvalResults,
@@ -285,12 +285,12 @@ YAML's \`name:\` field). Both:
   // `workflow` (list / push / pull) so the most-used commands have one less
   // hop. Everything else groups under its data-model noun (evaluators,
   // dataset, experiment, execution, versions, step-type) so the help tree
-  // mirrors the model. When `eigenpal agent` gets built, mirror this exactly.
+  // mirrors the model. Keep `eigenpal agents` parallel when adding new nouns.
   registerWorkflowCoreCommands(workflow);
   registerEvaluatorsCommands(workflow);
   registerDatasetCommands(workflow);
   registerExperimentCommands(workflow);
-  registerWorkflowExecutionCommands(workflow);
+  registerWorkflowRunCommand(workflow);
   registerVersionsCommands(workflow);
   registerStepTypeCommands(workflow);
   // Sibling to `step-type` — evaluators have their own schema shape (no
@@ -1928,7 +1928,7 @@ export function renderExperimentFailures(
       .replace(/\s+/g, ' ')
       .slice(0, 200);
     process.stderr.write(`  ${ui.bold(label)}  ${ui.dim(`[${e.status}]`)} ${reason}\n`);
-    process.stderr.write(`    ${ui.dim(`eigenpal workflow execution get ${e.id}`)}\n`);
+    process.stderr.write(`    ${ui.dim(`eigenpal runs get ${e.id}`)}\n`);
   }
   process.stderr.write(
     `\n${ui.info('ℹ')} step-level errors live on \`stepExecutions[].error\` — see ${ui.bold('reference/debugging.md')}.\n\n`

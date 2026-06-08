@@ -1,7 +1,7 @@
 /**
  * Lightweight terminal "watch mode" — `\r` line redraw + adaptive polling.
  *
- * Used by `eigenpal workflow execution watch <id>` to
+ * Used by `eigenpal runs watch <id>` to
  * stream a vertical step list while an execution is in flight. ASCII status
  * badges (no unicode, so it works in non-UTF-8 terminals + CI logs).
  *

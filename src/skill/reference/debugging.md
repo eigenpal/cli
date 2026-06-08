@@ -3,15 +3,15 @@
 Three tools cover most cases:
 
 ```bash
-eigenpal workflow execution get   <exec-id>           # full payload, step-by-step
-eigenpal workflow execution watch <exec-id>           # live status; 2s during transition / 5s steady
-eigenpal workflow execution compare <a> <b>           # side-by-side diff of two runs
+eigenpal runs get     <exec-id>           # full payload, step-by-step
+eigenpal runs watch   <exec-id>           # live status; 2s during transition / 5s steady
+eigenpal runs compare <a> <b>             # side-by-side diff of two runs
 ```
 
 ## 1. Reproduce the failure
 
 ```bash
-eigenpal workflow execution run <workflow-id> <example-name>
+eigenpal workflow run <workflow-id> <example-name>
 ```
 
 `<workflow-id>` is either a `wf_…` id or a slug (the YAML's `name:`
@@ -25,14 +25,14 @@ historical execution, skip the rerun and pull the recorded execution
 directly:
 
 ```bash
-eigenpal workflow execution list <workflow-id> --status failed --limit 5
-eigenpal workflow execution get exec_…
+eigenpal runs list <workflow-id> --type workflow --status failed --limit 5
+eigenpal runs get exec_…
 ```
 
 ## 2. Pull the full execution
 
 ```bash
-eigenpal workflow execution get <exec-id>
+eigenpal runs get <exec-id>
 ```
 
 The payload includes:
@@ -61,20 +61,21 @@ The payload includes:
 Quick triage with `jq`:
 
 ```bash
-eigenpal workflow execution get <exec-id> \
-  | jq '.stepExecutions[] | { step: .stepName, status, error }'
+eigenpal runs get <exec-id> --json \
+  | jq '.run.stepExecutions[] | { step: .stepName, status, error }'
 ```
 
 Narrow to a single step:
 
 ```bash
-eigenpal workflow execution get <exec-id> --step extract --include input,output,error
+eigenpal runs get <exec-id> --include input,output,error --json \
+  | jq '.run.stepExecutions[] | select(.stepName == "extract")'
 ```
 
 Drill into one field:
 
 ```bash
-eigenpal workflow execution get <exec-id> --json | jq '.stepExecutions[2].output.totalAmount'
+eigenpal runs get <exec-id> --json | jq '.run.stepExecutions[2].output.totalAmount'
 ```
 
 ## 3. Common failure modes
@@ -151,7 +152,7 @@ path are created automatically.
 ## 4. Compare two executions
 
 ```bash
-eigenpal workflow execution compare <exec-a> <exec-b>
+eigenpal runs compare <exec-a> <exec-b>
 ```
 
 Output: per-step status / Δ duration / output diff. Useful for spotting
@@ -160,17 +161,17 @@ regressions between revisions of a workflow.
 For a freer-form diff, dump both and compare with `jq`:
 
 ```bash
-eigenpal workflow execution get <exec-a> > a.json
-eigenpal workflow execution get <exec-b> > b.json
+eigenpal runs get <exec-a> > a.json
+eigenpal runs get <exec-b> > b.json
 diff <(jq -S . a.json) <(jq -S . b.json)
 ```
 
 ## 5. Cancel a long-running execution
 
 ```bash
-eigenpal workflow execution cancel <exec-id>           # TTY: silent
-eigenpal workflow execution cancel <exec-id> --yes     # CI / pipes
-eigenpal workflow execution cancel <exec-id> --json    # raw server payload
+eigenpal runs cancel <exec-id>           # TTY: silent
+eigenpal runs cancel <exec-id> --yes     # CI / pipes
+eigenpal runs cancel <exec-id> --json    # raw server payload
 ```
 
 The worker finishes the current step, then stops — the cancellation
@@ -274,7 +275,7 @@ The terminal `--watch` output looks like:
 ✗ 7/7 did not pass
 
   invoice-2025-001  [failed]  template_resolution_failed at step `parse`: …
-    eigenpal workflow execution get exec_…
+    eigenpal runs get exec_…
   …
 
 ℹ step-level errors live on `stepExecutions[].error` — see reference/debugging.md.
@@ -287,11 +288,11 @@ detail (which step failed, what input it received, what output it
 returned before erroring) follow the suggested command:
 
 ```bash
-eigenpal workflow execution get exec_…                                  # full payload
-eigenpal workflow execution get exec_… --step <name> --include input,output,error
-eigenpal workflow execution get exec_… --json | jq -r '.stepExecutions[0].error'
+eigenpal runs get exec_…                                  # full payload
+eigenpal runs get exec_… --include input,output,error --json | jq '.run.stepExecutions[] | select(.stepName == "<name>")'
+eigenpal runs get exec_… --json | jq -r '.run.stepExecutions[0].error'
 ```
 
-For per-execution live view, `eigenpal workflow execution watch <exec-id>` does
+For per-execution live view, `eigenpal runs watch <exec-id>` does
 adaptive polling (2 s while transitioning, 5 s when steady) and prints
 ASCII status badges that work in any terminal.

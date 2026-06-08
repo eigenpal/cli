@@ -10,7 +10,6 @@ Manage workflows: push, pull, run, evaluate.
   - [Evaluators](#evaluators)
   - [Dataset](#dataset)
   - [Experiment](#experiment)
-  - [Execution](#execution)
   - [Versions](#versions)
   - [Step-type](#step-type)
   - [Evaluator-type](#evaluator-type)
@@ -20,6 +19,7 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
+  - [`eigenpal workflow run [options] <workflow-id> [examples...]`](#eigenpal-workflow-run-options-workflow-id-examples)
   - [`eigenpal workflow validate [options] [path]`](#eigenpal-workflow-validate-options-path)
   - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
   - [`eigenpal workflow evaluators pull [options] <workflow-id>`](#eigenpal-workflow-evaluators-pull-options-workflow-id)
@@ -40,12 +40,6 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow experiment|exp results [options] <workflow-id> [batchId]`](#eigenpal-workflow-experimentexp-results-options-workflow-id-batchid)
   - [`eigenpal workflow experiment|exp compare|diff [options] <batchIdA> <batchIdB>`](#eigenpal-workflow-experimentexp-comparediff-options-batchida-batchidb)
   - [`eigenpal workflow experiment|exp watch [options] <workflow-id> <batchId>`](#eigenpal-workflow-experimentexp-watch-options-workflow-id-batchid)
-  - [`eigenpal workflow execution|exec run [options] <workflow-id> [examples...]`](#eigenpal-workflow-executionexec-run-options-workflow-id-examples)
-  - [`eigenpal workflow execution|exec get [options] <executionId>`](#eigenpal-workflow-executionexec-get-options-executionid)
-  - [`eigenpal workflow execution|exec list|ls [options] <workflow-id>`](#eigenpal-workflow-executionexec-listls-options-workflow-id)
-  - [`eigenpal workflow execution|exec watch [options] <executionId>`](#eigenpal-workflow-executionexec-watch-options-executionid)
-  - [`eigenpal workflow execution|exec compare|diff [options] <executionA> <executionB>`](#eigenpal-workflow-executionexec-comparediff-options-executiona-executionb)
-  - [`eigenpal workflow execution|exec cancel [options] <executionId>`](#eigenpal-workflow-executionexec-cancel-options-executionid)
   - [`eigenpal workflow versions list|ls [options] <workflow-id>`](#eigenpal-workflow-versions-listls-options-workflow-id)
   - [`eigenpal workflow versions restore [options] <workflow-id> <versionId>`](#eigenpal-workflow-versions-restore-options-workflow-id-versionid)
   - [`eigenpal workflow step-type list|ls [options]`](#eigenpal-workflow-step-type-listls-options)
@@ -84,13 +78,7 @@ workflow
 │   ├── results <workflow-id> [batchId]
 │   ├── compare|diff <batchIdA> <batchIdB>
 │   └── watch <workflow-id> <batchId>
-├── execution|exec
-│   ├── run <workflow-id> [examples...]
-│   ├── get <executionId>
-│   ├── list|ls <workflow-id>
-│   ├── watch <executionId>
-│   ├── compare|diff <executionA> <executionB>
-│   └── cancel <executionId>
+├── run <workflow-id> [examples...]
 ├── versions
 │   ├── list|ls <workflow-id>
 │   └── restore <workflow-id> <versionId>
@@ -110,14 +98,15 @@ workflow
 
 ### Core
 
-| Command                                                 | Description                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                           |
-| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
-| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
-| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
-| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
-| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                      |
+| Command                                                       | Description                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow list\|ls [options]`                        | List workflows the caller can read.                                                                                                                                                                                                                                           |
+| `eigenpal workflow pull [options] <workflow-id>`              | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
+| `eigenpal workflow push [options]`                            | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
+| `eigenpal workflow move [options] <workflow-id>`              | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
+| `eigenpal workflow run [options] <workflow-id> [examples...]` | Run a saved workflow against local dataset examples.                                                                                                                                                                                                                          |
+| `eigenpal workflow validate [options] [path]`                 | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
+| `eigenpal workflow clear-local [options] [examples...]`       | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                      |
 
 ### Evaluators
 
@@ -152,17 +141,6 @@ workflow
 | `eigenpal workflow experiment\|exp compare\|diff [options] <batchIdA> <batchIdB>` | Diff eval scores between two experiment batches.                                           |
 | `eigenpal workflow experiment\|exp watch [options] <workflow-id> <batchId>`       | Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`. |
 
-### Execution
-
-| Command                                                                               | Description                                                      |
-| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `eigenpal workflow execution\|exec run [options] <workflow-id> [examples...]`         | Run a saved workflow against local dataset examples.             |
-| `eigenpal workflow execution\|exec get [options] <executionId>`                       | Fetch a single execution payload. Optionally narrow to one step. |
-| `eigenpal workflow execution\|exec list\|ls [options] <workflow-id>`                  | List recent executions for a workflow.                           |
-| `eigenpal workflow execution\|exec watch [options] <executionId>`                     | Stream live execution status until terminal or 30-min detach.    |
-| `eigenpal workflow execution\|exec compare\|diff [options] <executionA> <executionB>` | Diff two executions side-by-side, per step.                      |
-| `eigenpal workflow execution\|exec cancel [options] <executionId>`                    | Cancel an execution. Idempotent on already-terminal runs.        |
-
 ### Versions
 
 | Command                                                                  | Description                                      |
@@ -186,9 +164,9 @@ workflow
 
 ### Step
 
-| Command                                        | Description                                                                                                                                       |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow execution run` or `workflow experiment run` instead. |
+| Command                                        | Description                                                                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow run` or `workflow experiment run` instead. |
 
 ## Details
 
@@ -255,6 +233,26 @@ Move a workflow to a folder path, creating folders as needed
 | `--folder <path>`  | yes      |         | Target folder path (`/` for root)      |
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow run [options] <workflow-id> [examples...]`
+
+Run a saved workflow against local dataset examples.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `examples`    | no       | yes      |             |
+
+### Options
+
+| Flag                | Required | Default | Description                                  |
+| ------------------- | -------- | ------- | -------------------------------------------- |
+| `--dir <dir>`       | no       |         | Local eigenpal directory                     |
+| `--concurrency <n>` | no       |         | Max examples to run in parallel (default: 3) |
+| `--base-url <url>`  | no       |         | Server base URL                              |
+| `--json`            | no       |         | Output the raw server response as JSON       |
 
 ### `eigenpal workflow validate [options] [path]`
 
@@ -628,118 +626,6 @@ Poll until terminal, then auto-pull results — replaces `status --watch` + `res
 | `--no-pull`                 | no       |          | Skip auto-pulling results on terminal (just watch)                      |
 | `--base-url <url>`          | no       |          | Server base URL                                                         |
 
-### `eigenpal workflow execution|exec run [options] <workflow-id> [examples...]`
-
-Run a saved workflow against local dataset examples.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `workflow-id` | yes      | no       |             |
-| `examples`    | no       | yes      |             |
-
-### Options
-
-| Flag                | Required | Default | Description                                  |
-| ------------------- | -------- | ------- | -------------------------------------------- |
-| `--dir <dir>`       | no       |         | Local eigenpal directory                     |
-| `--concurrency <n>` | no       |         | Max examples to run in parallel (default: 3) |
-| `--base-url <url>`  | no       |         | Server base URL                              |
-| `--json`            | no       |         | Output the raw server response as JSON       |
-
-### `eigenpal workflow execution|exec get [options] <executionId>`
-
-Fetch a single execution payload. Optionally narrow to one step.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `executionId` | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default                         | Description                                                                                                                                                                                                      |
-| ------------------- | -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--step <name>`     | no       |                                 | Show only this step (or comma-separated list)                                                                                                                                                                    |
-| `--include <kinds>` | no       | `"input,output,error,duration"` | Comma-separated subset of input,output,error,duration. `input` projects the resolved templated config (= what the processor actually received). `inputRef` returns the minimal predecessor-id reference instead. |
-| `--base-url <url>`  | no       |                                 | Server base URL                                                                                                                                                                                                  |
-| `--json`            | no       |                                 | Output the raw server response as JSON                                                                                                                                                                           |
-
-### `eigenpal workflow execution|exec list|ls [options] <workflow-id>`
-
-List recent executions for a workflow.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `workflow-id` | yes      | no       |             |
-
-### Options
-
-| Flag                | Required | Default | Description                                                      |
-| ------------------- | -------- | ------- | ---------------------------------------------------------------- |
-| `--status <status>` | no       |         | Filter by status: pending\|running\|completed\|failed\|cancelled |
-| `--limit <n>`       | no       | `50`    | Page size                                                        |
-| `--offset <n>`      | no       | `0`     | Page offset                                                      |
-| `--base-url <url>`  | no       |         | Server base URL                                                  |
-| `--json`            | no       |         | Output the raw server response as JSON                           |
-
-### `eigenpal workflow execution|exec watch [options] <executionId>`
-
-Stream live execution status until terminal or 30-min detach.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `executionId` | yes      | no       |             |
-
-### Options
-
-| Flag                   | Required | Default | Description                                    |
-| ---------------------- | -------- | ------- | ---------------------------------------------- |
-| `--max-wait <seconds>` | no       | `1800`  | Detach after N seconds (default 1800 = 30 min) |
-| `--base-url <url>`     | no       |         | Server base URL                                |
-
-### `eigenpal workflow execution|exec compare|diff [options] <executionA> <executionB>`
-
-Diff two executions side-by-side, per step.
-
-### Arguments
-
-| Name         | Required | Variadic | Description |
-| ------------ | -------- | -------- | ----------- |
-| `executionA` | yes      | no       |             |
-| `executionB` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                     |
-| ------------------ | -------- | ------- | ------------------------------- |
-| `--step <name>`    | no       |         | Restrict comparison to one step |
-| `--base-url <url>` | no       |         | Server base URL                 |
-
-### `eigenpal workflow execution|exec cancel [options] <executionId>`
-
-Cancel an execution. Idempotent on already-terminal runs.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `executionId` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                                                           |
-| ------------------ | -------- | ------- | --------------------------------------------------------------------- |
-| `--yes`            | no       |         | Required for non-TTY shells (CI, pipes). Acts immediately, no prompt. |
-| `--base-url <url>` | no       |         | Server base URL                                                       |
-| `--json`           | no       |         | Output the raw server response as JSON                                |
-
 ### `eigenpal workflow versions list|ls [options] <workflow-id>`
 
 List historical workflow versions, newest first.
@@ -839,7 +725,7 @@ Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect speci
 
 ### `eigenpal workflow step exec [options] <type>`
 
-DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow execution run` or `workflow experiment run` instead.
+DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow run` or `workflow experiment run` instead.
 
 ### Arguments
 

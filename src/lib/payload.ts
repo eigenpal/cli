@@ -1,5 +1,5 @@
 /**
- * Build payloads for `eigenpal workflow execution run` from local dataset
+ * Build payloads for `eigenpal workflow run` from local dataset
  * folders. The only supported layout is the flat one that
  * `eigenpal init workflow` scaffolds and `dataset push --mode replace`
  * round-trips:

@@ -9,7 +9,7 @@ fixed JSON schema.
 
 1. Drop a sample PDF at `dataset/examples/sample-invoice/input/document/<filename>`.
 2. Adjust the `extract.with.schema` to the fields your documents actually carry.
-3. Run an example: `eigenpal workflow execution run __NAME__ sample-invoice`.
+3. Run an example: `eigenpal workflow run __NAME__ sample-invoice`.
 4. When the output looks right, push: `eigenpal workflow push --file workflow.yaml`.
 
 ## Extending

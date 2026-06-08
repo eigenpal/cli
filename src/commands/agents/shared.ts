@@ -67,7 +67,7 @@ export async function pollRun(
   const started = Date.now();
   for (;;) {
     const payload = (await client.get(
-      `/api/v1/agents/runs/${encodeURIComponent(executionId)}`
+      `/api/v1/runs/${encodeURIComponent(executionId)}?include=detail`
     )) as { run?: { status?: string } };
     if (isTerminal(payload.run?.status)) return payload;
     if (Date.now() - started > maxWait * 1000) {

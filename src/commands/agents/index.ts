@@ -16,11 +16,11 @@ import {
   type PaginationOpts,
 } from '../../lib/ui';
 import { registerAgentSourceCommands, validateSourcePackage } from '../git';
+import { runExample, runExecution } from '../runs';
 import { registerDatasetCommands } from './dataset';
 import { registerEnvCommands, registerSecretsExportCommands } from './env';
 import { registerExperimentCommands } from './experiments';
 import { registerAgentFileCommands } from './files';
-import { registerRunCommands, rerunRun, runExample, runExecution } from './runs';
 import { registerSessionCommands } from './sessions';
 import {
   BaseOpts,
@@ -33,16 +33,15 @@ import {
 import { parseAgentTarget } from './target';
 import { validateAgentProject } from './validation';
 
+export { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';
 export { sourcePathForInstalledPackage } from './env';
 export { buildAgentExecutionRunFormData } from './run-form-data';
-export { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from './runs';
 export { parseAgentTarget } from './target';
 export { validateAgentProject, validateDatasetDir } from './validation';
 
 export function registerAgentCommands(program: Command): void {
   const agent = program
     .command('agents')
-    .alias('agent')
     .description(
       'Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and releases.'
     )
@@ -68,17 +67,6 @@ export function registerAgentCommands(program: Command): void {
     .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
     .action(action(runTarget));
 
-  addJsonFlag(withBaseUrl(agent.command('rerun <run-id>')))
-    .description("Create a new run from a previous run's stored input snapshot.")
-    .option(
-      '--source-ref <ref>',
-      'Source ref for the new run (default: latest). Use "original" to reproduce the previous resolved version.'
-    )
-    .option('--wait', 'Poll until the rerun reaches a terminal status')
-    .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
-    .action(action(rerunRun));
-
   addJsonFlag(withPagination(withBaseUrl(agent.command('list')), 50))
     .description('List agents.')
     .option('--search <q>', 'Search by slug, name, or description')
@@ -94,7 +82,6 @@ export function registerAgentCommands(program: Command): void {
 
   registerAgentSourceCommands(agent);
   registerDatasetCommands(agent);
-  registerRunCommands(agent);
   registerExperimentCommands(agent);
   registerSessionCommands(agent);
   registerEnvCommands(agent);

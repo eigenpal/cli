@@ -20,7 +20,6 @@ describe('agent command tree', () => {
       'sync',
       'validate',
       'dataset',
-      'runs',
       'experiment',
       'session',
       'env',
@@ -36,19 +35,18 @@ describe('agent command tree', () => {
     expect(result.stdout).not.toContain('eval/');
   });
 
-  test('runs help exposes list, trace, and artifact inspection commands', () => {
-    const result = spawnSync('bun', [CLI, 'agents', 'runs', '--help'], { encoding: 'utf8' });
+  test('root runs help exposes list, trace, and artifact inspection commands', () => {
+    const result = spawnSync('bun', [CLI, 'runs', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('list');
-    expect(result.stdout).toContain('<target>');
-    expect(result.stdout).not.toContain('rerun');
+    expect(result.stdout).toContain('[source]');
     expect(result.stdout).not.toContain('pull');
     expect(result.stdout).toContain('trace');
     expect(result.stdout).toContain('artifacts');
   });
 
-  test('top-level agent rerun command exposes source selection', () => {
-    const result = spawnSync('bun', [CLI, 'agents', 'rerun', '--help'], { encoding: 'utf8' });
+  test('root runs rerun command exposes source selection', () => {
+    const result = spawnSync('bun', [CLI, 'runs', 'rerun', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('<run-id>');
     expect(result.stdout).toContain('--source-ref <ref>');
@@ -61,8 +59,13 @@ describe('agent command tree', () => {
     expect(result.stdout).toContain('--example <name>');
   });
 
-  test('runs compare uses two positional run ids', () => {
-    const result = spawnSync('bun', [CLI, 'agents', 'runs', 'compare', '--help'], {
+  test('singular agent alias is not registered', () => {
+    const result = spawnSync('bun', [CLI, 'agent', 'list'], { encoding: 'utf8' });
+    expect(result.status).not.toBe(0);
+  });
+
+  test('root runs compare uses two positional run ids', () => {
+    const result = spawnSync('bun', [CLI, 'runs', 'compare', '--help'], {
       encoding: 'utf8',
     });
     expect(result.status).toBe(0);
@@ -99,7 +102,7 @@ describe('agent command tree', () => {
   });
 
   test('runs feedback subcommands are available', () => {
-    const feedback = spawnSync('bun', [CLI, 'agents', 'runs', 'feedback', '--help'], {
+    const feedback = spawnSync('bun', [CLI, 'runs', 'feedback', '--help'], {
       encoding: 'utf8',
     });
     expect(feedback.status).toBe(0);
@@ -125,12 +128,13 @@ describe('agent command tree', () => {
     expect(result.stderr).not.toContain('`eigenpal run` removed');
   });
 
-  test('top-level runs command is not registered', () => {
-    const result = spawnSync('bun', [CLI, 'runs', 'agents.invoice-agent'], {
+  test('bare top-level runs command requires a subcommand', () => {
+    const result = spawnSync('bun', [CLI, 'runs'], {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('requires a subcommand');
     expect(result.stderr).not.toContain('`eigenpal runs` removed');
   });
 });

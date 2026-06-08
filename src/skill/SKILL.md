@@ -23,10 +23,9 @@ Use long command names in generated commands and documentation. They are more
 readable and cost very little for agents to type. Some short aliases exist for
 interactive users; understand them if you see them, but do not prefer them:
 
-- `agents exec` = `agents runs`
-- `agents runs fb` = `agents runs feedback`
-- `agents runs artifact` = `agents runs artifacts`
-- `workflow exec` = `workflow execution`
+- `runs fb` = `runs feedback`
+- `runs artifact` = `runs artifacts`
+- `workflow run` = `workflow runution`
 - `workflow exp` = `workflow experiment`
 - `ls` = `list` anywhere in the CLI
 - `diff` = `compare` anywhere in the CLI
@@ -35,15 +34,20 @@ For exact flags and defaults, prefer the generated references:
 
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
 - [`reference/cli/agents.md`](reference/cli/agents.md)
+- [`reference/cli/runs.md`](reference/cli/runs.md)
 - [`reference/cli/git.md`](reference/cli/git.md)
 
 ## Pick The Surface
 
 Choose `workflow` when the work is about a workflow definition, dataset,
-evaluator, experiment, or workflow execution.
+evaluator, experiment, or creating workflow runutions from local examples.
 
 Choose `agents` when the work is about an agent workspace, agent file, trigger,
-agent execution, trace, feedback entry, expected artifact, or rerun.
+or starting an agent run.
+
+Choose `runs` when the work is about inspecting, watching, comparing,
+cancelling, rerunning, downloading artifacts for, or attaching feedback/expected
+artifacts to any workflow or agent run.
 
 Agents and workflows are related, but their iteration loops are different:
 workflow experiments evaluate datasets with evaluators; agent workflows do not
@@ -66,9 +70,9 @@ eigenpal workflow validate ./workflow.yaml
 eigenpal workflow push --file workflow.yaml
 
 # 4. Run one example while iterating.
-eigenpal workflow execution run <workflow-id> <example-name>
-eigenpal workflow execution watch <execution-id>
-eigenpal workflow execution get <execution-id> --json
+eigenpal workflow run <workflow-id> <example-name>
+eigenpal runs watch <execution-id>
+eigenpal runs get <execution-id> --json
 
 # 5. Manage the dataset and evaluators when ready to evaluate.
 eigenpal workflow dataset validate ./dataset
@@ -88,7 +92,7 @@ also accept the workflow slug for convenience, but use the id in scripts.
 Useful workflow ids are not interchangeable:
 
 - `<workflow-id>` identifies a workflow (`wf_...`).
-- `<execution-id>` identifies one workflow execution.
+- `<execution-id>` identifies one workflow runution.
 - `<batch-id>` identifies one experiment batch.
 - `<example-id>` identifies one dataset example.
 
@@ -163,9 +167,9 @@ eigenpal agents save -m "Improve <agent> behavior"
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
 eigenpal agents run agents.<slug>@"$SOURCE_REF" --example example-name --wait
-eigenpal agents runs get <run-id> --json | jq '.run | {status,schemaValid,error,requestedSourceRef,resolvedGitRef,resolvedGitTag,resolvedCommitSha,cost}'
-eigenpal agents runs artifacts list <run-id>
-eigenpal agents runs trace <run-id> --out ./review/<run-id>/trace.jsonl
+eigenpal runs get <run-id> --json | jq '.run | {status,schemaValid,error,requestedSourceRef,resolvedGitRef,resolvedGitTag,resolvedCommitSha,cost}'
+eigenpal runs artifacts list <run-id>
+eigenpal runs trace <run-id> --out ./review/<run-id>/trace.jsonl
 
 # 6. Release and sync only when ready.
 eigenpal agents release patch agents/<slug>
@@ -173,7 +177,7 @@ eigenpal agents sync agents.<slug>
 
 # 7. Verify the released package.
 eigenpal agents run agents.<slug>@latest --example example-name --wait --json
-eigenpal agents runs get <released-run-id> --json | jq '.run | {status,schemaValid,error,resolvedGitTag,resolvedCommitSha,cost}'
+eigenpal runs get <released-run-id> --json | jq '.run | {status,schemaValid,error,resolvedGitTag,resolvedCommitSha,cost}'
 ```
 
 File inputs must use schema field names when there is more than one file input:
@@ -223,7 +227,7 @@ eigenpal agents sync agents.<dependent-slug>
 ```
 
 After a shared dependency rollout, run one affected agent and inspect
-`eigenpal.lock` via `agents runs artifacts fetch` to confirm the dependency
+`eigenpal.lock` via `runs artifacts fetch` to confirm the dependency
 version and commit that inference actually installed.
 
 ### Agent Datasets And Examples
@@ -260,18 +264,18 @@ Run a persisted example with `eigenpal agents run agents.<slug>@<ref> --example 
 ### Debug Agent Runs
 
 ```bash
-eigenpal agents runs list agents.<slug> --compact
-eigenpal agents runs list agents.<slug> --status failed --compact
-eigenpal agents runs artifacts list <agent-execution-id>
-eigenpal agents runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
-eigenpal agents runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
-eigenpal agents rerun <agent-execution-id> --wait
-eigenpal agents rerun <agent-execution-id> --source-ref original --wait
-eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
+eigenpal runs list agents.<slug> --compact
+eigenpal runs list agents.<slug> --type agent --status failed --compact
+eigenpal runs artifacts list <agent-execution-id>
+eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
+eigenpal runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
+eigenpal runs rerun <agent-execution-id> --wait
+eigenpal runs rerun <agent-execution-id> --source-ref original --wait
+eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
   --normalize-dates
 
-eigenpal agents runs feedback resolve <source-agent-execution-id> \
+eigenpal runs feedback resolve <source-agent-execution-id> \
   --message "Fixed and verified in <new-agent-execution-id>."
 ```
 
@@ -282,7 +286,7 @@ targets show all source refs; add `@<ref>` only when you want a specific
 release, branch, tag, semver range, or commit. `runs list --json` returns
 `{ runs, total, limit, offset }`; `runs get --json` returns `{ run }`.
 
-`agents rerun <run-id>` reuses the previous input snapshot with `latest` source
+`runs rerun <run-id>` reuses the previous input snapshot with `latest` source
 by default. Use `--source-ref original` only when you need to reproduce the
 previous resolved version exactly.
 
@@ -353,12 +357,12 @@ eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ### Run And Compare Workflow Executions
 
 ```bash
-eigenpal workflow execution run <workflow-id> <example-name>
-eigenpal workflow execution watch <execution-id>
-eigenpal workflow execution get <execution-id> --include input,output,error --json
-eigenpal workflow execution list <workflow-id> --status failed --limit 10
-eigenpal workflow execution compare <execution-id-a> <execution-id-b>
-eigenpal workflow execution cancel <execution-id> --yes
+eigenpal workflow run <workflow-id> <example-name>
+eigenpal runs watch <execution-id>
+eigenpal runs get <execution-id> --include input,output,error --json
+eigenpal runs list <workflow-id> --type workflow --status failed --limit 10
+eigenpal runs compare <execution-id-a> <execution-id-b>
+eigenpal runs cancel <execution-id> --yes
 ```
 
 ### Run And Compare Experiments
@@ -400,11 +404,10 @@ and `agents sync`. Live file commands are read/compare tools.
 ### Inspect Agent Executions
 
 ```bash
-eigenpal agents runs list <agent-id-or-slug> --status failed --limit 10
-eigenpal agents runs list <agent-id-or-slug> --feedback-rating fail --include feedback,expected
-eigenpal agents runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json | jq '.run'
-eigenpal agents runs artifacts list <agent-execution-id>
-eigenpal agents runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
+eigenpal runs list <agent-id-or-slug> --type agent --status failed --limit 10
+eigenpal runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json | jq '.run'
+eigenpal runs artifacts list <agent-execution-id>
+eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
 ```
 
 Use `--compact` on execution lists when you only need triage rows.
@@ -412,9 +415,9 @@ Use `--compact` on execution lists when you only need triage rows.
 ### Download Agent Traces
 
 ```bash
-eigenpal agents runs trace <agent-execution-id> --out trace.jsonl
-eigenpal agents runs trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
-eigenpal agents runs trace <agent-execution-id> | rg 'error|tool'
+eigenpal runs trace <agent-execution-id> --out trace.jsonl
+eigenpal runs trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
+eigenpal runs trace <agent-execution-id> | rg 'error|tool'
 ```
 
 `trace` streams the raw JSONL to stdout by default. Use shell tools such as
@@ -423,18 +426,18 @@ eigenpal agents runs trace <agent-execution-id> | rg 'error|tool'
 ### Manage Agent Feedback And Expected Artifacts
 
 ```bash
-eigenpal agents runs feedback update <agent-execution-id> \
+eigenpal runs feedback update <agent-execution-id> \
   --status open \
   --rating fail \
   --message "Expected the filing date to be extracted."
-eigenpal agents runs feedback resolve <agent-execution-id> \
+eigenpal runs feedback resolve <agent-execution-id> \
   --message "Fixed and verified."
-eigenpal agents runs feedback clear <agent-execution-id> --yes
+eigenpal runs feedback clear <agent-execution-id> --yes
 
-eigenpal agents runs expected list <agent-execution-id>
-eigenpal agents runs expected upload <agent-execution-id> expected.json --name expected.json
-eigenpal agents runs expected copy-output <agent-execution-id> result.json --name expected.json
-eigenpal agents runs expected pull <agent-execution-id> --out expected/
+eigenpal runs expected list <agent-execution-id>
+eigenpal runs expected upload <agent-execution-id> expected.json --name expected.json
+eigenpal runs expected copy-output <agent-execution-id> result.json --name expected.json
+eigenpal runs expected pull <agent-execution-id> --out expected/
 ```
 
 Feedback is attached to one execution. Expected artifacts are the references
@@ -443,10 +446,10 @@ used when comparing future runs.
 ### Rerun And Compare Agent Executions
 
 ```bash
-eigenpal agents rerun <agent-execution-id> --wait
-eigenpal agents rerun <agent-execution-id> --source-ref original --wait
-eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id>
-eigenpal agents runs compare <source-agent-execution-id> <new-agent-execution-id> \
+eigenpal runs rerun <agent-execution-id> --wait
+eigenpal runs rerun <agent-execution-id> --source-ref original --wait
+eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id>
+eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
   --normalize-dates \
   --fail-on-diff
@@ -463,9 +466,9 @@ Most `list`, `get`, and mutating commands support `--json`. Prefer JSON when a
 script or agent needs to inspect the result with `jq`.
 
 ```bash
-eigenpal workflow execution list <workflow-id> --json | jq '.data[0].id'
-eigenpal agents runs list <agent-id-or-slug> --json | jq '.runs[0].id'
-eigenpal agents runs get <agent-execution-id> --json | jq '.run.id'
+eigenpal runs list <workflow-id> --type workflow --json | jq '.runs[0].id'
+eigenpal runs list <agent-id-or-slug> --type agent --json | jq '.runs[0].id'
+eigenpal runs get <agent-execution-id> --json | jq '.run.id'
 ```
 
 General exit-code convention:
@@ -488,7 +491,7 @@ Workflow schemas:
 - [`reference/step-exec.md`](reference/step-exec.md) — single-step execution command
 - [`reference/dataset-format.md`](reference/dataset-format.md) — dataset folder format
 - [`reference/evaluators.md`](reference/evaluators.md) — evaluator configuration
-- [`reference/debugging.md`](reference/debugging.md) — workflow execution debugging
+- [`reference/debugging.md`](reference/debugging.md) — workflow runution debugging
 
 CLI command references:
 
@@ -566,8 +569,8 @@ Agent command roles:
 - `agents release` — create immutable package release tags.
 - `agents sync` — apply latest released agent manifest/triggers to the server.
 - `agents run` — start a run from a source ref (`@latest`, version, branch, commit).
-- `agents rerun` — reuse a previous input snapshot; defaults to latest source.
-- `agents runs list/get/watch/cancel/compare/trace` — inspect and manage executions.
-- `agents runs artifacts list/fetch` — inventory and download run artifacts by path.
+- `runs rerun` — reuse a previous input snapshot; defaults to latest source.
+- `runs list/get/watch/cancel/compare/trace` — inspect and manage executions.
+- `runs artifacts list/fetch` — inventory and download run artifacts by path.
 - `agents dataset` — manage persisted agent examples; runtime data, not Git source.
 - `agents file` — live read/diff inspection only.
