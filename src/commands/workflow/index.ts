@@ -39,7 +39,6 @@ import {
 } from '../../lib/ui';
 import { clearEvalOutputs } from './clear';
 import { registerEvaluatorTypeCommands } from './evaluator-type';
-import { registerWorkflowRunCommand } from './execution';
 import {
   buildBatchDiff,
   fetchEvalResults,
@@ -198,6 +197,18 @@ async function readDirAsZip(dir: string): Promise<Uint8Array> {
 }
 
 /**
+ * Build the dataset-export URL for `dataset pull`. With no example ids it
+ * exports the whole dataset; otherwise it appends `?exampleIds=<csv>` so the
+ * server returns just those examples. Each id is URL-encoded. Exported for tests.
+ */
+export function datasetExportPath(workflowId: string, exampleIds?: string[]): string {
+  const base = `/api/v1/workflows/${workflowId}/dataset/export`;
+  if (!exampleIds || exampleIds.length === 0) return base;
+  const query = exampleIds.map((id) => encodeURIComponent(id)).join(',');
+  return `${base}?exampleIds=${query}`;
+}
+
+/**
  * Stream a binary export route to a file on disk and log the byte count.
  * Used by `dataset pull` and `experiment results`.
  */
@@ -269,7 +280,7 @@ function parseNdjsonEvents(text: string): Array<Record<string, unknown>> {
 export function registerWorkflowCommands(program: Command): void {
   const workflow = program
     .command('workflow')
-    .description('Manage workflows: push, pull, run, evaluate.')
+    .description('Manage workflows: push, pull, and evaluate.')
     .addHelpText(
       'after',
       `
@@ -290,7 +301,6 @@ YAML's \`name:\` field). Both:
   registerEvaluatorsCommands(workflow);
   registerDatasetCommands(workflow);
   registerExperimentCommands(workflow);
-  registerWorkflowRunCommand(workflow);
   registerVersionsCommands(workflow);
   registerStepTypeCommands(workflow);
   // Sibling to `step-type` — evaluators have their own schema shape (no
@@ -311,7 +321,7 @@ YAML's \`name:\` field). Both:
   // Single-step execution. The previous local-runner implementation was
   // removed (it diverged from production worker behavior and assumed shell
   // env state real CLI users don't have). Currently a placeholder that
-  // exits 2 with a redirect to `workflow run` / `experiment run`. EIG-104
+  // exits 2 with a redirect to `run` / `workflow experiment run`. EIG-104
   // tracks the server-side redesign that will restore single-step execution
   // through a thin POST → /api/v1/workflows/step-exec.
   registerStepExecCommands(workflow);
@@ -794,16 +804,36 @@ function registerDatasetCommands(parent: Command): void {
     .option(
       '--out <zip>',
       'Write the dataset ZIP to this path. When omitted, the binary streams to stdout.'
+    )
+    .option(
+      '--example-id <id>',
+      'Export only this example (repeatable). When omitted, the whole dataset is exported.',
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow dataset pull wf_abc123 --out dataset.zip
+  $ eigenpal workflow dataset pull wf_abc123 --example-id evx_111 --out case.zip
+  $ eigenpal workflow dataset pull wf_abc123 --example-id evx_111 --example-id evx_222 --out subset.zip
+
+A subset export uses the same archive layout as a full pull, so it re-imports
+into any dataset via \`dataset push --mode append\`. Passing \`--example-id\` values
+that don't exist for the workflow exits non-zero (the server returns 404).
+`
     );
   withBaseUrl(pullCmd).action(
-    action(async (workflow: string, opts: WorkflowCommandConfig & { out: string }) => {
-      const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-      await downloadStreamToFile(
-        client,
-        `/api/v1/workflows/${workflowId}/dataset/export`,
-        opts.out
-      );
-    })
+    action(
+      async (
+        workflow: string,
+        opts: WorkflowCommandConfig & { out: string; exampleId: string[] }
+      ) => {
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        await downloadStreamToFile(client, datasetExportPath(workflowId, opts.exampleId), opts.out);
+      }
+    )
   );
 
   const pushCmd = dataset

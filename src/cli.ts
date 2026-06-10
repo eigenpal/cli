@@ -13,6 +13,7 @@ import {
   runGitPassthroughFromArgv,
 } from './commands/git';
 import { init } from './commands/init';
+import { registerRunCommands } from './commands/run';
 import { registerRunsCommands } from './commands/runs';
 import { installSkillTools, listSkillTools, uninstallSkillTools } from './commands/skill';
 import { status } from './commands/status';
@@ -35,6 +36,7 @@ const cliVersion = pkg.version === '0.0.0-placeholder' ? 'dev' : pkg.version;
 program
   .name('eigenpal')
   .description('Eigenpal CLI — AI workflows, evals, and experiments')
+  .enablePositionalOptions()
   .version(cliVersion, '-v, --version', 'Print the CLI version and exit')
   .option(
     '-q, --quiet',
@@ -66,7 +68,7 @@ program
 const initCmd = program
   .command('init [name]')
   .description(
-    'Scaffold a new workflow project. Without `[name]`, scaffolds into the current directory using the cwd basename as the workflow name. With `[name]`, creates `./<name>/` and uses that as the slug. The flat layout matches what `workflow run <slug>` already discovers — no manual file moves.'
+    'Scaffold a new workflow project. Without `[name]`, scaffolds into the current directory using the cwd basename as the workflow name. With `[name]`, creates `./<name>/` and uses that as the slug. The flat layout matches what `run workflows.<slug>` already discovers — no manual file moves.'
   )
   .option('--template <name>', 'Skip the picker; use this template')
   .option('--dir <dir>', 'Target directory (default: cwd if `[name]` omitted, else ./<name>)')
@@ -78,7 +80,7 @@ const initCmd = program
           await init(name, opts);
         } else {
           // Bare `eigenpal init` — scaffold into the cwd with the workflow
-          // slug derived from the basename. Pair with `workflow run <basename>`
+          // slug derived from the basename. Pair with `run workflows.<basename>`
           // so a freshly-scaffolded folder runs without moves. If the cwd
           // basename isn't a valid slug, fall back to "my-workflow" so the
           // command still succeeds (rename later).
@@ -169,6 +171,7 @@ authCmd
 
 registerWorkflowCommands(program);
 registerAgentCommands(program);
+registerRunCommands(program);
 registerRunsCommands(program);
 registerGitCommands(program);
 

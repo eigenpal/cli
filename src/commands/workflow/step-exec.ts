@@ -9,7 +9,7 @@
  *
  * EIG-104 replaces them with a single `POST /api/v1/workflows/step-exec`
  * endpoint that runs the same code path executions take. Until that lands,
- * `step exec` exits 2 with a redirect to the workflow run / experiment run
+ * `step exec` exits 2 with a redirect to the root run / experiment run
  * commands.
  */
 
@@ -29,7 +29,7 @@ function exitUnsupported(type: string): never {
       `   which diverged from production worker behavior. Tracking the server-side\n` +
       `   redesign in EIG-104.\n\n` +
       `   To run a single step today, push the workflow and run it via:\n` +
-      `     $ eigenpal workflow run <workflow-id>\n` +
+      `     $ eigenpal run workflows.<workflow-id>\n` +
       `     $ eigenpal workflow experiment run <workflow-id> --example-id <name>`
   );
   process.exit(UNSUPPORTED_TYPE_EXIT);
@@ -44,7 +44,7 @@ export function registerStepExecCommands(workflow: Command): void {
     .command('exec <type>')
     .description(
       'DISABLED — local mimic runners removed pending server-side redesign (EIG-104). ' +
-        'Use `workflow run` or `workflow experiment run` instead.'
+        'Use `run` or `workflow experiment run` instead.'
     )
     .option('--config-json <json>', '(unused; kept for back-compat parsing)')
     .option('--config-file <path>', '(unused)')

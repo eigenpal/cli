@@ -1,6 +1,6 @@
 /**
  * Shared file system helpers for CLI commands.
- * Consolidates utilities used across payload helpers (workflow run / eval-local).
+ * Consolidates utilities used across payload helpers (root run examples / eval-local).
  */
 
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs';

@@ -11,7 +11,8 @@ export interface ExecutionArtifactPayload {
   completedAt: string | null;
   error: string | null;
   overrides: Record<string, unknown> | null;
-  result: unknown;
+  /** Final workflow output (`output` on the runs detail wire shape). */
+  output: unknown;
   stepExecutions: Array<{
     stepName: string;
     stepType: string;
@@ -83,7 +84,7 @@ export async function writeExecutionArtifacts(
   mkdirSync(filesDir, { recursive: true });
 
   const generatedFiles: GeneratedFileEntry[] = [];
-  const result = payload.result;
+  const result = payload.output;
   if (isWorkflowResult(result) && result.files.length > 0) {
     for (let i = 0; i < result.files.length; i++) {
       const entry = result.files[i];

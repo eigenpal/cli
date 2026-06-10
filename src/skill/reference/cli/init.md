@@ -1,6 +1,6 @@
 # eigenpal init
 
-Scaffold a new workflow project. Without `[name]`, scaffolds into the current directory using the cwd basename as the workflow name. With `[name]`, creates `./<name>/` and uses that as the slug. The flat layout matches what `workflow run <slug>` already discovers — no manual file moves.
+Scaffold a new workflow project. Without `[name]`, scaffolds into the current directory using the cwd basename as the workflow name. With `[name]`, creates `./<name>/` and uses that as the slug. The flat layout matches what `run workflows.<slug>` already discovers — no manual file moves.
 
 ## Contents
 

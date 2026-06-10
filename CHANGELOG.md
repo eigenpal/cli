@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.6.15
+
+### Minor Changes
+
+- ca87265: Unify workflow and agent run starts behind the canonical `/api/v1/run/{target}` endpoint, root `eigenpal run` / `eigenpal rerun` commands, and root SDK `client.run()` / `client.rerun()` methods.
+
+  The old nested CLI commands and SDK resource methods for starting workflow or agent runs have been removed.
+
+### Patch Changes
+
+- 5ea0bb5: `workflow dataset pull` gains `--example-id <id>` (repeatable) to export a single example or a selected subset of a dataset, instead of always pulling the whole dataset. The subset ZIP uses the same archive layout as a full pull, so it re-imports into any dataset via `dataset push --mode append`. Requesting an example id that doesn't exist for the workflow exits non-zero.
+
 ## 0.6.10
 
 ### Patch Changes

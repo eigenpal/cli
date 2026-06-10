@@ -39,7 +39,7 @@ evals, traces, and governance.
 ```bash
 eigenpal init workflow extract --template pdf-extraction
 eigenpal workflow validate                              # local validation
-eigenpal workflow run <id> <example> --watch  # one-shot run
+eigenpal run workflows.<id> --example <example> --wait  # one-shot run
 eigenpal workflow dataset push <id> --file ./dataset    # upload dataset
 eigenpal workflow experiment run <id>                   # batch eval
 eigenpal runs list <id> --type workflow --json | jq     # query as JSON

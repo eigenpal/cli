@@ -12,7 +12,6 @@ describe('agent command tree', () => {
     const result = spawnSync('bun', [CLI, 'agents', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
     for (const word of [
-      'run',
       'list',
       'clone',
       'save',
@@ -45,18 +44,25 @@ describe('agent command tree', () => {
     expect(result.stdout).toContain('artifacts');
   });
 
-  test('root runs rerun command exposes source selection', () => {
-    const result = spawnSync('bun', [CLI, 'runs', 'rerun', '--help'], { encoding: 'utf8' });
+  test('root rerun command exposes version selection', () => {
+    const result = spawnSync('bun', [CLI, 'rerun', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('<run-id>');
-    expect(result.stdout).toContain('--source-ref <ref>');
+    expect(result.stdout).toContain('--version <version>');
     expect(result.stdout).toContain('original');
   });
 
   test('run help exposes persisted example execution', () => {
-    const result = spawnSync('bun', [CLI, 'agents', 'run', '--help'], { encoding: 'utf8' });
+    const result = spawnSync('bun', [CLI, 'run', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
+    expect(result.stdout).toContain('<target>');
     expect(result.stdout).toContain('--example <name>');
+  });
+
+  test('agent run start command is not registered', () => {
+    const result = spawnSync('bun', [CLI, 'agents', 'run', '--help'], { encoding: 'utf8' });
+    expect(result.stdout).not.toContain('Usage: eigenpal agents run');
+    expect(result.stdout).not.toContain('--example <name>');
   });
 
   test('singular agent alias is not registered', () => {
@@ -117,15 +123,6 @@ describe('agent command tree', () => {
     );
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('Dataset replace aborted');
-  });
-
-  test('top-level run command is not registered', () => {
-    const result = spawnSync('bun', [CLI, 'run', 'workflows.invoice@latest'], {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).not.toContain('`eigenpal run` removed');
   });
 
   test('bare top-level runs command requires a subcommand', () => {

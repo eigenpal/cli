@@ -1,21 +1,23 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { AgentInputFileSpec } from './shared';
+import { guessMimeType } from '../lib/fs-helpers';
 
-export async function buildAgentExecutionRunFormData(
-  inputFile: string | string[],
-  inputJson?: string
-): Promise<FormData> {
+export async function buildRunFormData(input: {
+  inputFile: string | string[];
+  inputJson?: string;
+}): Promise<FormData> {
   const form = new FormData();
-  for (const spec of parseAgentInputFileSpecs(inputFile)) {
+  for (const spec of parseInputFileSpecs(input.inputFile)) {
     const data = await fs.readFile(spec.filePath);
-    form.append(spec.fieldName, new Blob([data]), path.basename(spec.filePath));
+    const filename = path.basename(spec.filePath);
+    const mimeType = guessMimeType(filename) || 'application/octet-stream';
+    form.append(spec.fieldName, new Blob([data], { type: mimeType }), filename);
   }
-  if (inputJson) form.append('_json', inputJson);
+  form.append('_json', JSON.stringify(input.inputJson ? JSON.parse(input.inputJson) : {}));
   return form;
 }
 
-function parseAgentInputFileSpecs(inputFile: string | string[]): AgentInputFileSpec[] {
+function parseInputFileSpecs(inputFile: string | string[]) {
   const values = Array.isArray(inputFile) ? inputFile : [inputFile];
   return values.map((value) => {
     const separatorIndex = value.indexOf('=');

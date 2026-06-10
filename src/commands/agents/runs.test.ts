@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';
-import { buildAgentExecutionRunFormData } from './run-form-data';
 import { parseAgentTarget } from './target';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
@@ -24,7 +21,7 @@ async function withAgentRunServer(
           headers: { 'content-type': 'application/json', ...init?.headers },
         });
 
-      if (request.method === 'POST' && url.pathname === '/api/v1/agents/invoice-agent/run') {
+      if (request.method === 'POST' && url.pathname.startsWith('/api/v1/run/')) {
         return json({ runId: 'run_terminal' });
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_terminal') {
@@ -113,69 +110,14 @@ function runCli(
 }
 
 describe('agent run command helpers', () => {
-  test('execution run file upload supports named repeated multipart fields', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-run-'));
-    const file = join(dir, 'invoice.pdf');
-    const secondFile = join(dir, 'statement.pdf');
-    try {
-      writeFileSync(file, 'fake pdf');
-      writeFileSync(secondFile, 'fake statement');
-
-      const form = await buildAgentExecutionRunFormData(
-        [`document=${file}`, `bank_statement=${secondFile}`],
-        '{"language":"en"}'
-      );
-      const entries = [...form.entries()];
-
-      expect(entries.map(([key]) => key)).toEqual(['document', 'bank_statement', '_json']);
-      expect(entries.find(([key]) => key === 'input')).toBeUndefined();
-      expect(entries.find(([key]) => key === '_sourceRef')).toBeUndefined();
-      expect(entries.find(([key]) => key === '_json')?.[1]).toBe('{"language":"en"}');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('execution run file upload keeps bare path compatibility with file field', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-run-'));
-    const file = join(dir, 'invoice.pdf');
-    try {
-      writeFileSync(file, 'fake pdf');
-
-      const form = await buildAgentExecutionRunFormData(file);
-      const entries = [...form.entries()];
-
-      expect(entries.map(([key]) => key)).toEqual(['file']);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('execution run file upload rejects reserved multipart fields', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-run-'));
-    const file = join(dir, 'invoice.pdf');
-    try {
-      writeFileSync(file, 'fake pdf');
-
-      for (const field of ['_json', '_metadata', 'input']) {
-        await expect(buildAgentExecutionRunFormData(`${field}=${file}`)).rejects.toThrow(
-          `--input-file field "${field}" is reserved`
-        );
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test.each([['failed' as const], ['cancelled' as const]])(
-    'agents run --wait --json exits nonzero when terminal status is %s',
+    'run --wait --json exits nonzero when terminal status is %s',
     async (status) => {
       await withAgentRunServer(status, async (baseUrl) => {
         const result = await runCli(
           [
-            'agents',
             'run',
-            'invoice-agent',
+            'agents.invoice-agent@latest',
             '--wait',
             '--json',
             '--interval',

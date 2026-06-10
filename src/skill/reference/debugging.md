@@ -11,12 +11,12 @@ eigenpal runs compare <a> <b>             # side-by-side diff of two runs
 ## 1. Reproduce the failure
 
 ```bash
-eigenpal workflow run <workflow-id> <example-name>
+eigenpal run workflows.<workflow-id> --example <example-name>
 ```
 
 `<workflow-id>` is either a `wf_…` id or a slug (the YAML's `name:`
 field). The workflow must be pushed (`eigenpal workflow push`) before
-`execution run` works — only saved workflows execute. Streams a live
+`eigenpal run` works — only saved workflows execute. Streams a live
 step list as the run progresses. Bails to the prompt the moment a step
 transitions to `failed`.
 

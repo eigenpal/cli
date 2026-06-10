@@ -25,7 +25,7 @@ interactive users; understand them if you see them, but do not prefer them:
 
 - `runs fb` = `runs feedback`
 - `runs artifact` = `runs artifacts`
-- `workflow run` = `workflow runution`
+- `run` = start a workflow or agent run
 - `workflow exp` = `workflow experiment`
 - `ls` = `list` anywhere in the CLI
 - `diff` = `compare` anywhere in the CLI
@@ -40,7 +40,7 @@ For exact flags and defaults, prefer the generated references:
 ## Pick The Surface
 
 Choose `workflow` when the work is about a workflow definition, dataset,
-evaluator, experiment, or creating workflow runutions from local examples.
+evaluator, or experiment. Choose root `run` to create workflow runs from local examples.
 
 Choose `agents` when the work is about an agent workspace, agent file, trigger,
 or starting an agent run.
@@ -70,7 +70,7 @@ eigenpal workflow validate ./workflow.yaml
 eigenpal workflow push --file workflow.yaml
 
 # 4. Run one example while iterating.
-eigenpal workflow run <workflow-id> <example-name>
+eigenpal run workflows.<workflow-id> --example <example-name>
 eigenpal runs watch <execution-id>
 eigenpal runs get <execution-id> --json
 
@@ -92,7 +92,7 @@ also accept the workflow slug for convenience, but use the id in scripts.
 Useful workflow ids are not interchangeable:
 
 - `<workflow-id>` identifies a workflow (`wf_...`).
-- `<execution-id>` identifies one workflow runution.
+- `<execution-id>` identifies one workflow run.
 - `<batch-id>` identifies one experiment batch.
 - `<example-id>` identifies one dataset example.
 
@@ -165,8 +165,8 @@ eigenpal agents save -m "Improve <agent> behavior"
 
 # 5. Test the exact saved commit.
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
-eigenpal agents run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
-eigenpal agents run agents.<slug>@"$SOURCE_REF" --example example-name --wait
+eigenpal run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
+eigenpal run agents.<slug>@"$SOURCE_REF" --example example-name --wait
 eigenpal runs get <run-id> --json | jq '.run | {status,schemaValid,error,requestedSourceRef,resolvedGitRef,resolvedGitTag,resolvedCommitSha,cost}'
 eigenpal runs artifacts list <run-id>
 eigenpal runs trace <run-id> --out ./review/<run-id>/trace.jsonl
@@ -176,18 +176,18 @@ eigenpal agents release patch agents/<slug>
 eigenpal agents sync agents.<slug>
 
 # 7. Verify the released package.
-eigenpal agents run agents.<slug>@latest --example example-name --wait --json
+eigenpal run agents.<slug> --example example-name --wait --json
 eigenpal runs get <released-run-id> --json | jq '.run | {status,schemaValid,error,resolvedGitTag,resolvedCommitSha,cost}'
 ```
 
 File inputs must use schema field names when there is more than one file input:
 
 ```bash
-eigenpal agents run agents.<slug>@latest \
+eigenpal run agents.<slug> \
   --input-file start_info_doc=./ZFRP.docx \
   --wait
 
-eigenpal agents run agents.<slug>@latest \
+eigenpal run agents.<slug> \
   --input-file zfzal_doc=./ZFZAL.pdf \
   --input-file lv_doc=./list_vlastnictva.pdf \
   --input-json '{"skip_name_check":false}' \
@@ -259,7 +259,7 @@ For `expected.json`, include only fields that must be identical on every correct
 run. Omit non-deterministic values such as timestamps, random IDs, and free-form
 LLM text. Validate the actual agent output with the output schema; validate the
 expected file as a partial assertion.
-Run a persisted example with `eigenpal agents run agents.<slug>@<ref> --example <name> --wait`.
+Run a persisted example with `eigenpal run agents.<slug>@<ref> --example <name> --wait`.
 
 ### Debug Agent Runs
 
@@ -357,7 +357,7 @@ eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ### Run And Compare Workflow Executions
 
 ```bash
-eigenpal workflow run <workflow-id> <example-name>
+eigenpal run workflows.<workflow-id> --example <example-name>
 eigenpal runs watch <execution-id>
 eigenpal runs get <execution-id> --include input,output,error --json
 eigenpal runs list <workflow-id> --type workflow --status failed --limit 10
@@ -491,7 +491,7 @@ Workflow schemas:
 - [`reference/step-exec.md`](reference/step-exec.md) — single-step execution command
 - [`reference/dataset-format.md`](reference/dataset-format.md) — dataset folder format
 - [`reference/evaluators.md`](reference/evaluators.md) — evaluator configuration
-- [`reference/debugging.md`](reference/debugging.md) — workflow runution debugging
+- [`reference/debugging.md`](reference/debugging.md) — workflow run debugging
 
 CLI command references:
 
@@ -568,7 +568,7 @@ Agent command roles:
 - `agents save` — validate, commit if dirty, and push the current branch.
 - `agents release` — create immutable package release tags.
 - `agents sync` — apply latest released agent manifest/triggers to the server.
-- `agents run` — start a run from a source ref (`@latest`, version, branch, commit).
+- `run` — start a workflow or agent run from a target ref (`@latest`, version, branch, commit).
 - `runs rerun` — reuse a previous input snapshot; defaults to latest source.
 - `runs list/get/watch/cancel/compare/trace` — inspect and manage executions.
 - `runs artifacts list/fetch` — inventory and download run artifacts by path.

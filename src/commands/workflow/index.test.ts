@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   bumpSemver,
+  datasetExportPath,
   formatShortStatus,
   readJsonInput,
   renderExperimentFailures,
@@ -37,12 +38,14 @@ describe('command aliases', () => {
   test('keeps explicit high-value workflow aliases', () => {
     const workflow = spawnSync('bun', [CLI, 'workflow', '--help'], { encoding: 'utf8' });
     expect(workflow.status).toBe(0);
-    expect(workflow.stdout).toContain('run');
     expect(workflow.stdout).toContain('experiment');
 
-    const run = spawnSync('bun', [CLI, 'workflow', 'run', '--help'], { encoding: 'utf8' });
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain('<workflow-id> [examples...]');
+    // `workflow run` was removed by the unified run surface — starting runs
+    // is `eigenpal run <target>` now (unified-run-cli spec, task 6.8).
+    const run = spawnSync('bun', [CLI, 'workflow', 'run', 'workflows.extract-invoice'], {
+      encoding: 'utf8',
+    });
+    expect(run.status).not.toBe(0);
 
     const execution = spawnSync('bun', [CLI, 'workflow', 'execution', 'run', 'wf_abc123'], {
       encoding: 'utf8',
@@ -57,6 +60,39 @@ describe('command aliases', () => {
     expect(
       spawnSync('bun', [CLI, 'workflow', 'exp', 'diff', '--help'], { encoding: 'utf8' }).status
     ).toBe(0);
+  });
+});
+
+describe('datasetExportPath', () => {
+  const base = '/api/v1/workflows/wf_abc123/dataset/export';
+
+  test('returns the bare export path when no examples are requested', () => {
+    expect(datasetExportPath('wf_abc123')).toBe(base);
+    expect(datasetExportPath('wf_abc123', [])).toBe(base);
+  });
+
+  test('appends a single example id', () => {
+    expect(datasetExportPath('wf_abc123', ['evx_111'])).toBe(`${base}?exampleIds=evx_111`);
+  });
+
+  test('joins multiple example ids with a comma', () => {
+    expect(datasetExportPath('wf_abc123', ['evx_111', 'evx_222'])).toBe(
+      `${base}?exampleIds=evx_111,evx_222`
+    );
+  });
+
+  test('URL-encodes each id', () => {
+    expect(datasetExportPath('wf_abc123', ['a b', 'c&d'])).toBe(`${base}?exampleIds=a%20b,c%26d`);
+  });
+});
+
+describe('dataset pull --help', () => {
+  test('documents the --example-id flag', () => {
+    const result = spawnSync('bun', [CLI, 'workflow', 'dataset', 'pull', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('--example-id');
   });
 });
 

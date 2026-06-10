@@ -7,7 +7,6 @@ import {
   dim,
   error,
   formatTimestamp,
-  intArg,
   success,
   table,
   warn,
@@ -16,26 +15,16 @@ import {
   type PaginationOpts,
 } from '../../lib/ui';
 import { registerAgentSourceCommands, validateSourcePackage } from '../git';
-import { runExample, runExecution } from '../runs';
 import { registerDatasetCommands } from './dataset';
 import { registerEnvCommands, registerSecretsExportCommands } from './env';
 import { registerExperimentCommands } from './experiments';
 import { registerAgentFileCommands } from './files';
 import { registerSessionCommands } from './sessions';
-import {
-  BaseOpts,
-  PACKAGE_MANIFEST,
-  buildClient,
-  collectRepeated,
-  compactParams,
-  printJson,
-} from './shared';
-import { parseAgentTarget } from './target';
+import { BaseOpts, PACKAGE_MANIFEST, buildClient, compactParams, printJson } from './shared';
 import { validateAgentProject } from './validation';
 
 export { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';
 export { sourcePathForInstalledPackage } from './env';
-export { buildAgentExecutionRunFormData } from './run-form-data';
 export { parseAgentTarget } from './target';
 export { validateAgentProject, validateDatasetDir } from './validation';
 
@@ -51,21 +40,6 @@ export function registerAgentCommands(program: Command): void {
       );
       process.exit(2);
     });
-
-  addJsonFlag(withBaseUrl(agent.command('run <target>')))
-    .description('Run an agent target, e.g. agents.invoice-agent@latest.')
-    .option('--input-json <json>', 'JSON input object')
-    .option(
-      '--input-file <field=path>',
-      'Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file".',
-      collectRepeated,
-      []
-    )
-    .option('--example <name>', 'Run a persisted dataset example by name')
-    .option('--wait', 'Poll until the run reaches a terminal status')
-    .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
-    .action(action(runTarget));
 
   addJsonFlag(withPagination(withBaseUrl(agent.command('list')), 50))
     .description('List agents.')
@@ -86,31 +60,6 @@ export function registerAgentCommands(program: Command): void {
   registerSessionCommands(agent);
   registerEnvCommands(agent);
   registerSecretsExportCommands(agent);
-}
-
-async function runTarget(
-  target: string,
-  opts: BaseOpts & {
-    inputJson?: string;
-    inputFile?: string[];
-    example?: string;
-    wait?: boolean;
-    interval: number;
-    maxWait: number;
-  }
-) {
-  const parsed = parseAgentTarget(target);
-  if (opts.example) {
-    if (opts.inputJson || (opts.inputFile && opts.inputFile.length > 0)) {
-      throw new Error('--example cannot be combined with --input-json or --input-file');
-    }
-    return runExample(parsed.slug, {
-      ...opts,
-      sourceRef: parsed.sourceRef,
-      example: opts.example,
-    });
-  }
-  return runExecution(parsed.slug, { ...opts, sourceRef: parsed.sourceRef });
 }
 
 async function listAgents(opts: BaseOpts & PaginationOpts & { search?: string }) {

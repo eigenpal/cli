@@ -1,3 +1,4 @@
+import { runTargetApiPath } from '@eigenpal/types';
 import { join } from 'path';
 import { type ApiClient } from '../../lib/client';
 import {
@@ -17,7 +18,7 @@ const DEFAULT_CONCURRENCY = 3;
 interface ExecutionStatus {
   executionId: string;
   status: string;
-  result?: unknown;
+  output?: unknown;
   error?: string;
 }
 
@@ -36,6 +37,8 @@ async function pollExecution(client: ApiClient, executionId: string): Promise<Ex
 
 export interface RunExecOptions {
   concurrencyOverride?: number;
+  /** Workflow version to run (`eigenpal run workflows.x@<v> --example ...`). */
+  version?: string;
 }
 
 export interface ExecRunSummary {
@@ -47,7 +50,7 @@ export interface ExecRunSummary {
 
 /**
  * Run exec: resolve `<workflow>` to a saved workflow id, then for each
- * example POST inputs to `/api/v1/workflows/<id>/run` and poll. Local YAML
+ * example POST inputs to `/api/v1/run` and poll. Local YAML
  * is never sent — the platform's saved version is the source of truth.
  */
 export async function runExec(
@@ -75,7 +78,7 @@ export async function runExec(
   info(
     `Running workflow ${ui.bold(`"${workflowIdOrSlug}"`)} ${ui.dim(`(${workflowId}, ${names.length} example(s), concurrency ${concurrency})`)}`
   );
-  dim('Using saved-workflow run endpoint.');
+  dim('Using unified run endpoint.');
 
   const interactive = isTTY();
   const progress = createProgressLines({
@@ -112,12 +115,13 @@ export async function runExec(
 
         // Always go through the multipart path so file uploads stream
         // straight to storage — no base64 round-trip. Scalar inputs ride
-        // along in the canonical `_json` sidecar field.
+        // along in the canonical `_json` sidecar field; per-step overrides
+        // from meta.json ride in the reserved `_overrides` field.
         const form = new FormData();
-        const sidecar: Record<string, unknown> = { trigger: 'cli' };
-        if (Object.keys(example.scalars).length > 0) sidecar.input = example.scalars;
-        if (example.overrides) sidecar.overrides = example.overrides;
-        form.append('_json', JSON.stringify(sidecar));
+        form.append('_json', JSON.stringify(example.scalars));
+        if (example.overrides) {
+          form.append('_overrides', JSON.stringify(example.overrides));
+        }
         for (const file of example.files) {
           // Buffer is a Uint8Array subclass — Bun/Node FormData accept the
           // buffer directly when wrapped as a Blob with a filename.
@@ -130,13 +134,16 @@ export async function runExec(
           );
         }
 
-        const res = (await client.postFormData(`/api/v1/workflows/${workflowId}/run`, form)) as {
-          executionId?: string;
+        const res = (await client.postFormData(
+          runTargetApiPath({ type: 'workflow', id: workflowId, version: options.version }),
+          form
+        )) as {
+          runId?: string;
         };
-        if (typeof res?.executionId !== 'string') {
-          throw new Error('Run API did not return executionId');
+        if (typeof res?.runId !== 'string') {
+          throw new Error('Run API did not return runId');
         }
-        const executionId = res.executionId;
+        const executionId = res.runId;
 
         // Surface the id immediately — if polling or artifact-write fails
         // below, the user still has a handle to recover with

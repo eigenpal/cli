@@ -55,6 +55,9 @@ export class ApiClient {
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return {
       Authorization: `Bearer ${this.apiKey}`,
+      // Run-start endpoints record this as the run's trigger provenance so
+      // CLI-started runs show up as `cli` (not `api`) in run history.
+      'X-Eigenpal-Trigger': 'cli',
       ...(this.tenantId ? { 'x-eigenpal-tenant-id': this.tenantId } : {}),
       ...extra,
     };

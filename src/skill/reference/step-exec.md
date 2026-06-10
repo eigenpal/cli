@@ -20,7 +20,7 @@ Until EIG-104 lands, single-step iteration goes through the queue:
 
 ```bash
 # Run the whole workflow once with a specific example.
-eigenpal workflow run <workflow-id>
+eigenpal run workflows.<workflow-id>
 
 # Or iterate on one example via the experiment surface.
 eigenpal workflow experiment run <workflow-id> --example-id <name>
@@ -47,7 +47,7 @@ names (`input` / `output` / `config`).
 
 | Code | When |
 | --- | --- |
-| 2 | Always — the command is disabled and redirects to `workflow run` / `experiment run`. |
+| 2 | Always — the command is disabled and redirects to `run` / `workflow experiment run`. |
 
 ## When this comes back
 

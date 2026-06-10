@@ -21,7 +21,6 @@ import {
   type PaginationOpts,
 } from '../lib/ui';
 import { renderFrame, watchExecution, type ExecutionSnapshot } from '../lib/watch';
-import { buildAgentExecutionRunFormData } from './agents/run-form-data';
 import {
   ArtifactInventoryRow,
   BaseOpts,
@@ -231,41 +230,6 @@ function registerRunExpectedCommands(runs: Command): void {
     .description('Delete an expected artifact.')
     .option('--yes', 'Required in non-interactive environments')
     .action(action(deleteRunExpected));
-}
-
-export async function runExecution(
-  agentId: string,
-  opts: BaseOpts & {
-    inputJson?: string;
-    inputFile?: string[];
-    wait?: boolean;
-    sourceRef?: string;
-    interval?: number;
-    maxWait?: number;
-  }
-) {
-  const client = buildClient(opts);
-  const runPath = `/api/v1/agents/${encodeURIComponent(agentId)}/run${
-    opts.sourceRef ? `?sourceRef=${encodeURIComponent(opts.sourceRef)}` : ''
-  }`;
-  let payload: unknown;
-  if (opts.inputFile && opts.inputFile.length > 0) {
-    const form = await buildAgentExecutionRunFormData(opts.inputFile, opts.inputJson);
-    payload = await client.postFormData(runPath, form);
-  } else {
-    payload = await client.post(runPath, {
-      input: opts.inputJson ? JSON.parse(opts.inputJson) : {},
-      ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
-    });
-  }
-  const runId = String((payload as { runId?: string }).runId ?? '');
-  let waitedForTerminalRun = false;
-  if (opts.wait && runId) {
-    payload = await pollRun(client, runId, opts.interval ?? 2, opts.maxWait ?? 1800);
-    waitedForTerminalRun = true;
-  }
-  renderRunPayload(payload, opts);
-  if (waitedForTerminalRun) setExitCodeForFailedTerminalRun(payload);
 }
 
 export async function runExample(
@@ -508,15 +472,26 @@ async function resolveRerunSourceRef(
 ): Promise<string | undefined> {
   if (!requested) return undefined;
   if (requested !== 'original') return requested;
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail',
-  })) as {
-    run?: Record<string, unknown>;
+
+  const summary = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`)) as {
+    run?: { type?: string };
   };
-  const run = payload.run;
+  const run = summary.run;
   if (!run) throw new Error(`Run ${executionId} not found`);
-  const resolved = stringOrNull(run.resolvedGitRef);
-  const requestedSource = stringOrNull(run.requestedSourceRef);
+
+  // Workflow reruns: server accepts the magic `original` token and pins the
+  // rerun to the source run's versionId. Agent reruns need a concrete git ref.
+  if (run.type === 'workflow') {
+    return 'original';
+  }
+
+  const detail = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    include: 'detail',
+  })) as { run?: Record<string, unknown> };
+  const agentRun = detail.run;
+  if (!agentRun) throw new Error(`Run ${executionId} not found`);
+  const resolved = stringOrNull(agentRun.resolvedGitRef);
+  const requestedSource = stringOrNull(agentRun.requestedSourceRef);
   const original = resolved ?? requestedSource;
   if (!original) {
     throw new Error(`Run ${executionId} does not have an original source ref to reuse`);

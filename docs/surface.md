@@ -39,7 +39,6 @@ eigenpal
 │   │   ├── results <workflow-id> [batchId]
 │   │   ├── compare|diff <batchIdA> <batchIdB>
 │   │   └── watch <workflow-id> <batchId>
-│   ├── run <workflow-id> [examples...]
 │   ├── versions
 │   │   ├── list|ls <workflow-id>
 │   │   └── restore <workflow-id> <versionId>
@@ -54,7 +53,6 @@ eigenpal
 │   └── step
 │       └── exec <type>
 ├── agents
-│   ├── run <target>
 │   ├── list|ls
 │   ├── file
 │   │   ├── list|ls <agent-id-or-slug>
@@ -103,6 +101,8 @@ eigenpal
 │   │   └── pull [target]
 │   └── secrets
 │       └── export [target]
+├── run <target>
+├── rerun <run-id>
 ├── runs
 │   ├── list|ls [source]
 │   ├── get <run-id>

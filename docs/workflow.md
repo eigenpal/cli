@@ -1,6 +1,6 @@
 # eigenpal workflow
 
-Manage workflows: push, pull, run, evaluate.
+Manage workflows: push, pull, and evaluate.
 
 ## Contents
 
@@ -19,7 +19,6 @@ Manage workflows: push, pull, run, evaluate.
   - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
-  - [`eigenpal workflow run [options] <workflow-id> [examples...]`](#eigenpal-workflow-run-options-workflow-id-examples)
   - [`eigenpal workflow validate [options] [path]`](#eigenpal-workflow-validate-options-path)
   - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
   - [`eigenpal workflow evaluators pull [options] <workflow-id>`](#eigenpal-workflow-evaluators-pull-options-workflow-id)
@@ -78,7 +77,6 @@ workflow
 │   ├── results <workflow-id> [batchId]
 │   ├── compare|diff <batchIdA> <batchIdB>
 │   └── watch <workflow-id> <batchId>
-├── run <workflow-id> [examples...]
 ├── versions
 │   ├── list|ls <workflow-id>
 │   └── restore <workflow-id> <versionId>
@@ -98,15 +96,14 @@ workflow
 
 ### Core
 
-| Command                                                       | Description                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow list\|ls [options]`                        | List workflows the caller can read.                                                                                                                                                                                                                                           |
-| `eigenpal workflow pull [options] <workflow-id>`              | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
-| `eigenpal workflow push [options]`                            | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
-| `eigenpal workflow move [options] <workflow-id>`              | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
-| `eigenpal workflow run [options] <workflow-id> [examples...]` | Run a saved workflow against local dataset examples.                                                                                                                                                                                                                          |
-| `eigenpal workflow validate [options] [path]`                 | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
-| `eigenpal workflow clear-local [options] [examples...]`       | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                      |
+| Command                                                 | Description                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                           |
+| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
+| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
+| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
+| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
+| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                      |
 
 ### Evaluators
 
@@ -164,9 +161,9 @@ workflow
 
 ### Step
 
-| Command                                        | Description                                                                                                                             |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow run` or `workflow experiment run` instead. |
+| Command                                        | Description                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `run` or `workflow experiment run` instead. |
 
 ## Details
 
@@ -233,26 +230,6 @@ Move a workflow to a folder path, creating folders as needed
 | `--folder <path>`  | yes      |         | Target folder path (`/` for root)      |
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
-
-### `eigenpal workflow run [options] <workflow-id> [examples...]`
-
-Run a saved workflow against local dataset examples.
-
-### Arguments
-
-| Name          | Required | Variadic | Description |
-| ------------- | -------- | -------- | ----------- |
-| `workflow-id` | yes      | no       |             |
-| `examples`    | no       | yes      |             |
-
-### Options
-
-| Flag                | Required | Default | Description                                  |
-| ------------------- | -------- | ------- | -------------------------------------------- |
-| `--dir <dir>`       | no       |         | Local eigenpal directory                     |
-| `--concurrency <n>` | no       |         | Max examples to run in parallel (default: 3) |
-| `--base-url <url>`  | no       |         | Server base URL                              |
-| `--json`            | no       |         | Output the raw server response as JSON       |
 
 ### `eigenpal workflow validate [options] [path]`
 
@@ -363,10 +340,11 @@ Download the workflow's dataset as a ZIP archive.
 
 ### Options
 
-| Flag               | Required | Default | Description                                                                     |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------- |
-| `--out <zip>`      | no       |         | Write the dataset ZIP to this path. When omitted, the binary streams to stdout. |
-| `--base-url <url>` | no       |         | Server base URL                                                                 |
+| Flag                | Required | Default | Description                                                                         |
+| ------------------- | -------- | ------- | ----------------------------------------------------------------------------------- |
+| `--out <zip>`       | no       |         | Write the dataset ZIP to this path. When omitted, the binary streams to stdout.     |
+| `--example-id <id>` | no       | `[]`    | Export only this example (repeatable). When omitted, the whole dataset is exported. |
+| `--base-url <url>`  | no       |         | Server base URL                                                                     |
 
 ### `eigenpal workflow dataset push [options] <workflow-id>`
 
@@ -725,7 +703,7 @@ Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect speci
 
 ### `eigenpal workflow step exec [options] <type>`
 
-DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `workflow run` or `workflow experiment run` instead.
+DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `run` or `workflow experiment run` instead.
 
 ### Arguments
 

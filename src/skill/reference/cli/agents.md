@@ -15,7 +15,6 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
   - [Env](#env)
   - [Secrets](#secrets)
 - [Details](#details)
-  - [`eigenpal agents run [options] <target>`](#eigenpal-agents-run-options-target)
   - [`eigenpal agents list|ls [options]`](#eigenpal-agents-listls-options)
   - [`eigenpal agents validate [options] [dir]`](#eigenpal-agents-validate-options-dir)
   - [`eigenpal agents clone [options]`](#eigenpal-agents-clone-options)
@@ -62,7 +61,6 @@ Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and r
 
 ```
 agents
-├── run <target>
 ├── list|ls
 ├── file
 │   ├── list|ls <agent-id-or-slug>
@@ -119,7 +117,6 @@ agents
 
 | Command                                             | Description                                                                                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents run [options] <target>`            | Run an agent target, e.g. agents.invoice-agent@latest.                                                                                      |
 | `eigenpal agents list\|ls [options]`                | List agents.                                                                                                                                |
 | `eigenpal agents validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                           |
 | `eigenpal agents clone [options]`                   | Clone the organization source repository.                                                                                                   |
@@ -198,29 +195,6 @@ agents
 | `eigenpal agents secrets export [options] [target]` | Decrypt source secrets and print shell exports. |
 
 ## Details
-
-### `eigenpal agents run [options] <target>`
-
-Run an agent target, e.g. agents.invoice-agent@latest.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `target` | yes      | no       |             |
-
-### Options
-
-| Flag                        | Required | Default | Description                                                                                          |
-| --------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `--base-url <url>`          | no       |         | Server base URL                                                                                      |
-| `--json`                    | no       |         | Output the raw server response as JSON                                                               |
-| `--input-json <json>`       | no       |         | JSON input object                                                                                    |
-| `--input-file <field=path>` | no       | `[]`    | Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file". |
-| `--example <name>`          | no       |         | Run a persisted dataset example by name                                                              |
-| `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                         |
-| `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
-| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exiting 2                                                                        |
 
 ### `eigenpal agents list|ls [options]`
 
