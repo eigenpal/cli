@@ -1,3 +1,4 @@
+import { RUN_EXPAND_SECTIONS, runExpandErrorMessage, type RunExpandSection } from '@eigenpal/types';
 import { type Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -69,8 +70,12 @@ export function registerRunsCommands(program: Command): void {
     .description('Get one run.')
     .option('--step <name>', 'For workflow runs, show only this step (or comma-separated list)')
     .option(
+      '--expand <sections>',
+      'Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error.'
+    )
+    .option(
       '--include <parts>',
-      'Comma-separated extra parts or workflow step fields: feedback,expected,files,trace,issues,input,output,error,duration,inputRef',
+      'Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.',
       'feedback'
     )
     .action(action(getRun));
@@ -89,9 +94,10 @@ export function registerRunsCommands(program: Command): void {
   addJsonFlag(withBaseUrl(runs.command('rerun <run-id>')))
     .description("Create a new run from a previous run's stored input snapshot.")
     .option(
-      '--source-ref <ref>',
-      'Source ref for the new run: latest (default) or original. Workflow runs support only latest/original.'
+      '--version <version>',
+      'Version/source ref for the new run: latest (default), original, or an explicit ref (same grammar as eigenpal run)'
     )
+    .option('--source-ref <ref>', 'Alias for --version')
     .option('--wait', 'Poll until the rerun reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
     .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
@@ -99,7 +105,7 @@ export function registerRunsCommands(program: Command): void {
 
   const artifacts = runs
     .command('artifacts')
-    .description('Inspect agent run artifacts.')
+    .description('Inspect workflow and agent run artifacts.')
     .action(() => {
       process.stderr.write(
         '`eigenpal runs artifacts` requires a subcommand. Run `eigenpal runs artifacts --help`.\n'
@@ -108,11 +114,11 @@ export function registerRunsCommands(program: Command): void {
     });
 
   addJsonFlag(withBaseUrl(artifacts.command('list <run-id>')))
-    .description('List available agent run artifacts without downloading them.')
+    .description('List available run artifacts without downloading them.')
     .action(action(listRunArtifacts));
 
   withBaseUrl(artifacts.command('fetch <run-id>'))
-    .description('Download agent run artifacts by canonical artifact path.')
+    .description('Download run artifacts by canonical artifact path.')
     .option('--out <dir>', 'Output directory')
     .option(
       '--include <parts>',
@@ -242,8 +248,8 @@ export async function runExample(
   const started = (await client.post(`/api/v1/agents/${encodeURIComponent(agentId)}/experiments`, {
     exampleId: opts.example,
     ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
-  })) as { batchId?: string; runs?: Array<{ runId?: string; exampleId?: string }> };
-  const runId = started.runs?.[0]?.runId;
+  })) as { batchId?: string; runs?: Array<{ id?: string; exampleId?: string }> };
+  const runId = started.runs?.[0]?.id;
   if (opts.wait && runId) {
     const payload = await pollRun(client, runId, opts.interval, opts.maxWait);
     renderRunPayload(payload, opts);
@@ -251,7 +257,7 @@ export async function runExample(
     return;
   }
   const payload = {
-    runId,
+    id: runId,
     exampleId: opts.example,
     batchId: started.batchId,
     status: 'pending',
@@ -260,14 +266,93 @@ export async function runExample(
   success(`Run ${runId ?? ''} queued for example ${opts.example}`);
 }
 
-async function getRun(executionId: string, opts: BaseOpts & { include?: string; step?: string }) {
+/**
+ * Server-side `expand` sections (`GET /api/v1/runs/:id?expand=`). Tokens in
+ * `--include` outside this set are local workflow-step projection fields and
+ * must not be forwarded — the server rejects unknown expand sections.
+ */
+const SERVER_EXPAND_SECTIONS = new Set<string>(RUN_EXPAND_SECTIONS);
+
+const LEGACY_INCLUDE_EXPAND_MAP: Record<string, RunExpandSection | null> = {
+  output: null,
+  cost: 'usage',
+  steps: 'execution',
+  files: 'execution',
+  feedback: 'execution',
+  expected: 'execution',
+  input: 'input',
+  metadata: 'input',
+  observability: 'debug',
+  trace: 'debug',
+  issues: null,
+  lockfile: null,
+};
+
+function splitCsv(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function collectExactServerExpandTokens(raw: string | undefined): RunExpandSection[] {
+  const valid: RunExpandSection[] = [];
+  const invalid: string[] = [];
+  for (const token of splitCsv(raw)) {
+    if (SERVER_EXPAND_SECTIONS.has(token)) {
+      valid.push(token as RunExpandSection);
+    } else {
+      invalid.push(token);
+    }
+  }
+  if (invalid.length > 0) {
+    throw new Error(runExpandErrorMessage(invalid));
+  }
+  return valid;
+}
+
+function collectIncludeExpandTokens(raw: string | undefined): RunExpandSection[] {
+  const sections = new Set<RunExpandSection>();
+  for (const token of splitCsv(raw)) {
+    if (SERVER_EXPAND_SECTIONS.has(token)) sections.add(token as RunExpandSection);
+    else if (token in LEGACY_INCLUDE_EXPAND_MAP) {
+      const mapped = LEGACY_INCLUDE_EXPAND_MAP[token];
+      if (mapped) sections.add(mapped);
+    }
+  }
+  return [...sections];
+}
+
+function serverExpandParam(args: { expand?: string; include?: string }): string {
+  if (args.expand !== undefined) {
+    // `--expand` is exact and clean-breaks legacy tokens.
+    const sections = new Set(collectExactServerExpandTokens(args.expand));
+    for (const part of collectIncludeExpandTokens(args.include)) sections.add(part);
+    return [...sections].join(',');
+  }
+
+  // Detail output is default now; keep the old useful default extras via grouped expands.
+  const sections = new Set<RunExpandSection>(['usage', 'execution']);
+  for (const part of collectIncludeExpandTokens(args.include ?? 'feedback')) sections.add(part);
+  return [...sections].join(',');
+}
+
+function projectionIncludeSource(opts: { include?: string; expand?: string }): string | undefined {
+  const parts = [opts.include, opts.expand].filter(Boolean);
+  return parts.length > 0 ? parts.join(',') : undefined;
+}
+
+async function getRun(
+  executionId: string,
+  opts: BaseOpts & { include?: string; expand?: string; step?: string }
+) {
   const client = buildClient(opts);
-  const include = opts.include ? `detail,${opts.include}` : 'detail';
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include,
-  })) as { run?: Record<string, unknown> };
-  const run = payload.run;
-  if (!run) return renderRunPayload(payload, opts);
+  const run = toLegacyRunView(
+    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+      expand: serverExpandParam({ expand: opts.expand, include: opts.include }),
+    })) as Record<string, unknown>
+  );
 
   if (opts.step && !isWorkflowRun(run)) {
     throw new Error(
@@ -277,15 +362,12 @@ async function getRun(executionId: string, opts: BaseOpts & { include?: string; 
 
   if (isWorkflowRun(run)) {
     const steps = filterWorkflowSteps(run.stepExecutions, opts.step);
-    const projectionIncludes = workflowStepProjectionIncludes(opts.include);
+    const projectionIncludes = workflowStepProjectionIncludes(projectionIncludeSource(opts));
     if (opts.step) {
-      return printJson({
-        ...payload,
-        run: { ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) },
-      });
+      return printJson({ ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) });
     }
     if (opts.json) {
-      return printJson(payload);
+      return printJson(run);
     }
     console.log(renderFrame(toExecutionSnapshot(run, executionId)));
     process.stderr.write(
@@ -294,7 +376,7 @@ async function getRun(executionId: string, opts: BaseOpts & { include?: string; 
     return;
   }
 
-  renderRunPayload(payload, opts);
+  renderRunPayload(run, opts);
 }
 
 type WorkflowStepRow = Record<string, unknown> & {
@@ -309,7 +391,7 @@ type WorkflowStepRow = Record<string, unknown> & {
 };
 
 function isWorkflowRun(run: Record<string, unknown>): boolean {
-  return Array.isArray(run.stepExecutions);
+  return run.type === 'workflow';
 }
 
 function isAgentRun(run: Record<string, unknown>): boolean {
@@ -319,19 +401,119 @@ function isAgentRun(run: Record<string, unknown>): boolean {
 function ensureAgentRun(run: Record<string, unknown>, feature: string): void {
   if (isAgentRun(run)) return;
   throw new Error(
-    `${feature} is only available for agent runs. Workflow runs do not have agent artifacts, feedback, or expected files.`
+    `${feature} is only available for agent runs. Workflow runs do not have agent feedback or expected files.`
   );
+}
+
+function objectOrNull(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> {
+  const timing = objectOrNull(run.timing);
+  const source = objectOrNull(run.source);
+  const sourceGit = objectOrNull(source?.git);
+  const trigger = objectOrNull(run.trigger);
+  const lineage = objectOrNull(run.lineage);
+  const execution = objectOrNull(run.execution);
+  const legacyRetry = objectOrNull(lineage?.retry);
+  const retry = objectOrNull(execution?.retry) ?? legacyRetry;
+  const nextRun = objectOrNull(retry?.nextRun);
+  const evalInfo = objectOrNull(run.eval);
+  const result = objectOrNull(run.result);
+  const input = objectOrNull(run.input);
+  const usage = objectOrNull(run.usage);
+  const tokens = objectOrNull(usage?.tokens);
+  const executionFiles = objectOrNull(execution?.files);
+  const executionExpected = objectOrNull(execution?.expected);
+  const debug = objectOrNull(run.debug);
+
+  const hasGroupedShape =
+    timing != null || source != null || result != null || run.output !== undefined;
+  if (!hasGroupedShape) return run;
+
+  const terminalOutput = run.output !== undefined ? run.output : result?.output;
+  const terminalFiles =
+    run.files !== undefined ? run.files : (result?.files ?? executionFiles?.output);
+  const terminalError = run.error !== undefined ? run.error : result?.error;
+  const terminalSchemaValid =
+    execution?.schemaValid !== undefined ? execution.schemaValid : result?.schemaValid;
+
+  return {
+    ...run,
+    createdAt: timing?.createdAt,
+    startedAt: timing?.startedAt,
+    completedAt: timing?.completedAt,
+    durationMs: timing?.durationMs,
+    cancelRequestedAt: timing?.cancelRequestedAt,
+    sourceId: source?.id,
+    sourceName: source?.name,
+    version: source?.version,
+    versionId: source?.versionId,
+    agentSlug: source?.slug,
+    model: source?.model,
+    requestedSourceRef: sourceGit?.requestedRef,
+    resolvedGitRef: sourceGit?.resolvedRef,
+    resolvedGitTag: sourceGit?.resolvedTag,
+    resolvedCommitSha: sourceGit?.commitSha,
+    triggerType: trigger?.type,
+    triggeredBy: trigger?.by,
+    emailTrigger: trigger?.email,
+    batchId: execution?.batchId ?? lineage?.batchId,
+    retryNumber: retry?.number,
+    previousExecutionId: retry?.previousRunId,
+    annotation: execution?.annotation ?? lineage?.annotation,
+    exampleId: evalInfo?.exampleId ?? evalInfo?.example,
+    exampleName: evalInfo?.example,
+    status: execution?.status ?? run.status,
+    finished: run.finished,
+    evalScore: evalInfo?.score,
+    evalPassed: evalInfo?.passed,
+    output: terminalOutput,
+    resultFiles: terminalFiles,
+    schemaValid: terminalSchemaValid,
+    error: terminalError,
+    input: input?.args,
+    inputFiles: input?.files,
+    metadata: input?.metadata,
+    cost: usage
+      ? {
+          totalInputTokens: tokens?.input ?? null,
+          totalOutputTokens: tokens?.output ?? null,
+          totalCacheReadTokens: tokens?.cacheRead ?? null,
+          totalCacheWriteTokens: tokens?.cacheWrite ?? null,
+          llmCallCount: usage.llmCallCount,
+          ocrPagesProcessed: usage.ocrPagesProcessed,
+          agentTurns: usage.agentTurns,
+          creditsCharged: usage.creditsCharged,
+          durationMs: usage.durationMs,
+        }
+      : undefined,
+    stepExecutions: execution?.steps,
+    nextRetryId: nextRun?.id ?? objectOrNull(execution?.nextRetry)?.id,
+    nextRetryStatus: nextRun?.status ?? objectOrNull(execution?.nextRetry)?.status,
+    feedback: execution?.feedback,
+    expected: executionExpected?.output,
+    expectedFiles: executionExpected?.files,
+    observability: debug?.observability,
+    traceId: debug?.traceId,
+  };
 }
 
 async function getRunForCompatibilityCheck(
   client: ApiClient,
   executionId: string
 ): Promise<Record<string, unknown>> {
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail',
-  })) as { run?: Record<string, unknown> };
-  if (!payload.run) throw new Error(`Run ${executionId} not found`);
-  return payload.run;
+  // The summary already carries `type` — no expansion needed for the check.
+  const raw = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`)) as Record<
+    string,
+    unknown
+  > | null;
+  const run = raw ? toLegacyRunView(raw) : null;
+  if (!run || run.id === undefined) throw new Error(`Run ${executionId} not found`);
+  return run;
 }
 
 async function ensureAgentRunById(
@@ -401,9 +583,10 @@ function projectWorkflowStep(
 }
 
 function toExecutionSnapshot(run: Record<string, unknown>, fallbackId: string): ExecutionSnapshot {
+  const execution = objectOrNull(run.execution);
   return {
     id: String(run.id ?? run.executionId ?? fallbackId),
-    status: String(run.status ?? 'unknown'),
+    status: String(run.status ?? execution?.status ?? 'unknown'),
     startedAt: typeof run.startedAt === 'string' ? run.startedAt : null,
     completedAt: typeof run.completedAt === 'string' ? run.completedAt : null,
     durationMs: typeof run.durationMs === 'number' ? run.durationMs : null,
@@ -438,19 +621,24 @@ function previewOutput(value: unknown): string | null {
 
 export async function rerunRun(
   executionId: string,
-  opts: BaseOpts & { wait?: boolean; interval: number; maxWait: number; sourceRef?: string }
+  opts: BaseOpts & {
+    wait?: boolean;
+    interval: number;
+    maxWait: number;
+    version?: string;
+    sourceRef?: string;
+  }
 ) {
   const client = buildClient(opts);
-  const sourceRef = await resolveRerunSourceRef(client, executionId, opts.sourceRef);
-  let payload: unknown = await client.post(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/rerun`,
-    sourceRef ? { sourceRef } : {}
-  );
-  const rerunId = String(
-    (payload as { runId?: string; executionId?: string }).runId ??
-      (payload as { executionId?: string }).executionId ??
-      ''
-  );
+  const params = new URLSearchParams();
+  const version = (opts.sourceRef ?? opts.version)?.trim();
+  if (version && version !== 'latest') {
+    params.set('version', version);
+  }
+  const query = params.toString();
+  const path = `/api/v1/runs/${encodeURIComponent(executionId)}/rerun${query ? `?${query}` : ''}`;
+  let payload: unknown = await client.post(path);
+  const rerunId = String((payload as { id?: string }).id ?? '');
   if (opts.wait && rerunId) {
     payload = await pollRun(client, rerunId, opts.interval, opts.maxWait);
     renderRunPayload(payload, opts);
@@ -461,51 +649,17 @@ export async function rerunRun(
   success(`Started rerun ${ui.bold(rerunId)} from ${executionId}`);
 }
 
-async function resolveRerunSourceRef(
-  client: ApiClient,
-  executionId: string,
-  requested: string | undefined
-): Promise<string | undefined> {
-  if (!requested) return undefined;
-  if (requested !== 'original') return requested;
-
-  const summary = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`)) as {
-    run?: { type?: string };
-  };
-  const run = summary.run;
-  if (!run) throw new Error(`Run ${executionId} not found`);
-
-  // Workflow reruns: server accepts the magic `original` token and pins the
-  // rerun to the source run's versionId. Agent reruns need a concrete git ref.
-  if (run.type === 'workflow') {
-    return 'original';
-  }
-
-  const detail = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail',
-  })) as { run?: Record<string, unknown> };
-  const agentRun = detail.run;
-  if (!agentRun) throw new Error(`Run ${executionId} not found`);
-  const resolved = stringOrNull(agentRun.resolvedGitRef);
-  const requestedSource = stringOrNull(agentRun.requestedSourceRef);
-  const original = resolved ?? requestedSource;
-  if (!original) {
-    throw new Error(`Run ${executionId} does not have an original source ref to reuse`);
-  }
-  return original;
-}
-
 async function fetchRunArtifacts(
   executionId: string,
   opts: BaseOpts & { include: string; out?: string; path?: string[] }
 ) {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail,expected,files,input,output,issues,trace,lockfile,metadata',
-  })) as { run?: Record<string, unknown> };
-  const run = payload.run;
-  if (!run) throw new Error(`Run ${executionId} not found`);
-  ensureAgentRun(run, 'Artifact download');
+  const baseRun = toLegacyRunView(
+    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+      expand: 'input,execution',
+    })) as Record<string, unknown>
+  );
+  const run = await attachListedArtifacts(client, executionId, baseRun);
   const out = path.resolve(opts.out ?? path.join('.eigenpal', 'artifacts', 'runs', executionId));
   await fs.mkdir(out, { recursive: true });
   const written: string[] = [];
@@ -549,13 +703,7 @@ async function fetchRunArtifacts(
 
 async function listRunArtifacts(executionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail,expected,files,input,output,issues,trace,lockfile,metadata',
-  })) as { run?: Record<string, unknown> };
-  const run = payload.run;
-  if (!run) throw new Error(`Run ${executionId} not found`);
-  ensureAgentRun(run, 'Artifact inventory');
-  const artifacts = runArtifactInventory(run);
+  const artifacts = await listCanonicalRunArtifacts(client, executionId);
   if (opts.json) return printJson({ runId: executionId, artifacts });
   console.log(
     table(artifacts, [
@@ -565,6 +713,61 @@ async function listRunArtifacts(executionId: string, opts: BaseOpts) {
       { key: 'present', header: 'PRESENT' },
     ])
   );
+}
+
+async function listCanonicalRunArtifacts(
+  client: ApiClient,
+  executionId: string
+): Promise<ArtifactInventoryRow[]> {
+  const payload = (await client.get(
+    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts`
+  )) as {
+    artifacts?: Array<{ name?: string; path?: string }>;
+  };
+  return (payload.artifacts ?? []).map((artifact) => {
+    const name = String(artifact.name ?? '');
+    const artifactPath = stringOrNull(artifact.path);
+    const kind = inferArtifactKind(artifactPath, name);
+    return {
+      kind,
+      name,
+      path: artifactPath ?? artifactPathForKind(kind, name),
+      present: 'yes',
+    };
+  });
+}
+
+async function attachListedArtifacts(
+  client: ApiClient,
+  executionId: string,
+  run: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const artifacts = await listCanonicalRunArtifacts(client, executionId);
+  return {
+    ...run,
+    resultFiles: [
+      ...artifactEntries(run.resultFiles),
+      ...artifacts.filter((a) => a.kind === 'output').map(({ name, path }) => ({ name, path })),
+    ],
+    issueFiles: artifacts.filter((a) => a.kind === 'issue').map(({ name }) => ({ name })),
+    traceFiles: artifacts.filter((a) => a.kind === 'trace').map(({ name }) => ({ name })),
+    lockfileFiles: artifacts.filter((a) => a.kind === 'lockfile').map(({ name }) => ({ name })),
+  };
+}
+
+function artifactPathForKind(kind: string, name: string): string {
+  if (kind === 'output') return `output/${name}`;
+  return name;
+}
+
+function inferArtifactKind(artifactPath: string | null, name: string): string {
+  if (artifactPath?.startsWith('output/')) return 'output';
+  if (artifactPath?.startsWith('input/')) return 'input';
+  if (artifactPath === 'issues.md' || name === 'issues.md') return 'issue';
+  if (artifactPath === 'trace.jsonl' || name === 'trace.jsonl') return 'trace';
+  if (artifactPath === 'eigenpal.lock' || name === 'eigenpal.lock') return 'lockfile';
+  if (name) return 'output';
+  return '';
 }
 
 function artifactIncluded(artifact: ArtifactInventoryRow, include: string): boolean {
@@ -605,7 +808,7 @@ async function writeDownloadedRunArtifact(
   routePrefix: 'files' | 'expected'
 ) {
   const routePath = routePrefix === 'files' ? artifactPath : artifactPath.slice('expected/'.length);
-  const routeBase = routePrefix === 'files' ? 'artifact' : 'expected';
+  const routeBase = routePrefix === 'files' ? 'artifacts' : 'expected';
   const response = await client.getStream(
     `/api/v1/runs/${encodeURIComponent(executionId)}/${routeBase}/${encodeRunArtifactPath(routePath)}`
   );
@@ -626,8 +829,8 @@ async function writeRunArtifact(
     return artifactPath;
   }
   if (artifactPath === 'input.json') {
-    if (run.inputJson == null) return null;
-    await writeJsonRunArtifact(out, artifactPath, run.inputJson);
+    if (run.input == null) return null;
+    await writeJsonRunArtifact(out, artifactPath, run.input);
     return artifactPath;
   }
   if (artifactPath === 'metadata.json') {
@@ -674,19 +877,18 @@ async function compareRun(
   }
 ) {
   const client = buildClient(opts);
-  const targetPayload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-    include: 'detail,files,output',
-  })) as { run?: Record<string, unknown> };
-  const target = targetPayload.run;
-  if (!target) throw new Error(`Run ${executionId} not found`);
+  const target = toLegacyRunView(
+    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+      expand: 'execution',
+    })) as Record<string, unknown>
+  );
 
   const mode = opts.baseline ? 'baseline' : 'expected';
-  const reference = (
+  const reference = toLegacyRunView(
     (await client.get(`/api/v1/runs/${encodeURIComponent(referenceId)}`, {
-      include: mode === 'baseline' ? 'detail,files,output' : 'detail,expected',
-    })) as { run?: Record<string, unknown> }
-  ).run;
-  if (!reference) throw new Error(`Reference run ${referenceId} not found`);
+      expand: 'execution',
+    })) as Record<string, unknown>
+  );
 
   if (isWorkflowRun(reference) && isWorkflowRun(target)) {
     const report = compareWorkflowRuns(referenceId, reference, executionId, target, opts.step);
@@ -946,7 +1148,8 @@ async function listRuns(
     scanLimited?: boolean;
     noResolvedAnchor?: boolean;
   };
-  const rows = opts.compact ? payload.runs.map(compactRunRow) : payload.runs;
+  const viewRuns = payload.runs.map(toLegacyRunView);
+  const rows = opts.compact ? viewRuns.map(compactRunRow) : viewRuns;
   if (opts.json) return printJson({ ...payload, runs: rows });
   if (payload.scanLimited) {
     warn(
@@ -1208,9 +1411,9 @@ async function watchRunCommand(
   const result = await watchExecution({
     fetch: async () => {
       const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
-        include: 'detail',
-      })) as { run?: Record<string, unknown> };
-      return toExecutionSnapshot(payload.run ?? {}, executionId);
+        expand: 'execution',
+      })) as Record<string, unknown>;
+      return toExecutionSnapshot(toLegacyRunView(payload), executionId);
     },
     maxMs: opts.maxWait * 1000,
     transitionIntervalMs: opts.interval * 1000,
@@ -1237,7 +1440,7 @@ async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }
 
 async function downloadTraceText(client: ApiClient, executionId: string): Promise<string> {
   const response = await client.getStream(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/artifact/trace.jsonl`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/trace.jsonl`
   );
   return Buffer.from(await response.arrayBuffer()).toString('utf-8');
 }
@@ -1297,6 +1500,22 @@ function fileNames(files: unknown): string[] {
     .sort();
 }
 
+function artifactEntries(files: unknown): Array<{ name: string; path?: string }> {
+  return (Array.isArray(files) ? files : [])
+    .map((file) => {
+      const record = file as { name?: unknown; path?: unknown };
+      const name = String(record.name ?? '');
+      if (!name) return null;
+      const artifactPath = stringOrNull(record.path);
+      return {
+        name,
+        ...(artifactPath ? { path: artifactPath } : {}),
+      };
+    })
+    .filter((entry): entry is { name: string; path?: string } => entry !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
@@ -1305,7 +1524,7 @@ export function runArtifactInventory(run: Record<string, unknown>): ArtifactInve
   const rows: ArtifactInventoryRow[] = [
     { kind: 'metadata', name: 'run.json', path: 'run.json', present: 'yes' },
   ];
-  if (run.inputJson != null) {
+  if (run.input != null) {
     rows.push({ kind: 'input', name: 'input.json', path: 'input.json', present: 'yes' });
   }
   if (run.metadata != null) {
@@ -1317,10 +1536,15 @@ export function runArtifactInventory(run: Record<string, unknown>): ArtifactInve
   for (const name of fileNames(run.inputFiles)) {
     rows.push({ kind: 'input', name, path: `input/${name}`, present: 'yes' });
   }
-  for (const name of fileNames(run.resultFiles).filter(
-    (name) => name !== 'issues.md' && name !== 'trace.jsonl'
+  for (const artifact of artifactEntries(run.resultFiles).filter(
+    (file) => file.name !== 'issues.md' && file.name !== 'trace.jsonl'
   )) {
-    rows.push({ kind: 'output', name, path: `output/${name}`, present: 'yes' });
+    rows.push({
+      kind: 'output',
+      name: artifact.name,
+      path: artifact.path ?? `output/${artifact.name}`,
+      present: 'yes',
+    });
   }
   for (const name of fileNames(run.expectedFiles)) {
     rows.push({ kind: 'expected', name, path: `expected/${name}`, present: 'yes' });
@@ -1334,7 +1558,9 @@ export function runArtifactInventory(run: Record<string, unknown>): ArtifactInve
   for (const name of fileNames(run.lockfileFiles)) {
     rows.push({ kind: 'lockfile', name, path: name, present: 'yes' });
   }
-  return rows.sort((a, b) => a.path.localeCompare(b.path));
+  const byPath = new Map<string, ArtifactInventoryRow>();
+  for (const row of rows) byPath.set(row.path, row);
+  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function normalizeGeneratedTokens(value: string): string {
@@ -1422,7 +1648,7 @@ function runFileUrl(side: { runId: string; kind: 'expected' | 'output' }, name: 
   const filename = encodeURIComponent(name);
   return side.kind === 'expected'
     ? `/api/v1/runs/${runId}/expected/${filename}`
-    : `/api/v1/runs/${runId}/artifact/output/${filename}`;
+    : `/api/v1/runs/${runId}/artifacts/${encodeRunArtifactPath(`output/${name}`)}`;
 }
 
 function encodeRunArtifactPath(artifactPath: string): string {

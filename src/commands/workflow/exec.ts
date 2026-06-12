@@ -1,4 +1,8 @@
-import { runTargetApiPath } from '@eigenpal/types';
+import {
+  isTerminalExecutionStatus,
+  runStartMultipartTarget,
+  runTargetApiPath,
+} from '@eigenpal/types';
 import { join } from 'path';
 import { type ApiClient } from '../../lib/client';
 import {
@@ -10,6 +14,7 @@ import { buildExamplePayload, getExampleNames, resolveEvalBaseDir } from '../../
 import { createProgressLines } from '../../lib/progress-lines';
 import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import { dim, info, isTTY, ui } from '../../lib/ui';
+import { buildRunFormData } from '../run-form-data';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_MS = 5 * 60 * 1000;
@@ -22,17 +27,64 @@ interface ExecutionStatus {
   error?: string;
 }
 
+interface RunDetailResponse {
+  id: string;
+  finished?: boolean;
+  status?: string;
+  output?: unknown;
+  error?: string | null;
+  timing?: {
+    createdAt?: string | null;
+    completedAt?: string | null;
+  };
+  result?: {
+    output?: unknown;
+    error?: string | null;
+  } | null;
+  execution?: {
+    status?: string;
+    steps?: ExecutionArtifactPayload['stepExecutions'];
+  } | null;
+}
+
+function runTerminalOutput(run: RunDetailResponse): unknown {
+  return run.output !== undefined ? run.output : run.result?.output;
+}
+
+function runTerminalError(run: RunDetailResponse): string | undefined {
+  const error = run.error !== undefined ? run.error : run.result?.error;
+  return error ?? undefined;
+}
+
 async function pollExecution(client: ApiClient, executionId: string): Promise<ExecutionStatus> {
   const start = Date.now();
   while (Date.now() - start < MAX_POLL_MS) {
-    const payload = (await client.get(`/api/v1/runs/${executionId}?include=detail`)) as
-      | { run?: ExecutionStatus }
-      | ExecutionStatus;
-    const res = 'run' in payload && payload.run ? payload.run : (payload as ExecutionStatus);
-    if (['completed', 'failed', 'cancelled', 'rejected'].includes(res.status)) return res;
+    const run = (await client.get(`/api/v1/runs/${executionId}`)) as RunDetailResponse;
+    const status = run.execution?.status ?? run.status;
+    if (run.finished || isTerminalExecutionStatus(status)) {
+      return {
+        executionId: run.id,
+        status: status ?? (run.error ? 'failed' : 'completed'),
+        output: runTerminalOutput(run),
+        error: runTerminalError(run),
+      };
+    }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   return { executionId, status: 'timeout', error: 'Execution timed out' };
+}
+
+function toExecutionArtifactPayload(run: RunDetailResponse): ExecutionArtifactPayload {
+  const status = run.execution?.status ?? run.status ?? 'unknown';
+  return {
+    executionId: run.id,
+    status,
+    createdAt: run.timing?.createdAt ?? new Date().toISOString(),
+    completedAt: run.timing?.completedAt ?? null,
+    error: run.error !== undefined ? run.error : (run.result?.error ?? null),
+    output: runTerminalOutput(run),
+    stepExecutions: run.execution?.steps ?? [],
+  };
 }
 
 export interface RunExecOptions {
@@ -50,7 +102,7 @@ export interface ExecRunSummary {
 
 /**
  * Run exec: resolve `<workflow>` to a saved workflow id, then for each
- * example POST inputs to `/api/v1/run` and poll. Local YAML
+ * example POST inputs to `/api/v1/runs` and poll. Local YAML
  * is never sent — the platform's saved version is the source of truth.
  */
 export async function runExec(
@@ -114,36 +166,33 @@ export async function runExec(
         else console.log(`${ui.dim('→')} ${name}`);
 
         // Always go through the multipart path so file uploads stream
-        // straight to storage — no base64 round-trip. Scalar inputs ride
-        // along in the canonical `_json` sidecar field; per-step overrides
-        // from meta.json ride in the reserved `_overrides` field.
-        const form = new FormData();
-        form.append('_json', JSON.stringify(example.scalars));
-        if (example.overrides) {
-          form.append('_overrides', JSON.stringify(example.overrides));
-        }
-        for (const file of example.files) {
-          // Buffer is a Uint8Array subclass — Bun/Node FormData accept the
-          // buffer directly when wrapped as a Blob with a filename.
-          form.append(
-            file.argument,
-            new Blob([file.content as unknown as ArrayBuffer], {
-              type: file.mimeType ?? 'application/octet-stream',
-            }),
-            file.filename
-          );
-        }
+        // straight to storage — no base64 round-trip.
+        const form = await buildRunFormData({
+          target: runStartMultipartTarget({
+            type: 'workflow',
+            id: workflowId,
+            version: options.version,
+          }),
+          input: example.scalars,
+          overrides: example.overrides,
+          files: example.files.map((file) => ({
+            fieldName: file.argument,
+            content: file.content,
+            filename: file.filename,
+            mimeType: file.mimeType,
+          })),
+        });
 
         const res = (await client.postFormData(
           runTargetApiPath({ type: 'workflow', id: workflowId, version: options.version }),
           form
         )) as {
-          runId?: string;
+          id?: string;
         };
-        if (typeof res?.runId !== 'string') {
-          throw new Error('Run API did not return runId');
+        if (typeof res?.id !== 'string') {
+          throw new Error('Run API did not return a run id');
         }
-        const executionId = res.runId;
+        const executionId = res.id;
 
         // Surface the id immediately — if polling or artifact-write fails
         // below, the user still has a handle to recover with
@@ -164,14 +213,14 @@ export async function runExec(
         // Write artifact folder: executions/<executionId>/output.json + files.
         // Failure here doesn't change pass/fail — surface a warning only.
         try {
-          const artifactPayload = (await client.get(
-            `/api/v1/runs/${executionId}?include=detail`
-          )) as { run?: ExecutionArtifactPayload } | ExecutionArtifactPayload;
-          const artifact =
-            'run' in artifactPayload && artifactPayload.run
-              ? artifactPayload.run
-              : (artifactPayload as ExecutionArtifactPayload);
-          const artifactDir = await writeExecutionArtifacts(client, exampleDir, artifact);
+          const run = (await client.get(
+            `/api/v1/runs/${executionId}?expand=execution`
+          )) as RunDetailResponse;
+          const artifactDir = await writeExecutionArtifacts(
+            client,
+            exampleDir,
+            toExecutionArtifactPayload(run)
+          );
           if (!interactive) console.log(ui.dim(`  Artifacts: ${artifactDir}`));
         } catch (artErr) {
           if (!interactive)

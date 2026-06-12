@@ -23,6 +23,8 @@ export {
   parseReleaseTag,
   parseRunTarget,
   pathToDottedPackageName,
+  runStartJsonBody,
+  runStartMultipartTarget,
   runTargetApiPath,
   runTargetToPathParts,
   type AutomationTarget,
@@ -37,6 +39,16 @@ export {
   type SourceVersionRef,
   type WorkspaceDependency,
 } from './grammar';
+
+export {
+  RERUN_ORIGINAL_VERSION,
+  parseAgentRerunVersion,
+  parseWorkflowRerunVersion,
+  resolveAgentOriginalSourceRef,
+  type AgentRunSourceProvenance,
+  type ParsedRerunVersion,
+  type RerunVersionKind,
+} from './rerun-version';
 
 export {
   SourceLockPackageSchema,

@@ -230,7 +230,7 @@ export function compareOutput(
       mismatches.push({
         path: `output/${g}`,
         expected: '(golden file)',
-        actual: '(no matching file in result/)',
+        actual: '(no matching file in output/)',
       });
     }
   }

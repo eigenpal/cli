@@ -21,16 +21,15 @@ async function withAgentRunServer(
           headers: { 'content-type': 'application/json', ...init?.headers },
         });
 
-      if (request.method === 'POST' && url.pathname.startsWith('/api/v1/run/')) {
-        return json({ runId: 'run_terminal' });
+      if (request.method === 'POST' && url.pathname === '/api/v1/runs') {
+        return json({ id: 'run_terminal' }, { status: 201 });
       }
       if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_terminal') {
         return json({
-          run: {
-            id: 'run_terminal',
-            status,
-            error: status === 'failed' ? 'boom' : null,
-          },
+          id: 'run_terminal',
+          finished: true,
+          error: status === 'failed' ? 'boom' : null,
+          execution: { status },
         });
       }
       return json({ error: `Unexpected ${request.method} ${url.pathname}` }, { status: 404 });
@@ -60,7 +59,7 @@ async function withRunsListServer(fn: (baseUrl: string) => void | Promise<void>)
             {
               id: 'run_1',
               type: 'workflow',
-              status: 'completed',
+              finished: true,
               sourceId: 'wf_1',
               sourceName: 'Invoice Workflow',
               createdAt: '2026-01-01T00:00:00.000Z',
@@ -131,7 +130,9 @@ describe('agent run command helpers', () => {
         expect(result.status).toBe(1);
         expect(result.stderr).toBe('');
         expect(JSON.parse(result.stdout)).toMatchObject({
-          run: { id: 'run_terminal', status },
+          id: 'run_terminal',
+          finished: true,
+          execution: { status },
         });
       });
     }
@@ -197,7 +198,7 @@ describe('agent run command helpers', () => {
   test('run artifact inventory exposes fetch paths for singleton artifacts', () => {
     expect(
       runArtifactInventory({
-        inputJson: { language: 'en' },
+        input: { language: 'en' },
         metadata: { source: 'git' },
         resultFiles: [{ name: 'report.pdf' }, { name: 'trace.jsonl' }],
         issueFiles: [{ name: 'issues.md' }],

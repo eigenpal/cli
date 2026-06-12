@@ -9,7 +9,11 @@
  * so the same prose ships in every surface that documents these operations.
  */
 
-import { WORKFLOW_TOOL_METADATA, type WorkflowToolName } from '@eigenpal/types';
+import {
+  WORKFLOW_TOOL_METADATA,
+  isTerminalExecutionStatus,
+  type WorkflowToolName,
+} from '@eigenpal/types';
 import type { SchemaQualityWarning } from '@eigenpal/workflow-yaml';
 import { InvalidArgumentError, type Command } from 'commander';
 import { zipSync } from 'fflate';
@@ -323,7 +327,7 @@ YAML's \`name:\` field). Both:
   // env state real CLI users don't have). Currently a placeholder that
   // exits 2 with a redirect to `run` / `workflow experiment run`. EIG-104
   // tracks the server-side redesign that will restore single-step execution
-  // through a thin POST → /api/v1/workflows/step-exec.
+  // through a future server-routed endpoint.
   registerStepExecCommands(workflow);
 }
 
@@ -1965,8 +1969,6 @@ export function renderExperimentFailures(
   );
 }
 
-const TERMINAL_EXEC_STATES = new Set(['completed', 'failed', 'cancelled', 'rejected']);
-
 export function summarizeExperimentExecutions(execs: Array<{ status?: string }>): {
   total: number;
   terminal: number;
@@ -1978,7 +1980,7 @@ export function summarizeExperimentExecutions(execs: Array<{ status?: string }>)
     const s = e.status ?? 'unknown';
     counts[s] = (counts[s] ?? 0) + 1;
   }
-  const terminal = execs.filter((e) => TERMINAL_EXEC_STATES.has(e.status ?? '')).length;
+  const terminal = execs.filter((e) => isTerminalExecutionStatus(e.status)).length;
   // `done` requires at least one execution — a 0/0 result on the first poll
   // means the server hasn't enqueued the batch yet (race), not that the
   // experiment finished. Fall through and keep watching.

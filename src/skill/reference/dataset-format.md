@@ -270,7 +270,7 @@ Pretty mode prints labelled `Inputs` / `Expected` / `Metadata` sections;
 
 ```bash
 # 1. Look at what the workflow actually returned for the example
-eigenpal runs get exec_… --json | jq '.run.output.data' > /tmp/correct.json
+eigenpal runs get exec_… --json | jq '.output.data' > /tmp/correct.json
 
 # 2. Patch the example's expected output in place. PATCH semantics:
 #    every flag you omit is left alone.

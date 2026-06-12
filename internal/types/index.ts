@@ -259,6 +259,18 @@ export {
   type TerminalExecutionStatus,
 } from './execution-row';
 
+// Expand sections for GET /api/v1/runs/{id} — shared by API route, CLI, and docs.
+export {
+  LEGACY_RUN_EXPAND_MIGRATION,
+  RUN_DETAIL_EXPAND_PRESET,
+  RUN_EXPAND_SECTIONS,
+  isRunExpandSection,
+  parseRunExpand,
+  runExpandErrorMessage,
+  runIncludeErrorMessage,
+  type RunExpandSection,
+} from './run-expand';
+
 // Single source of truth for the LLM temperature on every model call.
 export { DETERMINISTIC_TEMPERATURE } from './llm-determinism';
 
@@ -275,6 +287,9 @@ export * from './eval';
 
 // Git-backed source repository grammar and manifests
 export * from './git-source';
+
+// API path display helpers (`:id` in docs/UI vs `{id}` in OpenAPI)
+export * from './api/display-path';
 
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';

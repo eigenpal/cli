@@ -73,10 +73,10 @@ runs
 
 ### Artifacts
 
-| Command                                                         | Description                                                  |
-| --------------------------------------------------------------- | ------------------------------------------------------------ |
-| `eigenpal runs artifacts\|artifact list\|ls [options] <run-id>` | List available agent run artifacts without downloading them. |
-| `eigenpal runs artifacts\|artifact fetch [options] <run-id>`    | Download agent run artifacts by canonical artifact path.     |
+| Command                                                         | Description                                            |
+| --------------------------------------------------------------- | ------------------------------------------------------ |
+| `eigenpal runs artifacts\|artifact list\|ls [options] <run-id>` | List available run artifacts without downloading them. |
+| `eigenpal runs artifacts\|artifact fetch [options] <run-id>`    | Download run artifacts by canonical artifact path.     |
 
 ### Feedback
 
@@ -145,12 +145,13 @@ Get one run.
 
 ### Options
 
-| Flag                | Required | Default      | Description                                                                                                                    |
-| ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `--base-url <url>`  | no       |              | Server base URL                                                                                                                |
-| `--json`            | no       |              | Output the raw server response as JSON                                                                                         |
-| `--step <name>`     | no       |              | For workflow runs, show only this step (or comma-separated list)                                                               |
-| `--include <parts>` | no       | `"feedback"` | Comma-separated extra parts or workflow step fields: feedback,expected,files,trace,issues,input,output,error,duration,inputRef |
+| Flag                  | Required | Default      | Description                                                                                                                                                                                 |
+| --------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`    | no       |              | Server base URL                                                                                                                                                                             |
+| `--json`              | no       |              | Output the raw server response as JSON                                                                                                                                                      |
+| `--step <name>`       | no       |              | For workflow runs, show only this step (or comma-separated list)                                                                                                                            |
+| `--expand <sections>` | no       |              | Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error. |
+| `--include <parts>`   | no       | `"feedback"` | Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.                       |
 
 ### `eigenpal runs compare|diff [options] <reference-run-id> <run-id>`
 
@@ -187,14 +188,15 @@ Create a new run from a previous run's stored input snapshot.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                                                                           |
-| ---------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                                                                                       |
-| `--json`               | no       |         | Output the raw server response as JSON                                                                |
-| `--source-ref <ref>`   | no       |         | Source ref for the new run: latest (default) or original. Workflow runs support only latest/original. |
-| `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                        |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                           |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                         |
+| Flag                   | Required | Default | Description                                                                                                       |
+| ---------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`     | no       |         | Server base URL                                                                                                   |
+| `--json`               | no       |         | Output the raw server response as JSON                                                                            |
+| `--version <version>`  | no       |         | Version/source ref for the new run: latest (default), original, or an explicit ref (same grammar as eigenpal run) |
+| `--source-ref <ref>`   | no       |         | Alias for --version                                                                                               |
+| `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                                    |
+| `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                                       |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                                     |
 
 ### `eigenpal runs trace [options] <run-id>`
 
@@ -252,7 +254,7 @@ Cancel a run.
 
 ### `eigenpal runs artifacts|artifact list|ls [options] <run-id>`
 
-List available agent run artifacts without downloading them.
+List available run artifacts without downloading them.
 
 ### Arguments
 
@@ -269,7 +271,7 @@ List available agent run artifacts without downloading them.
 
 ### `eigenpal runs artifacts|artifact fetch [options] <run-id>`
 
-Download agent run artifacts by canonical artifact path.
+Download run artifacts by canonical artifact path.
 
 ### Arguments
 

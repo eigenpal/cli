@@ -7,8 +7,8 @@
  * OpenAI SDK calls). Both paths diverged from production worker behavior and
  * assumed shell env state (`WORKER_LLM_*`) that real CLI users don't have.
  *
- * EIG-104 replaces them with a single `POST /api/v1/workflows/step-exec`
- * endpoint that runs the same code path executions take. Until that lands,
+ * EIG-104 replaces them with a server-routed endpoint that runs the same
+ * code path executions take. Until that lands,
  * `step exec` exits 2 with a redirect to the root run / experiment run
  * commands.
  */

@@ -14,6 +14,7 @@
  * ANSI cursor-up/clear-line escapes directly.
  */
 
+import { isTerminalExecutionStatus } from '@eigenpal/types';
 import { ApiError } from './client';
 import { formatDuration } from './ui';
 
@@ -67,8 +68,6 @@ export interface WatchResult {
   final: ExecutionSnapshot;
   detached: boolean;
 }
-
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'rejected']);
 
 const STATUS_BADGES: Record<string, string> = {
   pending: '[ ]',
@@ -208,7 +207,7 @@ export async function watchExecution(opts: WatchOptions): Promise<WatchResult> {
     lastFetched = current;
     render(renderFrame(current));
 
-    if (TERMINAL_STATUSES.has(current.status)) {
+    if (isTerminalExecutionStatus(current.status)) {
       return { final: current, detached: false };
     }
 

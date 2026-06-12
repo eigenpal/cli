@@ -35,12 +35,15 @@ eigenpal runs get exec_…
 eigenpal runs get <exec-id>
 ```
 
-The payload includes:
+The grouped run payload includes:
 
-- `status` — `pending` | `running` | `completed` | `failed` | `cancelled` | `skipped`
-- `output` — the workflow's final return value (or partial when failed)
-- `triggerInput` — the input the workflow was called with
-- `stepExecutions` — one entry per step with:
+- `id`, `type`, `finished` — run identity and whether it reached a terminal status
+- `timing` — created/started/completed timestamps and duration
+- `execution.status` — `pending` | `running` | `completed` | `failed` | `cancelled` | `skipped`
+- `output` — the workflow's final return value when `finished` and completed (or partial when failed)
+- `error` — terminal failure message when the run failed or was cancelled
+- `input` — the input the workflow was called with (included on detail fetches)
+- `execution.steps` — one entry per step when you pass `--expand execution` (the CLI also mirrors this as `stepExecutions`):
   - `stepName` — handle from `workflow.yaml`
   - `status` — same set as the top-level. `skipped` means the step's
     `if:` evaluated false, OR a `control.foreach` was passed an empty
@@ -61,21 +64,21 @@ The payload includes:
 Quick triage with `jq`:
 
 ```bash
-eigenpal runs get <exec-id> --json \
-  | jq '.run.stepExecutions[] | { step: .stepName, status, error }'
+eigenpal runs get <exec-id> --expand execution --json \
+  | jq '.stepExecutions[] | { step: .stepName, status, error }'
 ```
 
 Narrow to a single step:
 
 ```bash
-eigenpal runs get <exec-id> --include input,output,error --json \
-  | jq '.run.stepExecutions[] | select(.stepName == "extract")'
+eigenpal runs get <exec-id> --expand execution --include input,output,error --json \
+  | jq '.stepExecutions[] | select(.stepName == "extract")'
 ```
 
 Drill into one field:
 
 ```bash
-eigenpal runs get <exec-id> --json | jq '.run.stepExecutions[2].output.totalAmount'
+eigenpal runs get <exec-id> --expand execution --json | jq '.stepExecutions[2].output.totalAmount'
 ```
 
 ## 3. Common failure modes
@@ -256,15 +259,15 @@ steps were faked. Re-import the dataset (`workflow dataset push
 ## 9. Watching a long batch
 
 ```bash
-# Kicks off, prints { batchId, executionIds }
+# Kicks off, prints { batchId, total }
 eigenpal workflow experiment run <workflow-id>
 
 # --watch polls until every execution is terminal, prints a per-example
 # failure summary, and exits non-zero if any failed/cancelled.
-eigenpal workflow experiment status <workflow-id> --batch-id <id> --watch
+eigenpal workflow experiment status <workflow-id> <batch-id> --watch
 
 # Without --watch: one-shot snapshot, no polling. Prefer --watch in CI / agents.
-eigenpal workflow experiment status <workflow-id> --batch-id <id>
+eigenpal workflow experiment status <workflow-id> <batch-id>
 ```
 
 The terminal `--watch` output looks like:
@@ -289,8 +292,8 @@ returned before erroring) follow the suggested command:
 
 ```bash
 eigenpal runs get exec_…                                  # full payload
-eigenpal runs get exec_… --include input,output,error --json | jq '.run.stepExecutions[] | select(.stepName == "<name>")'
-eigenpal runs get exec_… --json | jq -r '.run.stepExecutions[0].error'
+eigenpal runs get exec_… --expand execution --json | jq '.stepExecutions[] | select(.stepName == "<name>")'
+eigenpal runs get exec_… --expand execution --json | jq -r '.stepExecutions[] | select(.error != null) | .error' | head -1
 ```
 
 For per-execution live view, `eigenpal runs watch <exec-id>` does

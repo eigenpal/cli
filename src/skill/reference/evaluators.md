@@ -210,17 +210,17 @@ Reports field-level issues:
 eigenpal workflow evaluators push <workflow-id> --file evaluators.yaml
 
 # Kick off a server-side batch eval over the whole pushed dataset.
-# Returns { batchId, executionIds }.
+# Returns { batchId, total }.
 eigenpal workflow experiment run <workflow-id>
 
 # Or restrict to a single example:
 eigenpal workflow experiment run <workflow-id> --example-id evx_…
 
 # Watch progress.
-eigenpal workflow experiment status <workflow-id> --batch-id <id>
+eigenpal workflow experiment status <workflow-id> <batch-id>
 
 # Pull results when done.
-eigenpal workflow experiment results <workflow-id> --batch-id <id> \
+eigenpal workflow experiment results <workflow-id> <batch-id> \
   --format csv --out results.csv
 ```
 

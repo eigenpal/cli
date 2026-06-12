@@ -1,5 +1,15 @@
 # @eigenpal/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 963fd6c: Unify run detail on `GET /api/v1/runs/{id}`: return the canonical Run object directly (no `{ run: ... }` envelope) and merge expanded fields in-place via documented `expand` tokens. Remove the session-only `expand=internal` dashboard escape hatch; SDKs and CLI now use explicit expand lists.
+
+### Patch Changes
+
+- 963fd6c: Update runs commands for the grouped run API shape and four expand tokens.
+
 ## 0.6.16
 
 ### Patch Changes

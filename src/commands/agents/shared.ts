@@ -1,3 +1,4 @@
+import { isTerminalExecutionStatus } from '@eigenpal/types';
 import { InvalidArgumentError } from 'commander';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -65,11 +66,22 @@ export async function pollRun(
   maxWait: number
 ) {
   const started = Date.now();
+  const base = `/api/v1/runs/${encodeURIComponent(executionId)}`;
   for (;;) {
-    const payload = (await client.get(
-      `/api/v1/runs/${encodeURIComponent(executionId)}?include=detail`
-    )) as { run?: { status?: string } };
-    if (isTerminal(payload.run?.status)) return payload;
+    // Poll the cheap summary; only fetch the heavy expansions (agent output
+    // is an S3 read server-side) once the run reaches a terminal state.
+    const payload = (await client.get(base)) as {
+      finished?: boolean;
+      execution?: { status?: string };
+    };
+    const status = payload.execution?.status;
+    if (payload.finished || isTerminalExecutionStatus(status)) {
+      return (await client.get(`${base}?expand=usage,execution`)) as {
+        finished?: boolean;
+        execution?: { status?: string };
+        error?: string | null;
+      };
+    }
     if (Date.now() - started > maxWait * 1000) {
       process.stderr.write(`Timed out waiting for run ${executionId}\n`);
       process.exit(2);
@@ -101,14 +113,24 @@ export async function pollExperiment(
 
 export function renderRunPayload(payload: unknown, opts: BaseOpts) {
   if (opts.json) return printJson(payload);
-  const run = (payload as { run?: Record<string, unknown> }).run;
-  if (!run) return printJson(payload);
-  success(`Run ${run.id} is ${run.status}`);
+  const run = payload as {
+    id?: unknown;
+    finished?: unknown;
+    execution?: { status?: unknown };
+  } | null;
+  if (!run || run.id === undefined) return printJson(payload);
+  const status = run.execution?.status ?? (run.finished === true ? 'completed' : 'running');
+  success(`Run ${run.id} is ${status}`);
 }
 
 export function setExitCodeForFailedTerminalRun(payload: unknown): void {
-  const status = (payload as { run?: { status?: unknown } }).run?.status;
-  if (status === 'failed' || status === 'cancelled') {
+  const run = payload as {
+    finished?: unknown;
+    execution?: { status?: unknown };
+    error?: unknown;
+  } | null;
+  const status = run?.execution?.status;
+  if (status === 'failed' || status === 'cancelled' || (run?.finished === true && run?.error)) {
     process.exitCode = 1;
   }
 }
@@ -147,10 +169,6 @@ export function parseDatasetMode(value: string): 'append' | 'replace' {
 export function parseResultsFormat(value: string): 'csv' | 'json' {
   if (value === 'csv' || value === 'json') return value;
   throw new InvalidArgumentError('format must be csv or json');
-}
-
-function isTerminal(status: unknown): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
 
 export async function confirmTyped(id: string, actionName: string): Promise<boolean> {

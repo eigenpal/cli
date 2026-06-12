@@ -3,14 +3,13 @@ import { join } from 'path';
 import type { ApiClient } from './client';
 import { formatFileIfAvailable } from './format';
 
-/** Payload shape returned by server (GET executions?includeSteps=true, execute output, eval example_completed output) */
+/** Payload shape returned by legacy execution artifacts, execute output, and eval example_completed output. */
 export interface ExecutionArtifactPayload {
   executionId: string;
   status: string;
   createdAt: string;
   completedAt: string | null;
   error: string | null;
-  overrides: Record<string, unknown> | null;
   /** Final workflow output (`output` on the runs detail wire shape). */
   output: unknown;
   stepExecutions: Array<{
@@ -33,6 +32,43 @@ function isWorkflowResult(
     typeof value === 'object' &&
     'files' in value &&
     Array.isArray((value as { files: unknown }).files)
+  );
+}
+
+type RunArtifactRef = {
+  name?: string;
+  path?: string;
+  fileId?: string;
+  stepName?: string;
+};
+
+async function listResultArtifacts(
+  client: ApiClient,
+  executionId: string
+): Promise<RunArtifactRef[]> {
+  try {
+    const payload = (await client.get(
+      `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts`
+    )) as { artifacts?: RunArtifactRef[] };
+    return (payload.artifacts ?? []).filter(
+      (artifact) =>
+        typeof artifact.path === 'string' &&
+        artifact.path.startsWith('output/') &&
+        typeof artifact.name === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function downloadRunArtifact(
+  client: ApiClient,
+  executionId: string,
+  artifactPath: string
+): Promise<Response> {
+  const encodedPath = artifactPath.split('/').map(encodeURIComponent).join('/');
+  return client.getStream(
+    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodedPath}`
   );
 }
 
@@ -84,8 +120,34 @@ export async function writeExecutionArtifacts(
   mkdirSync(filesDir, { recursive: true });
 
   const generatedFiles: GeneratedFileEntry[] = [];
+  const resultArtifacts = await listResultArtifacts(client, payload.executionId);
+  if (resultArtifacts.length > 0) {
+    for (let i = 0; i < resultArtifacts.length; i++) {
+      const artifact = resultArtifacts[i];
+      const artifactPath = artifact.path;
+      if (typeof artifactPath !== 'string') continue;
+      const name = typeof artifact.name === 'string' ? artifact.name : `file-${i}.bin`;
+      try {
+        const res = await downloadRunArtifact(client, payload.executionId, artifactPath);
+        const disposition = res.headers.get('Content-Disposition');
+        const filename = filenameFromContentDisposition(disposition) ?? name;
+        const safe = safeFilename(filename, `file-${i}${filename.includes('.') ? '' : '.bin'}`);
+        const destPath = join(filesDir, safe);
+        const buf = Buffer.from(await res.arrayBuffer());
+        writeFileSync(destPath, buf);
+        generatedFiles.push({
+          fileId: artifact.fileId ?? artifactPath,
+          stepName: artifact.stepName ?? '',
+          filename: safe,
+        });
+      } catch (err) {
+        console.warn(`  Warning: could not download artifact ${artifactPath}:`, err);
+      }
+    }
+  }
+
   const result = payload.output;
-  if (isWorkflowResult(result) && result.files.length > 0) {
+  if (generatedFiles.length === 0 && isWorkflowResult(result) && result.files.length > 0) {
     for (let i = 0; i < result.files.length; i++) {
       const entry = result.files[i];
       const fileId = entry?.fileId;

@@ -55,13 +55,13 @@ function runCli(
 }
 
 describe('root run commands', () => {
-  test('run posts JSON input to the path-target endpoint', async () => {
+  test('run posts JSON input to the unified runs endpoint', async () => {
     let captured: { pathname: string; body: unknown } | null = null;
     await withRunServer(
       async (request) => {
         const url = new URL(request.url);
         captured = { pathname: url.pathname, body: await request.json() };
-        return json({ runId: 'run_123', type: 'workflow' }, { status: 201 });
+        return json({ id: 'run_123', type: 'workflow', finished: false }, { status: 201 });
       },
       async (baseUrl) => {
         const result = await runCli(
@@ -79,10 +79,10 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(captured).toEqual({
-          pathname: '/api/v1/run/workflows.invoice',
-          body: { language: 'en' },
+          pathname: '/api/v1/runs',
+          body: { target: 'workflows.invoice', input: { language: 'en' } },
         });
-        expect(JSON.parse(result.stdout)).toMatchObject({ runId: 'run_123', type: 'workflow' });
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: 'run_123', type: 'workflow' });
       }
     );
   });
@@ -98,7 +98,7 @@ describe('root run commands', () => {
           version: url.searchParams.get('version'),
           trigger: request.headers.get('x-eigenpal-trigger'),
         };
-        return json({ runId: 'run_456', type: 'workflow' }, { status: 201 });
+        return json({ id: 'run_456', type: 'workflow', finished: false }, { status: 201 });
       },
       async (baseUrl) => {
         const result = await runCli(
@@ -110,7 +110,7 @@ describe('root run commands', () => {
         // Mixed-case nanoid id in the target, version moved to the query
         // string, and the run tagged as CLI-triggered.
         expect(captured).toEqual({
-          pathname: '/api/v1/run/workflows.wf_AH9soXr2Aq4firaYWGkS_',
+          pathname: '/api/v1/runs',
           version: '1.2.3',
           trigger: 'cli',
         });
@@ -135,17 +135,17 @@ describe('root run commands', () => {
   });
 
   test('rerun --version original passes through for workflow runs', async () => {
-    const calls: Array<{ pathname: string; body?: unknown }> = [];
+    const calls: Array<{ pathname: string; version: string | null; body: string }> = [];
     await withRunServer(
       async (request) => {
         const url = new URL(request.url);
-        if (request.method === 'GET' && url.pathname === '/api/v1/runs/exec_1') {
-          calls.push({ pathname: url.pathname });
-          return json({ run: { id: 'exec_1', type: 'workflow' } });
-        }
         if (request.method === 'POST' && url.pathname === '/api/v1/runs/exec_1/rerun') {
-          calls.push({ pathname: url.pathname, body: await request.json() });
-          return json({ runId: 'exec_2', status: 'pending' });
+          calls.push({
+            pathname: url.pathname,
+            version: url.searchParams.get('version'),
+            body: await request.text(),
+          });
+          return json({ id: 'exec_2', status: 'pending' });
         }
         return new Response('not found', { status: 404 });
       },
@@ -157,21 +157,24 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(calls).toEqual([
-          { pathname: '/api/v1/runs/exec_1' },
-          { pathname: '/api/v1/runs/exec_1/rerun', body: { sourceRef: 'original' } },
+          { pathname: '/api/v1/runs/exec_1/rerun', version: 'original', body: '' },
         ]);
-        expect(JSON.parse(result.stdout)).toMatchObject({ runId: 'exec_2' });
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: 'exec_2' });
       }
     );
   });
 
   test('rerun posts to the canonical rerun endpoint with version override', async () => {
-    let captured: { pathname: string; body: unknown } | null = null;
+    let captured: { pathname: string; version: string | null; body: string } | null = null;
     await withRunServer(
       async (request) => {
         const url = new URL(request.url);
-        captured = { pathname: url.pathname, body: await request.json() };
-        return json({ runId: 'run_rerun', status: 'pending' });
+        captured = {
+          pathname: url.pathname,
+          version: url.searchParams.get('version'),
+          body: await request.text(),
+        };
+        return json({ id: 'run_rerun', status: 'pending' });
       },
       async (baseUrl) => {
         const result = await runCli(
@@ -182,9 +185,10 @@ describe('root run commands', () => {
         expect(result.status).toBe(0);
         expect(captured).toEqual({
           pathname: '/api/v1/runs/run_123/rerun',
-          body: { sourceRef: 'abc123' },
+          version: 'abc123',
+          body: '',
         });
-        expect(JSON.parse(result.stdout)).toMatchObject({ runId: 'run_rerun' });
+        expect(JSON.parse(result.stdout)).toMatchObject({ id: 'run_rerun' });
       }
     );
   });

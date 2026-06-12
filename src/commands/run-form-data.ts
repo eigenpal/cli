@@ -2,19 +2,73 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { guessMimeType } from '../lib/fs-helpers';
 
+const RESERVED_FIELD_NAMES = new Set([
+  '_json',
+  '_metadata',
+  '_overrides',
+  'input',
+  'target',
+  'overrides',
+  'metadata',
+]);
+
+export type RunFormFile = {
+  fieldName: string;
+  content: Buffer | ArrayBuffer | Uint8Array;
+  filename: string;
+  mimeType?: string;
+};
+
 export async function buildRunFormData(input: {
-  inputFile: string | string[];
+  target: string;
   inputJson?: string;
+  input?: Record<string, unknown>;
+  inputFile?: string | string[];
+  overrides?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+  files?: RunFormFile[];
 }): Promise<FormData> {
   const form = new FormData();
-  for (const spec of parseInputFileSpecs(input.inputFile)) {
-    const data = await fs.readFile(spec.filePath);
-    const filename = path.basename(spec.filePath);
-    const mimeType = guessMimeType(filename) || 'application/octet-stream';
-    form.append(spec.fieldName, new Blob([data], { type: mimeType }), filename);
+  form.append('target', input.target);
+
+  const inputObj = input.input ?? (input.inputJson ? JSON.parse(input.inputJson) : {});
+  form.append('input', JSON.stringify(inputObj));
+
+  if (input.overrides) {
+    form.append('overrides', JSON.stringify(input.overrides));
   }
-  form.append('_json', JSON.stringify(input.inputJson ? JSON.parse(input.inputJson) : {}));
+  if (input.metadata) {
+    form.append('metadata', JSON.stringify(input.metadata));
+  }
+
+  for (const spec of parseInputFileSpecs(input.inputFile ?? [])) {
+    const data = await fs.readFile(spec.filePath);
+    appendFilePart(form, spec.fieldName, data, path.basename(spec.filePath));
+  }
+
+  for (const file of input.files ?? []) {
+    appendFilePart(form, file.fieldName, file.content, file.filename, file.mimeType);
+  }
+
   return form;
+}
+
+function appendFilePart(
+  form: FormData,
+  fieldName: string,
+  content: Buffer | ArrayBuffer | Uint8Array,
+  filename: string,
+  mimeType?: string
+) {
+  assertValidFileFieldName(fieldName);
+  const type = mimeType ?? guessMimeType(filename) ?? 'application/octet-stream';
+  form.append(`files.${fieldName}`, new Blob([content as BlobPart], { type }), filename);
+}
+
+function assertValidFileFieldName(fieldName: string) {
+  if (RESERVED_FIELD_NAMES.has(fieldName) || fieldName.startsWith('files.')) {
+    throw new Error(`file field "${fieldName}" is reserved`);
+  }
 }
 
 function parseInputFileSpecs(inputFile: string | string[]) {
@@ -29,9 +83,7 @@ function parseInputFileSpecs(inputFile: string | string[]) {
     if (!fieldName || !filePath) {
       throw new Error('--input-file must be <field=path> or a bare path');
     }
-    if (fieldName === '_json' || fieldName === '_metadata' || fieldName === 'input') {
-      throw new Error(`--input-file field "${fieldName}" is reserved`);
-    }
+    assertValidFileFieldName(fieldName);
     return { fieldName, filePath };
   });
 }

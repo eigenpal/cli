@@ -167,7 +167,7 @@ eigenpal agents save -m "Improve <agent> behavior"
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
 eigenpal run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
 eigenpal run agents.<slug>@"$SOURCE_REF" --example example-name --wait
-eigenpal runs get <run-id> --json | jq '.run | {status,schemaValid,error,requestedSourceRef,resolvedGitRef,resolvedGitTag,resolvedCommitSha,cost}'
+eigenpal runs get <run-id> --json | jq '{status, schemaValid, error, requestedSourceRef, resolvedGitRef, resolvedGitTag, resolvedCommitSha, cost}'
 eigenpal runs artifacts list <run-id>
 eigenpal runs trace <run-id> --out ./review/<run-id>/trace.jsonl
 
@@ -177,7 +177,7 @@ eigenpal agents sync agents.<slug>
 
 # 7. Verify the released package.
 eigenpal run agents.<slug> --example example-name --wait --json
-eigenpal runs get <released-run-id> --json | jq '.run | {status,schemaValid,error,resolvedGitTag,resolvedCommitSha,cost}'
+eigenpal runs get <released-run-id> --json | jq '{status, schemaValid, error, resolvedGitTag, resolvedCommitSha, cost}'
 ```
 
 File inputs must use schema field names when there is more than one file input:
@@ -270,7 +270,7 @@ eigenpal runs artifacts list <agent-execution-id>
 eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
 eigenpal runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
 eigenpal runs rerun <agent-execution-id> --wait
-eigenpal runs rerun <agent-execution-id> --source-ref original --wait
+eigenpal runs rerun <agent-execution-id> --version original --wait
 eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
   --normalize-dates
@@ -284,10 +284,10 @@ take an agent execution id. Artifact fetches and comparisons write review
 artifacts under `.eigenpal/artifacts/...` by default. Unqualified run-list
 targets show all source refs; add `@<ref>` only when you want a specific
 release, branch, tag, semver range, or commit. `runs list --json` returns
-`{ runs, total, limit, offset }`; `runs get --json` returns `{ run }`.
+`{ runs, total, limit, offset }`; `runs get --json` returns the flattened run object at the top level.
 
 `runs rerun <run-id>` reuses the previous input snapshot with `latest` source
-by default. Use `--source-ref original` only when you need to reproduce the
+by default. Use `--version original` only when you need to reproduce the
 previous resolved version exactly.
 
 Use source refs such as `latest`, `main`, exact versions/tags (`1.2.3`),
@@ -359,11 +359,13 @@ eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
 ```bash
 eigenpal run workflows.<workflow-id> --example <example-name>
 eigenpal runs watch <execution-id>
-eigenpal runs get <execution-id> --include input,output,error --json
+eigenpal runs get <execution-id> --expand input,execution --json
 eigenpal runs list <workflow-id> --type workflow --status failed --limit 10
 eigenpal runs compare <execution-id-a> <execution-id-b>
 eigenpal runs cancel <execution-id> --yes
 ```
+
+`runs get --json` returns the CLI's flattened run view at the top level (`id`, `finished`, `output`, `files`, `error`, plus legacy aliases like `stepExecutions`). Prefer `--expand input,execution` for server-backed sections; `--include` only adds local workflow step projection fields on top of the default expand set.
 
 ### Run And Compare Experiments
 
@@ -405,7 +407,7 @@ and `agents sync`. Live file commands are read/compare tools.
 
 ```bash
 eigenpal runs list <agent-id-or-slug> --type agent --status failed --limit 10
-eigenpal runs get <agent-execution-id> --include feedback,expected,files,trace,issues --json | jq '.run'
+eigenpal runs get <agent-execution-id> --expand input,execution --json | jq '{id, output, files, error, feedback: .feedback, expected: .expected}'
 eigenpal runs artifacts list <agent-execution-id>
 eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
 ```
@@ -447,7 +449,7 @@ used when comparing future runs.
 
 ```bash
 eigenpal runs rerun <agent-execution-id> --wait
-eigenpal runs rerun <agent-execution-id> --source-ref original --wait
+eigenpal runs rerun <agent-execution-id> --version original --wait
 eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id>
 eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
   --baseline \
@@ -458,7 +460,7 @@ eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
 By default, compare a new output against the reference execution's expected
 artifacts. Use `--baseline` to compare actual outputs from both executions.
 By default, rerun uses the previous inputs with latest source. Use
-`--source-ref original` for provenance reproduction.
+`--version original` for provenance reproduction.
 
 ## Output And Exit Codes
 
@@ -468,7 +470,7 @@ script or agent needs to inspect the result with `jq`.
 ```bash
 eigenpal runs list <workflow-id> --type workflow --json | jq '.runs[0].id'
 eigenpal runs list <agent-id-or-slug> --type agent --json | jq '.runs[0].id'
-eigenpal runs get <agent-execution-id> --json | jq '.run.id'
+eigenpal runs get <agent-execution-id> --json | jq '.id'
 ```
 
 General exit-code convention:
@@ -521,7 +523,6 @@ eigenpal
 │   ├── clear-local
 │   ├── dataset
 │   ├── evaluators
-│   ├── execution
 │   ├── experiment
 │   ├── versions
 │   ├── step-type

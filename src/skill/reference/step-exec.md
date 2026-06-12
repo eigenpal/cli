@@ -11,8 +11,8 @@
 >
 > Calling `eigenpal workflow step exec <type>` today exits 2 with a
 > redirect message. The server-side replacement is tracked in EIG-104:
-> a thin `POST /api/v1/workflows/step-exec` endpoint that runs the same
-> code path executions take.
+> a future server-routed endpoint that runs the same code path executions
+> take.
 
 ## What to use instead
 
@@ -36,12 +36,12 @@ To inspect what a step actually produced (input / output / resolved
 config), use:
 
 ```bash
-eigenpal runs get <executionId> --json --include input,output,config
+eigenpal runs get <executionId> --expand execution --json --include input,output,config
 ```
 
-The server returns `inputData` / `outputData` / `resolvedConfig` per
-step on `?includeSteps=true`; the CLI projects them under shorter
-names (`input` / `output` / `config`).
+The CLI requests the run detail with `expand=execution` and projects
+per-step `inputData` / `outputData` / `resolvedConfig` under shorter names
+(`input` / `output` / `config`).
 
 ## Exit codes (current placeholder)
 

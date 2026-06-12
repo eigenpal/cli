@@ -336,15 +336,15 @@ export function formatRunTarget(target: RunTarget): string {
 }
 
 /**
- * Split a {@link RunTarget} into the version-less path segment used by
- * `POST /api/v1/run/{target}` plus the optional `version` query value.
+ * Split a {@link RunTarget} into the version-less target string used by
+ * `POST /api/v1/runs` plus the optional `version` query value.
  * `latest` is normalized to "no version".
  */
-export function runTargetToPathParts(target: RunTarget): {
+export function runTargetToPathParts(target: RunTarget | NormalizedRunTarget): {
   pathTarget: string;
   version?: string;
 } {
-  const normalized = parseRunTarget(target);
+  const normalized = isNormalizedRunTarget(target) ? target : parseRunTarget(target);
   if (normalized.type === 'agent') {
     return {
       pathTarget: normalized.packageName,
@@ -360,14 +360,48 @@ export function runTargetToPathParts(target: RunTarget): {
 }
 
 /**
- * Full request path for `POST /api/v1/run/{target}` — version-less target in
- * the path, version (when not `latest`) in the `version` query parameter.
- * Single owner of this URL shape for app + CLI callers.
+ * Request URL for `POST /api/v1/runs` — version (when not `latest`) in the
+ * `version` query parameter.
  */
-export function runTargetApiPath(target: RunTarget): string {
-  const { pathTarget, version } = runTargetToPathParts(target);
+export function runTargetApiPath(target: RunTarget | NormalizedRunTarget): string {
+  const { version } = runTargetToPathParts(target);
   const query = version ? `?${new URLSearchParams({ version }).toString()}` : '';
-  return `/api/v1/run/${encodeURIComponent(pathTarget)}${query}`;
+  return `/api/v1/runs${query}`;
+}
+
+/** JSON body for `POST /api/v1/runs`. */
+export function runStartJsonBody(
+  target: RunTarget | NormalizedRunTarget | string,
+  input: Record<string, unknown> = {}
+): { target: string; input: Record<string, unknown> } {
+  const normalized =
+    typeof target === 'string'
+      ? parseRunTarget(target)
+      : isNormalizedRunTarget(target)
+        ? target
+        : parseRunTarget(target);
+  const { pathTarget } = runTargetToPathParts(normalized);
+  return { target: pathTarget, input };
+}
+
+/** Target text field for multipart `POST /api/v1/runs`. */
+export function runStartMultipartTarget(target: RunTarget | NormalizedRunTarget | string): string {
+  const normalized =
+    typeof target === 'string'
+      ? parseRunTarget(target)
+      : isNormalizedRunTarget(target)
+        ? target
+        : parseRunTarget(target);
+  return runTargetToPathParts(normalized).pathTarget;
+}
+
+function isNormalizedRunTarget(target: unknown): target is NormalizedRunTarget {
+  return (
+    typeof target === 'object' &&
+    target !== null &&
+    'type' in target &&
+    ('idOrSlug' in target || 'packageName' in target)
+  );
 }
 
 export function pathToDottedPackageName(path: SourcePackagePath): DottedPackageName {

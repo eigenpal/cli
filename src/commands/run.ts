@@ -1,4 +1,9 @@
-import { parseRunTarget, runTargetApiPath } from '@eigenpal/types';
+import {
+  parseRunTarget,
+  runStartJsonBody,
+  runStartMultipartTarget,
+  runTargetApiPath,
+} from '@eigenpal/types';
 import type { Command } from 'commander';
 import { action } from '../lib/format-error';
 import { addJsonFlag, intArg, withBaseUrl } from '../lib/ui';
@@ -77,15 +82,21 @@ async function runTarget(
   const client = buildClient(opts);
   let payload: unknown;
   const runPath = runTargetApiPath(target);
+  const pathTarget = runStartMultipartTarget(target);
   if (opts.inputFile && opts.inputFile.length > 0) {
-    payload = await client.postFormData(
-      runPath,
-      await buildRunFormData({ inputFile: opts.inputFile, inputJson: opts.inputJson })
-    );
+    const form = await buildRunFormData({
+      target: pathTarget,
+      inputFile: opts.inputFile,
+      inputJson: opts.inputJson,
+    });
+    payload = await client.postFormData(runPath, form);
   } else {
-    payload = await client.post(runPath, opts.inputJson ? JSON.parse(opts.inputJson) : {});
+    payload = await client.post(
+      runPath,
+      runStartJsonBody(target, opts.inputJson ? JSON.parse(opts.inputJson) : {})
+    );
   }
-  const runId = String((payload as { runId?: string }).runId ?? '');
+  const runId = String((payload as { id?: string }).id ?? '');
   let waitedForTerminalRun = false;
   if (opts.wait && runId) {
     payload = await pollRun(client, runId, opts.interval, opts.maxWait);
@@ -99,6 +110,5 @@ async function rerunTarget(
   runId: string,
   opts: BaseOpts & { version?: string; wait?: boolean; interval: number; maxWait: number }
 ) {
-  const sourceRef = opts.version === 'latest' ? undefined : opts.version;
-  await rerunRun(runId, { ...opts, sourceRef });
+  await rerunRun(runId, { ...opts, version: opts.version });
 }
