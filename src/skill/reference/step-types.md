@@ -25,7 +25,7 @@ implement at runtime. Server-side validation errors point you here.
 - `transform.*` — deterministic data transforms (set, remove, combine, split, merge,
   script, template, pdf-embed, xlsx-to-json). WASM sandboxed where applicable.
 - `action.*` — external side effects (HTTP, invoke another workflow, website reader).
-- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, approval, block, fail).
+- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, block, fail).
 
 The full per-type catalog with field tables is auto-generated below from
 `STEP_SCHEMAS`. The high-level map above tells you which family you want;
@@ -47,7 +47,6 @@ the catalog tells you what fields it takes.
 | Map over an input array           | `forEach:` on the step or `control.foreach`       |
 | Concurrent map over an array      | `control.parallel_map`                            |
 | Independent parallel branches     | `control.parallel`                                |
-| Pause for human approval          | `control.approval`                                |
 | External HTTP call                | `action.http`                                     |
 | Call another workflow             | `action.invoke-workflow`                          |
 | Fetch a webpage as markdown       | `action.website-reader`                           |
@@ -681,6 +680,9 @@ Execute another workflow and return its output
 | --- | --- | --- | --- | --- |
 | `workflowId` | string | yes |  | ID of workflow to invoke |
 | `input` | record<string, unknown> | no |  | Input to pass to workflow |
+| `wait` | boolean | no |  | If true, wait for the invoked workflow to complete (default: false) |
+| `timeout` | number | no |  | Max wait time in ms when wait=true (default: 300000) |
+| `pollInterval` | number | no |  | How often to poll status in ms when wait=true (default: 1000) |
 
 **Output:** `record<string, unknown>`
 
@@ -798,27 +800,6 @@ Pause workflow execution for a specified duration
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `waited` | number | yes |  | Actual milliseconds waited |
-
-#### `control.approval` — Approval
-
-Pause workflow for human approval before continuing
-
-**Config** (at step level):
-
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `message` | string | no |  | Message to display for approval |
-| `timeoutMinutes` | number | no | `1440` | Auto-reject after timeout |
-| `notifyEmail` | string | no |  | Email to notify |
-
-**Output:** `object`
-
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `approved` | boolean | yes |  | Whether the request was approved |
-| `approvedBy` | string | no |  | Who approved |
-| `approvedAt` | string | no |  | When approved |
-| `comment` | string | no |  | Approver comment |
 
 #### `control.block` — Block
 

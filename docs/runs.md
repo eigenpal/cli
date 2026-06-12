@@ -17,7 +17,6 @@ Inspect, watch, and manage workflow, agent, and eval runs.
   - [`eigenpal runs rerun [options] <run-id>`](#eigenpal-runs-rerun-options-run-id)
   - [`eigenpal runs trace [options] <run-id>`](#eigenpal-runs-trace-options-run-id)
   - [`eigenpal runs watch [options] <run-id>`](#eigenpal-runs-watch-options-run-id)
-  - [`eigenpal runs resume [options] <run-id>`](#eigenpal-runs-resume-options-run-id)
   - [`eigenpal runs cancel [options] <run-id>`](#eigenpal-runs-cancel-options-run-id)
   - [`eigenpal runs artifacts|artifact list|ls [options] <run-id>`](#eigenpal-runs-artifactsartifact-listls-options-run-id)
   - [`eigenpal runs artifacts|artifact fetch [options] <run-id>`](#eigenpal-runs-artifactsartifact-fetch-options-run-id)
@@ -55,7 +54,6 @@ runs
 │   ├── rename <run-id> <old-name> <new-name>
 │   └── delete <run-id> <name>
 ├── watch <run-id>
-├── resume <run-id>
 └── cancel <run-id>
 ```
 
@@ -71,7 +69,6 @@ runs
 | `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                                    |
 | `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                                         |
 | `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                                  |
-| `eigenpal runs resume [options] <run-id>`                           | Resume a workflow run that is waiting for approval.                                                              |
 | `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                                    |
 
 ### Artifacts
@@ -234,23 +231,6 @@ Watch a run until it reaches a terminal status.
 | `--json`               | no       |         | Output the raw server response as JSON |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
 | `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2          |
-
-### `eigenpal runs resume [options] <run-id>`
-
-Resume a workflow run that is waiting for approval.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
 
 ### `eigenpal runs cancel [options] <run-id>`
 

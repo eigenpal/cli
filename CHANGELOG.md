@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.6.16
+
+### Patch Changes
+
+- 75dd64c: Internal refactor: move the skill tool registry into its own module so other tooling can import it. No change to any command, flag, argument, or output.
+
 ## 0.6.15
 
 ### Minor Changes

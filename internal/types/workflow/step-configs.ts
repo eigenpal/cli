@@ -846,6 +846,15 @@ export const ActionHttpOutputSchema = z.object({
 export const ActionInvokeWorkflowConfigSchema = z.object({
   workflowId: z.string().min(1, 'Workflow ID is required').describe('ID of workflow to invoke'),
   input: z.record(z.string(), z.unknown()).optional().describe('Input to pass to workflow'),
+  wait: z
+    .boolean()
+    .optional()
+    .describe('If true, wait for the invoked workflow to complete (default: false)'),
+  timeout: z.number().optional().describe('Max wait time in ms when wait=true (default: 300000)'),
+  pollInterval: z
+    .number()
+    .optional()
+    .describe('How often to poll status in ms when wait=true (default: 1000)'),
 });
 
 export const ActionInvokeWorkflowOutputSchema = z
@@ -968,27 +977,6 @@ export const ControlWaitConfigSchema = z.object({
 
 export const ControlWaitOutputSchema = z.object({
   waited: z.number().describe('Actual milliseconds waited'),
-});
-
-/**
- * control.approval - Pause for human approval
- * Config is step-level (message), not in step.with
- */
-export const ControlApprovalConfigSchema = z.object({
-  message: z.string().optional().describe('Message to display for approval'),
-  timeoutMinutes: z
-    .number()
-    .default(60 * 24)
-    .optional()
-    .describe('Auto-reject after timeout'),
-  notifyEmail: z.string().email().optional().describe('Email to notify'),
-});
-
-export const ControlApprovalOutputSchema = z.object({
-  approved: z.boolean().describe('Whether the request was approved'),
-  approvedBy: z.string().optional().describe('Who approved'),
-  approvedAt: z.string().optional().describe('When approved'),
-  comment: z.string().optional().describe('Approver comment'),
 });
 
 /**
@@ -1281,15 +1269,6 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: ControlWaitOutputSchema,
     configInWith: false,
   },
-  'control.approval': {
-    type: 'control.approval',
-    category: 'control',
-    name: 'Approval',
-    description: 'Pause workflow for human approval before continuing',
-    configSchema: ControlApprovalConfigSchema,
-    outputSchema: ControlApprovalOutputSchema,
-    configInWith: false,
-  },
   'control.block': {
     type: 'control.block',
     category: 'control',
@@ -1481,6 +1460,5 @@ export type ControlForeachConfig = z.infer<typeof ControlForeachConfigSchema>;
 export type ControlParallelMapConfig = z.infer<typeof ControlParallelMapConfigSchema>;
 export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;
 export type ControlWaitConfig = z.infer<typeof ControlWaitConfigSchema>;
-export type ControlApprovalConfig = z.infer<typeof ControlApprovalConfigSchema>;
 export type ControlBlockConfig = z.infer<typeof ControlBlockConfigSchema>;
 export type ControlFailConfig = z.infer<typeof ControlFailConfigSchema>;

@@ -47,9 +47,6 @@ export {
 // Processor configs
 export {
   // Individual schemas
-  ApprovalConfigSchema,
-  ApprovalInputSchema,
-  ApprovalOutputSchema,
   ClassifyConfigSchema,
   ClassifyInputSchema,
   ClassifyLabelSchema,
@@ -89,9 +86,6 @@ export {
   listProcessorIds,
   validateConfig,
   // Types
-  type ApprovalConfig,
-  type ApprovalInput,
-  type ApprovalOutput,
   type ClassifyConfig,
   type ClassifyInput,
   type ClassifyLabel,

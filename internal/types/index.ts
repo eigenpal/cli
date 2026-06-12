@@ -34,9 +34,6 @@ export {
 // Processor types (definitions, execution, configs)
 export {
   // Processor configs
-  ApprovalConfigSchema,
-  ApprovalInputSchema,
-  ApprovalOutputSchema,
   ClassifyConfigSchema,
   ClassifyInputSchema,
   ClassifyLabelSchema,
@@ -98,9 +95,6 @@ export {
   listProcessorIds,
   noopTracingContext,
   validateConfig,
-  type ApprovalConfig,
-  type ApprovalInput,
-  type ApprovalOutput,
   type ClassifyConfig,
   type ClassifyInput,
   type ClassifyLabel,

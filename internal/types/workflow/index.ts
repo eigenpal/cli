@@ -17,8 +17,6 @@ export {
   AiParseConfigSchema,
   AiParseOutputSchema,
   // Control step schemas
-  ControlApprovalConfigSchema,
-  ControlApprovalOutputSchema,
   ControlBlockConfigSchema,
   ControlBlockOutputSchema,
   ControlFailConfigSchema,
@@ -70,7 +68,6 @@ export {
   type AiExtractOutput,
   type AiParseConfig,
   type AiParseOutput,
-  type ControlApprovalConfig,
   type ControlBlockConfig,
   type ControlFailConfig,
   type ControlForeachConfig,
@@ -100,7 +97,6 @@ export { ACTION_TYPES, ActionTypeSchema, ActionTypeValue, type ActionType } from
 export {
   AIStepSchema,
   ActionStepSchema,
-  ApprovalStepSchema,
   BlockStepSchema,
   FailStepSchema,
   ForeachStepSchema,
@@ -119,7 +115,6 @@ export {
   parseStepType,
   type AIStep,
   type ActionStep,
-  type ApprovalStep,
   type BlockStep,
   type FailStep,
   type ForeachStep,

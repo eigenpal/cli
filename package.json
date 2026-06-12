@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.6.15",
+  "version": "0.6.16",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",

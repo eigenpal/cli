@@ -142,10 +142,6 @@ export function registerRunsCommands(program: Command): void {
     .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
     .action(action(watchRunCommand));
 
-  addJsonFlag(withBaseUrl(runs.command('resume <run-id>')))
-    .description('Resume a workflow run that is waiting for approval.')
-    .action(action(resumeRun));
-
   addJsonFlag(withBaseUrl(runs.command('cancel <run-id>')))
     .description('Cancel a run.')
     .option('--yes', 'Required in non-interactive environments')
@@ -1236,12 +1232,6 @@ async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }
     throw new Error('Pass --yes to cancel in non-interactive mode');
   const client = buildClient(opts);
   const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
-  renderRunPayload(payload, opts);
-}
-
-async function resumeRun(executionId: string, opts: BaseOpts) {
-  const client = buildClient(opts);
-  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/resume`, {});
   renderRunPayload(payload, opts);
 }
 

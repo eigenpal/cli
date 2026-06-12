@@ -42,7 +42,6 @@ export const CONTROL_STEP_TYPES = [
   'control.parallel',
   'control.parallel_map',
   'control.wait',
-  'control.approval',
   'control.block',
   'control.fail',
 ] as const;
@@ -88,7 +87,6 @@ export const StepTypeValue = {
   CONTROL_PARALLEL: 'control.parallel',
   CONTROL_PARALLEL_MAP: 'control.parallel_map',
   CONTROL_WAIT: 'control.wait',
-  CONTROL_APPROVAL: 'control.approval',
   CONTROL_BLOCK: 'control.block',
   CONTROL_FAIL: 'control.fail',
 } as const;
@@ -147,8 +145,6 @@ export type HttpMethod = z.infer<typeof HttpMethodSchema>;
  */
 export const ActionStepSchema = BaseStepSchema.extend({
   type: z.enum(ACTION_STEP_TYPES),
-  /** Connector ID for connector-based actions (e.g., action.slack) */
-  connectorId: z.string().optional(),
 });
 export type ActionStep = z.infer<typeof ActionStepSchema>;
 
@@ -161,16 +157,6 @@ export const WaitStepSchema = BaseStepSchema.extend({
   duration: z.number().positive().optional(),
 });
 export type WaitStep = z.infer<typeof WaitStepSchema>;
-
-/**
- * Approval step - pause for human approval
- */
-export const ApprovalStepSchema = BaseStepSchema.extend({
-  type: z.literal('control.approval'),
-  /** Message to display for approval */
-  message: z.string().optional(),
-});
-export type ApprovalStep = z.infer<typeof ApprovalStepSchema>;
 
 /**
  * Fail step - terminate the workflow with a typed status code and message.
@@ -204,7 +190,6 @@ export type Step =
   | TransformStep
   | ActionStep
   | WaitStep
-  | ApprovalStep
   | FailStep
   | IfStep
   | ParallelStep
@@ -382,7 +367,6 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
     TransformStepSchema,
     ActionStepSchema,
     WaitStepSchema,
-    ApprovalStepSchema,
     FailStepSchema,
     BlockStepSchemaInner,
     IfStepSchemaInner,

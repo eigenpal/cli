@@ -124,7 +124,6 @@ eigenpal
 │   │   ├── rename <run-id> <old-name> <new-name>
 │   │   └── delete <run-id> <name>
 │   ├── watch <run-id>
-│   ├── resume <run-id>
 │   └── cancel <run-id>
 ├── git [gitArgs...]
 ├── completion <shell>
