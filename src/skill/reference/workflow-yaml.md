@@ -42,8 +42,10 @@ Required. Each entry is an object that adds an invocation surface:
 - `{ type: manual }` — the workflow can be started manually
 - `{ type: email, whitelist?: ... }` — inbound email
 
-If `{ type: api }` is missing, `eigenpal run workflows.<slug>` rejects with a
-403 / "Workflow does not have API trigger enabled."
+If `{ type: api }` is missing, `eigenpal run workflows.<slug>` rejects with
+`403` / issue code `api_trigger_disabled` — enable the API trigger in the
+workflow editor or dashboard settings. Runtime gates read the
+`automation_triggers` projection (synced on workflow publish).
 
 ### `inputs`
 

@@ -46,6 +46,8 @@ export const ID_PREFIXES = {
   // Email triggers
   AGENT_EMAIL_ALIAS: 'aea',
   AGENT_EMAIL_INVOCATION: 'aei',
+  // Automation trigger projection (runtime gate)
+  AUTOMATION_TRIGGER: 'atr',
   // Token prefixes (not IDs, but follow the same registry)
   SANDBOX_WS_TOKEN: 'sws',
 } as const;

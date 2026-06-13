@@ -288,6 +288,9 @@ export * from './eval';
 // Git-backed source repository grammar and manifests
 export * from './git-source';
 
+// Automation runtime trigger projection
+export * from './automation/triggers';
+
 // API path display helpers (`:id` in docs/UI vs `{id}` in OpenAPI)
 export * from './api/display-path';
 
