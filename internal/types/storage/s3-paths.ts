@@ -5,29 +5,31 @@
  * API shape: one typed path builder, one readable path string, no helper name
  * to keep in sync with the storage layout.
  *
- *   rootS3Path('agents/:agentSlug/agent/AGENT.md', { tenantId, agentSlug });
- *   rootS3Path('agents/:agentSlug/executions/:executionId/output.json', {
+ *   rootS3Path('automations/:automationId/runs/:runId/output.json', {
  *     tenantId,
- *     agentSlug,
- *     executionId,
+ *     automationId,
+ *     runId,
  *   });
  *
  * Use `.at()` only when one local scope needs multiple children under the same
  * long prefix:
  *
- *   const sessionPath = rootS3Path.at('agents/:agentSlug/sessions/:sessionId', {
+ *   const runPath = rootS3Path.at('automations/:automationId/runs/:runId', {
  *     tenantId,
- *     agentSlug,
- *     sessionId,
+ *     automationId,
+ *     runId,
  *   });
- *   sessionPath('messages.jsonl');
- *   sessionPath('.keep');
+ *   runPath('output.json');
+ *   runPath('output/:stepName/:fileArtifactName', {
+ *     stepName: 'extract',
+ *     fileArtifactName: s3FileArtifactName(fileId, filename),
+ *   });
  *
  * Use `.tenant()` for package-local builders that always know the tenant from
  * context, e.g. an app auth wrapper:
  *
  *   const appS3Path = rootS3Path.tenant(auth.tenantId);
- *   appS3Path('agents/:agentSlug/agent/AGENT.md', { agentSlug });
+ *   appS3Path('automations/:automationId/runs/:runId/output.json', { automationId, runId });
  *
  * Do not recreate a helper-per-path API on top of this file. Avoid wrappers
  * like `executionPath(execution)('output.json')` when a direct full-template
@@ -41,6 +43,9 @@ const PATH_LEAF = null;
 const PATH_REST = '*';
 
 export const S3_PATH_GRAMMAR = {
+  // Legacy/source-agent layout. Runtime artifacts are copied to
+  // `automations/<automationId>/...`, but old agents, sessions, source files,
+  // and migration fallbacks still read this tree.
   agents: {
     $agentSlug: {
       agent: {
@@ -102,6 +107,65 @@ export const S3_PATH_GRAMMAR = {
       },
     },
   },
+  // Canonical public runtime layout for workflows and agents.
+  automations: {
+    $automationId: {
+      dataset: {
+        examples: {
+          $exampleName: {
+            input: {
+              $fieldName: {
+                $fileId: {
+                  $filename: PATH_LEAF,
+                },
+              },
+            },
+            expected: {
+              $fileId: {
+                $filename: PATH_LEAF,
+              },
+            },
+            'input.json': PATH_LEAF,
+            'expected.json': PATH_LEAF,
+            'metadata.json': PATH_LEAF,
+            'feedback.md': PATH_LEAF,
+          },
+        },
+      },
+      runs: {
+        $runId: {
+          input: {
+            $fieldName: {
+              $fileArtifactName: PATH_LEAF,
+            },
+          },
+          output: {
+            $stepName: {
+              $fileArtifactName: PATH_LEAF,
+            },
+          },
+          expected: PATH_REST,
+          evaluations: {
+            $evaluatorId: PATH_REST,
+          },
+          'input.json': PATH_LEAF,
+          'input-files.json': PATH_LEAF,
+          'input-schema.json': PATH_LEAF,
+          'output.json': PATH_LEAF,
+          'expected.json': PATH_LEAF,
+          'metadata.json': PATH_LEAF,
+          'feedback.md': PATH_LEAF,
+          'issues.md': PATH_LEAF,
+          'trace.jsonl': PATH_LEAF,
+          'events.jsonl': PATH_LEAF,
+          'usage.json': PATH_LEAF,
+        },
+      },
+    },
+  },
+  // Legacy workflow file rows. Kept only for historical compatibility and
+  // old routes while `0006_automation_storage_backfill` moves runtime data to
+  // the automation-owned tree.
   workflows: {
     $workflowId: {
       runs: {
@@ -257,12 +321,28 @@ export type RootS3PathBuilder = S3PathBuilder<S3PathGrammar, false>;
 export type TenantS3PathBuilder<Node extends PathNode = S3PathGrammar> = S3PathBuilder<Node, true>;
 
 const SEGMENT_RX = /^[A-Za-z0-9_.-]+$/;
+const SAFE_FILENAME_RX = /[^A-Za-z0-9_.-]+/g;
+const TENANT_PREFIX_RX = /^tenants\/[A-Za-z0-9_.-]+\//;
 
 function assertSegment(name: string, value: string): string {
   if (!value || !SEGMENT_RX.test(value)) {
     throw new Error(`Invalid S3 path segment for ${name}: ${JSON.stringify(value)}`);
   }
   return value;
+}
+
+export function assertS3PathSegment(name: string, value: string): string {
+  return assertSegment(name, value);
+}
+
+export function s3PathFilename(value: string): string {
+  const base = value.split(/[\\/]/).filter(Boolean).at(-1) ?? 'file';
+  const safe = base.replace(SAFE_FILENAME_RX, '_').replace(/^_+|_+$/g, '');
+  return assertSegment('filename', safe || 'file');
+}
+
+export function s3FileArtifactName(fileId: string, filename: string): string {
+  return `${assertSegment('fileId', fileId)}-${s3PathFilename(filename)}`;
 }
 
 function getDynamicEntry(node: PathObject): readonly [string, PathNode] | undefined {
@@ -378,6 +458,83 @@ export function buildS3Path<Template extends S3PathTemplateInput>(
   }
   const path = ['tenants', tenant, ...parts].join('/');
   return template.endsWith('/') ? `${path}/` : path;
+}
+
+/**
+ * Build a canonical key without the `tenants/<tenantId>/` prefix. Use this
+ * only at tenant-scoped storage boundaries, where `TenantScopedStorage` adds
+ * the prefix. Prefer `rootS3Path` for raw bucket operations.
+ */
+export function buildS3PathSuffix<Template extends S3PathTemplateInput>(
+  template: Template,
+  params: S3PathTemplateParams<Template>
+): string {
+  const parts = renderTemplate(template, params);
+  const node = walkGrammar(S3_PATH_GRAMMAR, parts);
+  if (template.endsWith('/') && node === PATH_LEAF) {
+    throw new Error(`S3 path leaf cannot have a trailing slash: ${JSON.stringify(template)}`);
+  }
+  const path = parts.join('/');
+  return template.endsWith('/') ? `${path}/` : path;
+}
+
+/** Strip the leading `tenants/<tenantId>/` prefix; pass-through if absent. */
+export function stripTenantPrefix(key: string): string {
+  return key.replace(TENANT_PREFIX_RX, '');
+}
+
+/**
+ * Match a suffix-only or tenant-prefixed key against one grammar template.
+ * Returns the dynamic params when it matches, otherwise null.
+ */
+export function matchS3Path<Template extends S3PathTemplateInput>(
+  template: Template,
+  key: string
+): S3PathTemplateParams<Template> | null {
+  const keyParts = stripTenantPrefix(key).split('/');
+  const templateParts = normalizeTemplate(template).split('/');
+  const params: Record<string, string> = {};
+  let keyIndex = 0;
+
+  for (let templateIndex = 0; templateIndex < templateParts.length; templateIndex += 1) {
+    const templatePart = templateParts[templateIndex];
+    if (!templatePart.startsWith(':')) {
+      if (keyParts[keyIndex] !== templatePart) return null;
+      keyIndex += 1;
+      continue;
+    }
+
+    const name = templatePart.slice(1);
+    if (name === 'path') {
+      if (templateIndex !== templateParts.length - 1) return null;
+      const rest = keyParts.slice(keyIndex);
+      if (rest.length === 0) return null;
+      try {
+        params.path = rest.map((segment) => assertSegment('path', segment)).join('/');
+        walkGrammar(S3_PATH_GRAMMAR, keyParts);
+      } catch {
+        return null;
+      }
+      return params as S3PathTemplateParams<Template>;
+    }
+
+    const value = keyParts[keyIndex];
+    if (value == null) return null;
+    try {
+      params[name] = assertSegment(name, value);
+    } catch {
+      return null;
+    }
+    keyIndex += 1;
+  }
+
+  if (keyIndex !== keyParts.length) return null;
+  try {
+    walkGrammar(S3_PATH_GRAMMAR, keyParts);
+  } catch {
+    return null;
+  }
+  return params as S3PathTemplateParams<Template>;
 }
 
 function createBuilder<Node extends PathNode>(

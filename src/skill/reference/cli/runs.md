@@ -15,6 +15,7 @@ Inspect, watch, and manage workflow, agent, and eval runs.
   - [`eigenpal runs get [options] <run-id>`](#eigenpal-runs-get-options-run-id)
   - [`eigenpal runs compare|diff [options] <reference-run-id> <run-id>`](#eigenpal-runs-comparediff-options-reference-run-id-run-id)
   - [`eigenpal runs rerun [options] <run-id>`](#eigenpal-runs-rerun-options-run-id)
+  - [`eigenpal runs promote [options] <run-id>`](#eigenpal-runs-promote-options-run-id)
   - [`eigenpal runs trace [options] <run-id>`](#eigenpal-runs-trace-options-run-id)
   - [`eigenpal runs watch [options] <run-id>`](#eigenpal-runs-watch-options-run-id)
   - [`eigenpal runs cancel [options] <run-id>`](#eigenpal-runs-cancel-options-run-id)
@@ -38,6 +39,7 @@ runs
 ├── get <run-id>
 ├── compare|diff <reference-run-id> <run-id>
 ├── rerun <run-id>
+├── promote <run-id>
 ├── artifacts|artifact
 │   ├── list|ls <run-id>
 │   └── fetch <run-id>
@@ -67,6 +69,7 @@ runs
 | `eigenpal runs get [options] <run-id>`                              | Get one run.                                                                                                     |
 | `eigenpal runs compare\|diff [options] <reference-run-id> <run-id>` | Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks. |
 | `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                                    |
+| `eigenpal runs promote [options] <run-id>`                          | Promote a run into a dataset example on the run's automation.                                                    |
 | `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                                         |
 | `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                                  |
 | `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                                    |
@@ -197,6 +200,24 @@ Create a new run from a previous run's stored input snapshot.
 | `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                                    |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                                       |
 | `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                                     |
+
+### `eigenpal runs promote [options] <run-id>`
+
+Promote a run into a dataset example on the run's automation.
+
+### Arguments
+
+| Name     | Required | Variadic | Description |
+| -------- | -------- | -------- | ----------- |
+| `run-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
+| `--name <name>`    | no       |         | Name for the created example           |
 
 ### `eigenpal runs trace [options] <run-id>`
 

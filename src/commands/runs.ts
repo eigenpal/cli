@@ -25,6 +25,7 @@ import { renderFrame, watchExecution, type ExecutionSnapshot } from '../lib/watc
 import {
   ArtifactInventoryRow,
   BaseOpts,
+  agentAutomationId,
   buildClient,
   collectRepeated,
   compactParams,
@@ -102,6 +103,22 @@ export function registerRunsCommands(program: Command): void {
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
     .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
     .action(action(rerunRun));
+
+  addJsonFlag(withBaseUrl(runs.command('promote <run-id>')))
+    .description("Promote a run into a dataset example on the run's automation.")
+    .option('--name <name>', 'Name for the created example')
+    .addHelpText(
+      'after',
+      `
+Examples
+  $ eigenpal runs promote run_abc123 --name golden-invoice
+  $ eigenpal runs promote run_abc123 --json | jq '.exampleId'
+
+Copies the run input, output, feedback, and expected artifacts into a dataset example.
+Use \`eigenpal runs feedback update\` first when you need to correct expected output.
+`
+    )
+    .action(action(promoteRun));
 
   const artifacts = runs
     .command('artifacts')
@@ -245,10 +262,13 @@ export async function runExample(
   }
 ) {
   const client = buildClient(opts);
-  const started = (await client.post(`/api/v1/agents/${encodeURIComponent(agentId)}/experiments`, {
-    exampleId: opts.example,
-    ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
-  })) as { batchId?: string; runs?: Array<{ id?: string; exampleId?: string }> };
+  const started = (await client.post(
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments`,
+    {
+      examples: [opts.example],
+      ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
+    }
+  )) as { id?: string; batchId?: string; runs?: Array<{ id?: string; exampleId?: string }> };
   const runId = started.runs?.[0]?.id;
   if (opts.wait && runId) {
     const payload = await pollRun(client, runId, opts.interval, opts.maxWait);
@@ -259,7 +279,7 @@ export async function runExample(
   const payload = {
     id: runId,
     exampleId: opts.example,
-    batchId: started.batchId,
+    batchId: started.id ?? started.batchId,
     status: 'pending',
   };
   if (opts.json) return printJson(payload);
@@ -394,17 +414,6 @@ function isWorkflowRun(run: Record<string, unknown>): boolean {
   return run.type === 'workflow';
 }
 
-function isAgentRun(run: Record<string, unknown>): boolean {
-  return run.type === 'agent';
-}
-
-function ensureAgentRun(run: Record<string, unknown>, feature: string): void {
-  if (isAgentRun(run)) return;
-  throw new Error(
-    `${feature} is only available for agent runs. Workflow runs do not have agent feedback or expected files.`
-  );
-}
-
 function objectOrNull(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -500,28 +509,6 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
     observability: debug?.observability,
     traceId: debug?.traceId,
   };
-}
-
-async function getRunForCompatibilityCheck(
-  client: ApiClient,
-  executionId: string
-): Promise<Record<string, unknown>> {
-  // The summary already carries `type` — no expansion needed for the check.
-  const raw = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`)) as Record<
-    string,
-    unknown
-  > | null;
-  const run = raw ? toLegacyRunView(raw) : null;
-  if (!run || run.id === undefined) throw new Error(`Run ${executionId} not found`);
-  return run;
-}
-
-async function ensureAgentRunById(
-  client: ApiClient,
-  executionId: string,
-  feature: string
-): Promise<void> {
-  ensureAgentRun(await getRunForCompatibilityCheck(client, executionId), feature);
 }
 
 function workflowSteps(value: unknown): WorkflowStepRow[] {
@@ -647,6 +634,31 @@ export async function rerunRun(
   }
   if (opts.json) return printJson(payload);
   success(`Started rerun ${ui.bold(rerunId)} from ${executionId}`);
+}
+
+async function promoteRun(
+  executionId: string,
+  opts: BaseOpts & {
+    name?: string;
+  }
+) {
+  const client = buildClient(opts);
+  const body: Record<string, unknown> = {};
+  if (opts.name) body.name = opts.name;
+  const payload = (await client.post(
+    `/api/v1/runs/${encodeURIComponent(executionId)}/promote`,
+    body
+  )) as {
+    automationId?: string;
+    automationType?: string;
+    exampleId?: string;
+    name?: string | null;
+  };
+  if (opts.json) return printJson(payload);
+  success(
+    `Promoted ${executionId} to example ${ui.bold(payload.name ?? payload.exampleId ?? '')}` +
+      `${payload.automationId ? ` on ${payload.automationType ?? ''} ${payload.automationId}`.trimEnd() : ''}`
+  );
 }
 
 async function fetchRunArtifacts(
@@ -804,13 +816,13 @@ async function writeDownloadedRunArtifact(
   client: ApiClient,
   executionId: string,
   out: string,
-  artifactPath: string,
-  routePrefix: 'files' | 'expected'
+  artifactPath: string
 ) {
-  const routePath = routePrefix === 'files' ? artifactPath : artifactPath.slice('expected/'.length);
-  const routeBase = routePrefix === 'files' ? 'artifacts' : 'expected';
+  // Every canonical artifact (output/*, input/*, expected/*, root files) is
+  // served by the public download route keyed on the same path `artifacts list`
+  // returns — no separate internal `/expected/:name` route needed.
   const response = await client.getStream(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/${routeBase}/${encodeRunArtifactPath(routePath)}`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodeRunArtifactPath(artifactPath)}`
   );
   const outPath = path.join(out, artifactPath);
   await fs.mkdir(path.dirname(outPath), { recursive: true });
@@ -843,17 +855,12 @@ async function writeRunArtifact(
     await writeJsonRunArtifact(out, artifactPath, run.expected);
     return artifactPath;
   }
-  if (artifactPath.startsWith('expected/')) {
-    await writeDownloadedRunArtifact(client, executionId, out, artifactPath, 'expected');
-    return artifactPath;
-  }
-  await writeDownloadedRunArtifact(client, executionId, out, artifactPath, 'files');
+  await writeDownloadedRunArtifact(client, executionId, out, artifactPath);
   return artifactPath;
 }
 
 async function traceRun(executionId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Trace download');
   const text = await downloadTraceText(client, executionId);
   if (!opts.out) {
     process.stdout.write(text);
@@ -1228,7 +1235,6 @@ async function updateRunFeedback(
   }
 ) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Feedback');
   const body: Record<string, unknown> = {};
   if (opts.status) body.status = opts.status;
   if (opts.rating) body.rating = opts.rating === 'none' ? null : opts.rating;
@@ -1240,7 +1246,7 @@ async function updateRunFeedback(
     body.expected = JSON.parse(await fs.readFile(opts.expectedJsonFile, 'utf-8'));
   if (opts.expectedJson !== undefined) body.expected = JSON.parse(opts.expectedJson);
   if (opts.clearExpectedJson) body.expected = null;
-  const payload = await client.patch(
+  const payload = await client.put(
     `/api/v1/runs/${encodeURIComponent(executionId)}/feedback`,
     body
   );
@@ -1275,34 +1281,39 @@ async function clearRunFeedback(executionId: string, opts: BaseOpts & { yes?: bo
     throw new Error('Clear cancelled');
   }
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Feedback');
   const payload = await client.delete(`/api/v1/runs/${encodeURIComponent(executionId)}/feedback`);
   renderGeneric(payload, opts, `Cleared feedback for ${executionId}`);
 }
 
+// Reads of expected artifacts come from the public run detail (`expand=execution`
+// → `execution.expected`) plus the public artifacts download route, so the
+// listing/pull paths no longer touch the internal `/expected` route.
+async function readRunExpected(
+  client: ApiClient,
+  executionId: string
+): Promise<{ expected: unknown; files: Record<string, unknown>[] }> {
+  const run = toLegacyRunView(
+    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+      expand: 'execution',
+    })) as Record<string, unknown>
+  );
+  return {
+    expected: run.expected ?? null,
+    files: Array.isArray(run.expectedFiles) ? (run.expectedFiles as Record<string, unknown>[]) : [],
+  };
+}
+
 async function listRunExpected(executionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
-  const payload = (await client.get(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`
-  )) as {
-    expected?: unknown;
-    files?: Record<string, unknown>[];
-  };
+  const payload = await readRunExpected(client, executionId);
   if (opts.json) return printJson(payload);
-  console.log(table(payload.files ?? [], [{ key: 'name', header: 'NAME' }]));
+  console.log(table(payload.files, [{ key: 'name', header: 'NAME' }]));
   if (payload.expected != null) dim('expected.json present');
 }
 
 async function pullRunExpected(executionId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
-  const payload = (await client.get(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`
-  )) as {
-    expected?: unknown;
-    files?: Record<string, unknown>[];
-  };
+  const payload = await readRunExpected(client, executionId);
   const out = path.resolve(opts.out ?? path.join(executionId, 'expected'));
   await fs.mkdir(out, { recursive: true });
   if (payload.expected != null) {
@@ -1324,7 +1335,7 @@ async function downloadExpectedFiles(
       const name = String((file as { name?: unknown }).name ?? '');
       if (!name || name.includes('/') || name.includes('..')) return null;
       const response = await client.getStream(
-        `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
+        `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/expected/${encodeURIComponent(name)}`
       );
       await fs.mkdir(out, { recursive: true });
       await fs.writeFile(path.join(out, name), Buffer.from(await response.arrayBuffer()));
@@ -1334,13 +1345,18 @@ async function downloadExpectedFiles(
   return written.filter((name): name is string => Boolean(name));
 }
 
+// Intentional internal-only CLI surface: upload / copy-output / rename / delete
+// of expected artifacts mutate run-scoped ground truth and have no public
+// equivalent (the public surface offers `runs feedback` and `runs promote`, not
+// per-file expected mutation). These four keep the internal
+// `/api/v1/runs/:id/expected[/:name]` routes on purpose. FOLLOW-UP: if expected
+// editing becomes a supported public workflow, add public routes and migrate.
 async function uploadRunExpected(
   executionId: string,
   file: string,
   opts: BaseOpts & { name?: string }
 ) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const form = new FormData();
   const data = await fs.readFile(file);
   form.append('file', new Blob([data]), path.basename(file));
@@ -1358,7 +1374,6 @@ async function copyOutputToExpected(
   opts: BaseOpts & { name?: string }
 ) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/expected`, {
     outputFileName: outputFile,
     ...(opts.name ? { expectedName: opts.name } : {}),
@@ -1373,7 +1388,6 @@ async function renameRunExpected(
   opts: BaseOpts
 ) {
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   const payload = await client.patch(
     `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(oldName)}`,
     { name: newName }
@@ -1390,7 +1404,6 @@ async function deleteRunExpected(
     throw new Error('Delete cancelled');
   }
   const client = buildClient(opts);
-  await ensureAgentRunById(client, executionId, 'Expected artifacts');
   await client.delete(
     `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
   );
@@ -1645,10 +1658,10 @@ async function compareMatchedFileText(
 
 function runFileUrl(side: { runId: string; kind: 'expected' | 'output' }, name: string): string {
   const runId = encodeURIComponent(side.runId);
-  const filename = encodeURIComponent(name);
-  return side.kind === 'expected'
-    ? `/api/v1/runs/${runId}/expected/${filename}`
-    : `/api/v1/runs/${runId}/artifacts/${encodeRunArtifactPath(`output/${name}`)}`;
+  // Both expected/* and output/* are canonical run artifacts served by the
+  // public download route under their listed path.
+  const artifactPath = side.kind === 'expected' ? `expected/${name}` : `output/${name}`;
+  return `/api/v1/runs/${runId}/artifacts/${encodeRunArtifactPath(artifactPath)}`;
 }
 
 function encodeRunArtifactPath(artifactPath: string): string {

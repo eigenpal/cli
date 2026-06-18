@@ -106,7 +106,7 @@ paths; you do not need a separate evaluator for failure cases.
       Pick the label that best matches the tone of the response.
 ```
 
-`promptExtension` is the only required field — it's appended to the harness
+`promptExtension` is the only required field — it is appended to the harness
 prompt and tells the judge what "good" looks like for this workflow. The
 harness handles JSON parsing, retries, and feeds the judge `actual`,
 `expected`, and example metadata. In `discrete` mode the judge MUST return
@@ -140,7 +140,7 @@ verbatim, same text the dashboard editor shows. The `: number` return-type annot
 enforced at parse time. The dashboard seeds new evaluators with a
 `WorkflowOutput` type alias derived from the workflow's `output:`
 declaration, plus `Expected` / `Actual` aliases for compatibility. Plain
-`unknown` works too if you don't want a typed signature.
+`unknown` works too if you do not want a typed signature.
 
 The signature shape is **locked**:
 
@@ -151,7 +151,7 @@ The signature shape is **locked**:
   and scored as 0).
 
 `workflow validate` and `workflow evaluators validate` flag YAML where
-the function fails to parse, the signature doesn't match, or the body
+the function fails to parse, the signature does not match, or the body
 contains neither `return` nor `throw` — so a hand-edited config errors
 before it reaches the worker.
 
@@ -224,7 +224,7 @@ eigenpal workflow experiment results <workflow-id> <batch-id> \
   --format csv --out results.csv
 ```
 
-The signed-URL pattern means large result sets don't go through the CLI
+The signed-URL pattern means large result sets do not go through the CLI
 process — `--out` writes the file directly from the server's storage.
 
 ## Stabilizing flaky judges
@@ -264,9 +264,9 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `numericTolerance` | number | no | `0.000001` | Maximum absolute difference between numeric values that still counts as equal. Use 1e-6 for floats, 0 for exact integer match. |
-| `allowExtraFields` | boolean | no | `true` | When on, extra fields in the actual output don't fail the diff. Off = actual must match expected exactly. |
+| `allowExtraFields` | boolean | no | `true` | When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly. |
 | `passThreshold` | number | no | `1` | Minimum diff score this evaluator must reach for a run to pass. 1.0 = perfect match required. |
-| `paths` | array<string> | no |  | Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you don't want to score. |
+| `paths` | array<string> | no |  | Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score. |
 
 
 ### `llm-judge` — LLM-as-judge scoring
@@ -286,7 +286,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `function` | string | yes |  | Full TypeScript source for optional `type` aliases plus `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
-| `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it's killed and the run is marked failed. |
+| `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it is killed and the run is marked failed. |
 | `memoryLimitMb` | integer | no | `10` | Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings. |
 | `passThreshold` | number | no | `1` | Minimum script score this evaluator must reach for a run to pass. |
 <!-- GENERATED:EVALUATOR_CATALOG END -->

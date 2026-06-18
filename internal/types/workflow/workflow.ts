@@ -94,6 +94,13 @@ export type WorkflowInputDef = z.infer<typeof WorkflowInputDefSchema>;
  */
 export const ManualTriggerMethodSchema = z.object({
   type: z.literal('manual'),
+  /**
+   * Whether dashboard runs are allowed. Manual is ON by default — omit this
+   * field (or set `true`) to keep it enabled. Set `false` to disable manual
+   * runs while keeping the workflow's other triggers. Absence of a manual
+   * entry in `triggerMethods` ALSO means enabled (default on).
+   */
+  enabled: z.boolean().optional(),
   /** Input schema for validation */
   inputSchema: JsonSchemaSchema.optional(),
 });
@@ -172,6 +179,20 @@ export function hasTriggerMethod(
 ): boolean {
   const methods = getTriggerMethods(definition);
   return methods.some((m) => m.type === type);
+}
+
+/**
+ * Whether the manual (dashboard) trigger is enabled.
+ *
+ * Manual is ON by default: it is enabled unless `triggerMethods` contains an
+ * explicit manual entry with `enabled: false`. A missing manual entry (e.g. an
+ * API-only `triggerMethods`) still counts as enabled — only an explicit opt-out
+ * disables it. This mirrors agents, which always allow manual runs, while still
+ * letting authors turn it off via YAML/CLI/API/UI.
+ */
+export function isManualTriggerEnabled(definition: WorkflowDefinition): boolean {
+  const manual = getTriggerMethods(definition).find((m) => m.type === 'manual');
+  return manual?.enabled !== false;
 }
 
 /**

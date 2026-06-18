@@ -64,7 +64,7 @@ describe('command aliases', () => {
 });
 
 describe('datasetExportPath', () => {
-  const base = '/api/v1/workflows/wf_abc123/dataset/export';
+  const base = '/api/v1/automations/wf_abc123/dataset/export';
 
   test('returns the bare export path when no examples are requested', () => {
     expect(datasetExportPath('wf_abc123')).toBe(base);

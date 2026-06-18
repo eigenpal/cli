@@ -26,6 +26,18 @@ export function collectRepeated(value: string, previous: string[] = []): string[
   return [...previous, value];
 }
 
+/**
+ * Normalize a user-supplied agent reference into an automation id the public
+ * `/api/v1/automations/...` routes accept. Bare slugs are rooted at `agents.`;
+ * already-qualified aliases (`agents.`/`workflows.`) and raw ids (containing an
+ * underscore, e.g. `wf_…`/`auto_…`) pass through untouched.
+ */
+export function agentAutomationId(value: string): string {
+  if (value.startsWith('agents.') || value.startsWith('workflows.')) return value;
+  if (value.includes('_')) return value;
+  return `agents.${value}`;
+}
+
 export function buildClient(opts: { baseUrl?: string }): ApiClient {
   const config = resolveConfig(opts);
   requireApiKey(config);
@@ -92,7 +104,7 @@ export async function pollRun(
 
 export async function pollExperiment(
   client: ApiClient,
-  agentId: string,
+  automationId: string,
   batchId: string,
   interval: number,
   maxWait: number
@@ -100,7 +112,7 @@ export async function pollExperiment(
   const started = Date.now();
   for (;;) {
     const payload = (await client.get(
-      `/api/v1/agents/${encodeURIComponent(agentId)}/experiments/${encodeURIComponent(batchId)}`
+      `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
     )) as { status?: string };
     if (payload.status === 'completed') return payload;
     if (Date.now() - started > maxWait * 1000) {

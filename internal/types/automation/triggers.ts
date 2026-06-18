@@ -1,6 +1,7 @@
 import { workflowTriggerConfigSchema } from '../workflow/email-trigger';
 import {
   getTriggerMethods,
+  isManualTriggerEnabled,
   type TriggerMethod,
   type WorkflowDefinition,
 } from '../workflow/workflow';
@@ -34,7 +35,10 @@ export function triggersFromWorkflowDefinition(
   const methods = getTriggerMethods(definition);
   return [
     { type: 'api', enabled: workflowMethodEnabled(methods, 'api') },
-    { type: 'manual', enabled: workflowMethodEnabled(methods, 'manual') },
+    // Manual is ON by default and only disabled by an explicit opt-out
+    // (`{ type: 'manual', enabled: false }`). An API-only triggerMethods still
+    // projects manual=true, mirroring agents, while authors can turn it off.
+    { type: 'manual', enabled: isManualTriggerEnabled(definition) },
     { type: 'email', enabled: workflowMethodEnabled(methods, 'email') },
     { type: 'cron', enabled: false },
   ];

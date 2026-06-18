@@ -54,7 +54,7 @@ The grouped run payload includes:
     substitution. Lets you see what the LLM actually got, what URL
     HTTP actually hit, what items the script actually saw. Populated
     for `ai.*` / `transform.*` / `action.*`. Null for `control.*`
-    (orchestration steps don't have a meaningful resolved config).
+    (orchestration steps do not have a meaningful resolved config).
   - `output` — what the step returned
   - `error` — error message + code when `status: 'failed'`
   - `durationMs`
@@ -108,7 +108,7 @@ no network or filesystem, so most timeouts are infinite-loop bugs.
 
 ### `step_type_unknown`
 
-`workflow.yaml` references a `type:` that the deployment doesn't know
+`workflow.yaml` references a `type:` that the deployment does not know
 about. Common after a typo or a step type that was renamed.
 
 ```bash
@@ -219,7 +219,7 @@ broken. If you see:
   Set EIGENPAL_BASE_URL or pass --base-url <url>.
 ```
 
-That's a **connection** error — the URL is wrong, the server is down,
+That is a **connection** error — the URL is wrong, the server is down,
 or your network is blocked. The URL the CLI tried is echoed back so a
 stale `EIGENPAL_BASE_URL` is immediately obvious.
 
@@ -230,13 +230,13 @@ If instead you see:
   Run `eigenpal auth login`, or set EIGENPAL_API_KEY in your env.
 ```
 
-That's an **auth** error — the URL works but your key is missing /
+That is an **auth** error — the URL works but your key is missing /
 expired / scoped to the wrong tenant. Run `auth list` to see configured
 profiles, or `auth use <name>` to switch.
 
 ## 8. Override a flaky step in eval mode
 
-If a step calls an external system that's unreliable (an external API, a
+If a step calls an external system that is unreliable (an external API, a
 private API, a rate-limited connector), short-circuit it for evals via
 the example's `meta.json`:
 

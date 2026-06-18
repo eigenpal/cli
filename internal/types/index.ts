@@ -297,22 +297,17 @@ export * from './api/display-path';
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';
 
-// Canonical S3/R2 key constructors for workflow-scoped files
-export {
-  evalExpectedKey,
-  evalInputKey,
-  parseFileKey,
-  runInputKey,
-  runOutputKey,
-  stripTenantPrefix,
-  type ParsedKey,
-} from './storage/paths';
-
 // Canonical typed S3/R2 path grammar and recursive builder
 export {
   S3_PATH_GRAMMAR,
+  assertS3PathSegment,
   buildS3Path,
+  buildS3PathSuffix,
+  matchS3Path,
   rootS3Path,
+  s3FileArtifactName,
+  s3PathFilename,
+  stripTenantPrefix,
   type RootS3PathBuilder,
   type RootS3PathParams,
   type S3PathBuilder,
@@ -323,4 +318,4 @@ export {
   type S3PathTemplateNode,
   type S3PathTemplateParams,
   type TenantS3PathBuilder,
-} from './storage/s3-path-grammar';
+} from './storage/s3-paths';

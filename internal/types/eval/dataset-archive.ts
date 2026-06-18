@@ -171,7 +171,6 @@ export type ErrorHintKey =
   | 'dataset-too-large'
   | 'execution-in-flight'
   | 'download-token-expired'
-  | 'idempotency-conflict'
   | 'legacy-dataset-format';
 
 export const ERROR_HINTS: Readonly<Record<ErrorHintKey, string>> = {
@@ -179,8 +178,6 @@ export const ERROR_HINTS: Readonly<Record<ErrorHintKey, string>> = {
   'execution-in-flight':
     'Wait for the in-flight execution to complete, or cancel it from the Experiments tab.',
   'download-token-expired': 'Re-request the resource to mint a new URL.',
-  'idempotency-conflict':
-    'Idempotency-Key is already in use with a different request body. Use a fresh UUID.',
   'legacy-dataset-format':
     'Re-export the dataset using the new folder convention (examples/<name>/input/arguments.json + input/<arg>/<file> + expected/output.json).',
 };

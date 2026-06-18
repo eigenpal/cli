@@ -1,7 +1,7 @@
 # Step types
 
 The catalog is generated from `STEP_SCHEMAS` in
-`@eigenpal/types/src/workflow/step-configs.ts`. **Don't memorize fields
+`@eigenpal/types/src/workflow/step-configs.ts`. **Do not memorize fields
 — introspect.** The CLI reads the live schema:
 
 ```bash
@@ -106,7 +106,7 @@ Reference user-supplied schema fields the same way:
 
 `control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`,
 and `control.block` contain nested steps. The auto-generated catalog below
-can't render that shape, so the YAML form lives here. Same for the scoping
+cannot render that shape, so the YAML form lives here. Same for the scoping
 rules — important because the runtime treats nested steps differently from
 top-level ones, and getting the access path wrong silently returns
 `undefined` (no error).
@@ -114,7 +114,7 @@ top-level ones, and getting the access path wrong silently returns
 ### `control.parallel` — independent branches
 
 Runs each branch concurrently. Use when several pieces of work share input
-but don't depend on each other.
+but do not depend on each other.
 
 ```yaml
 - name: enrich
@@ -242,7 +242,7 @@ to preserve intermediate outputs).
 
 > ⚠️ Foreach does NOT isolate scopes — the last iteration's inner step
 > outputs technically persist on the top-level `steps` map and `steps.<inner>.output.x`
-> resolves at runtime. That's an only-the-last-row footgun; the autocomplete
+> resolves at runtime. That is an only-the-last-row hazard; the autocomplete
 > hides these names and you should treat `steps.<foreach>.output.items[]`
 > as the only correct access.
 
@@ -304,7 +304,7 @@ not visible — the block runs in an isolated scope.
 `ai.classify` + `control.fail` together let a workflow reject bad inputs
 fast with a typed HTTP-style status code that callers (and evals) can
 match against. The classifier picks one label from a closed set; the
-fail step terminates the run when the label is one you don't want to
+fail step terminates the run when the label is one you do not want to
 process.
 
 ```yaml

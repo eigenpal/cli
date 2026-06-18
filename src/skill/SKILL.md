@@ -1,6 +1,6 @@
 ---
 name: eigenpal
-description: Build, run, and iterate on Eigenpal workflows and agents from the command line. Use `eigenpal workflow` for YAML workflows, datasets, evaluators, executions, and experiments. Use `eigenpal agents` for agent workspaces, runs, feedback, traces, files, and expected artifacts.
+description: Use the Eigenpal CLI to author workflows, manage agent source, run executions, inspect results, and download artifacts.
 license: Apache-2.0
 compatibility: Requires eigenpal CLI.
 metadata:
@@ -9,161 +9,108 @@ metadata:
   generatedBy: 'eigenpal@__CLI_VERSION__'
 ---
 
-# Eigenpal
+# Eigenpal CLI
 
-Eigenpal has two major CLI surfaces:
+Use long command names in generated commands and documentation. Short aliases may
+appear in user examples, but do not prefer them.
 
-- `eigenpal workflow` — build and operate YAML workflows: definitions,
-  datasets, evaluators, executions, experiments, versions, and schema
-  introspection.
-- `eigenpal agents` — build and operate agent workspaces: agent files, triggers,
-  runs, traces, feedback, expected artifacts, and reruns.
+## Choose A Command
 
-Use long command names in generated commands and documentation. They are more
-readable and cost very little for agents to type. Some short aliases exist for
-interactive users; understand them if you see them, but do not prefer them:
+- `eigenpal workflow` manages YAML workflow definitions, datasets, evaluators,
+  experiments, versions, and step schemas.
+- `eigenpal agents` manages Git-backed agent source packages, shared resources,
+  releases, sync, secrets, datasets, and live file inspection.
+- `eigenpal run` starts a workflow or agent run from a target.
+- `eigenpal runs` inspects, watches, compares, reruns, cancels, and downloads
+  artifacts for workflow or agent runs.
 
-- `runs fb` = `runs feedback`
-- `runs artifact` = `runs artifacts`
-- `run` = start a workflow or agent run
-- `workflow exp` = `workflow experiment`
-- `ls` = `list` anywhere in the CLI
-- `diff` = `compare` anywhere in the CLI
+Use stable ids in scripts:
 
-For exact flags and defaults, prefer the generated references:
+- Workflow id: `wf_...`
+- Workflow execution id: `evx_...`
+- Agent execution id: `aex_...`
+- Experiment batch id: `evb_...`
+- Dataset example id: `ex_...`
 
-- [`reference/cli/workflow.md`](reference/cli/workflow.md)
-- [`reference/cli/agents.md`](reference/cli/agents.md)
-- [`reference/cli/runs.md`](reference/cli/runs.md)
-- [`reference/cli/git.md`](reference/cli/git.md)
-
-## Pick The Surface
-
-Choose `workflow` when the work is about a workflow definition, dataset,
-evaluator, or experiment. Choose root `run` to create workflow runs from local examples.
-
-Choose `agents` when the work is about an agent workspace, agent file, trigger,
-or starting an agent run.
-
-Choose `runs` when the work is about inspecting, watching, comparing,
-cancelling, rerunning, downloading artifacts for, or attaching feedback/expected
-artifacts to any workflow or agent run.
-
-Agents and workflows are related, but their iteration loops are different:
-workflow experiments evaluate datasets with evaluators; agent workflows do not
-currently expose that same experiment/evaluator loop through the CLI.
-
-## Workflow Iteration Loop
+## Workflow Loop
 
 ```bash
-# 1. Create or edit the local project.
+# Create or edit a workflow project.
 eigenpal init workflow invoices --template pdf-extraction
 cd invoices
 $EDITOR workflow.yaml
 
-# 2. Inspect schemas before guessing config fields.
+# Inspect step schemas before editing config.
 eigenpal workflow step-type list --search extract
 eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties'
 
-# 3. Validate and push the workflow definition.
+# Validate and push.
 eigenpal workflow validate ./workflow.yaml
 eigenpal workflow push --file workflow.yaml
 
-# 4. Run one example while iterating.
+# Run one example.
 eigenpal run workflows.<workflow-id> --example <example-name>
 eigenpal runs watch <execution-id>
 eigenpal runs get <execution-id> --json
 
-# 5. Manage the dataset and evaluators when ready to evaluate.
+# Push dataset and evaluators.
 eigenpal workflow dataset validate ./dataset
 eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
 eigenpal workflow evaluators validate ./evaluators.yaml
 eigenpal workflow evaluators push <workflow-id> --file ./evaluators.yaml
 
-# 6. Run and inspect a batch experiment.
+# Run an experiment.
 eigenpal workflow experiment run <workflow-id>
 eigenpal workflow experiment watch <workflow-id> <batch-id>
 eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out results.csv
 ```
 
-Workflow commands that take `<workflow-id>` accept the stable `wf_...` id. Many
-also accept the workflow slug for convenience, but use the id in scripts.
-
-Useful workflow ids are not interchangeable:
-
-- `<workflow-id>` identifies a workflow (`wf_...`).
-- `<execution-id>` identifies one workflow run.
-- `<batch-id>` identifies one experiment batch.
-- `<example-id>` identifies one dataset example.
-
-### Organize workflows into folders
-
-Folders live on the server, not in `workflow.yaml`. `workflow push` and
-`workflow pull` do not read or write folder placement. Use `workflow move`
-to move workflows between dashboard folders:
+Folders are server metadata, not `workflow.yaml` content:
 
 ```bash
 eigenpal workflow move <workflow-id> --folder billing/invoices
 eigenpal workflow move <workflow-id> --folder /
 ```
 
-`--folder /` means root.
-Missing folders in the path are created automatically.
-Default to creating workflows at the top level. Do not move a workflow into
-a folder unless the user specifically asks for that placement.
+## Agent Source Loop
 
-## Agent Iteration Loop
+Agents are Git-backed source packages. Edit source in Git, save the branch, test
+the exact commit, then release and sync.
 
-Agents are Git-backed source packages. The server runs released source packages
-from the organization source repository; editing live files is not the normal
-workflow. Prefer the Eigenpal CLI over raw provider/API calls because it handles
-validation, source refs, release tags, and server sync consistently. Cloned
-source repos also work with raw Git and IDE source-control panels: `agents clone`
-and `eigenpal git -- ...` configure a repo-local credential helper for the
-Eigenpal Git remote, so `git status`, `git log`, `git pull`, and `git push`
-can authenticate without copying API keys into `.git/config`.
-
-Core mental model:
+Key rules:
 
 - `agents/<slug>/` is one agent package.
 - `resources/skills/<slug>/`, `resources/knowledge/<slug>/`,
   `resources/templates/<slug>/`, and `resources/rules/<slug>/` are shared
-  packages that agents depend on through `eigenpal.yaml`.
-- `eigenpal agents save` validates changed packages, commits if dirty, and
-  pushes the current branch.
-- `eigenpal agents release patch agents/<slug>` lands a package as an immutable
-  release tag.
-- `eigenpal agents sync agents.<slug>` applies the latest released agent
-  manifest to the server DB, including triggers.
-- `@latest` means latest released package, not your current branch.
-- To test current branch work before release, run the exact commit SHA from
-  `eigenpal git -- rev-parse HEAD`.
-
-Use branches. Do not casually edit `main` unless the user explicitly wants that:
+  packages.
+- `eigenpal agents save` validates, commits if dirty, and pushes the branch.
+- `eigenpal agents release patch agents/<slug>` creates an immutable release.
+- `eigenpal agents sync agents.<slug>` applies the latest released manifest and
+  triggers to the server.
+- `@latest` means latest released package, not the current branch.
 
 ```bash
-# 1. Clone org source and create a branch.
+# Clone source and create a branch.
 eigenpal agents clone --out ./source
 cd ./source
 eigenpal git -- switch -c <short-task-branch>
 
-# 2. Inspect package state.
+# Inspect source state.
 eigenpal agents status
 eigenpal agents show agents.<slug> --json
 eigenpal agents versions agents.<slug> --json
 
-# 3. Edit source.
+# Edit source.
 $EDITOR agents/<slug>/AGENT.md
 $EDITOR agents/<slug>/eigenpal.yaml
 $EDITOR agents/<slug>/input-schema.json agents/<slug>/output-schema.json
-$EDITOR agents/<slug>/skills/<skill>/SKILL.md agents/<slug>/skills/<skill>/run.py
 
-# 4. Validate and save the branch.
+# Validate and save.
 eigenpal agents validate agents/<slug>
 eigenpal agents deps --dir agents/<slug>
 eigenpal agents save -m "Improve <agent> behavior"
 
-# 5. Test the exact saved commit.
+# Test the saved commit.
 SOURCE_REF="$(eigenpal git -- rev-parse HEAD)"
 eigenpal run agents.<slug>@"$SOURCE_REF" --input-json '{"text":"hello"}' --wait
 eigenpal run agents.<slug>@"$SOURCE_REF" --example example-name --wait
@@ -171,22 +118,15 @@ eigenpal runs get <run-id> --json | jq '{status, schemaValid, error, requestedSo
 eigenpal runs artifacts list <run-id>
 eigenpal runs trace <run-id> --out ./review/<run-id>/trace.jsonl
 
-# 6. Release and sync only when ready.
+# Release and sync.
 eigenpal agents release patch agents/<slug>
 eigenpal agents sync agents.<slug>
-
-# 7. Verify the released package.
-eigenpal run agents.<slug> --example example-name --wait --json
-eigenpal runs get <released-run-id> --json | jq '{status, schemaValid, error, resolvedGitTag, resolvedCommitSha, cost}'
 ```
 
-File inputs must use schema field names when there is more than one file input:
+Use schema field names for file inputs when an agent has more than one file
+field:
 
 ```bash
-eigenpal run agents.<slug> \
-  --input-file start_info_doc=./ZFRP.docx \
-  --wait
-
 eigenpal run agents.<slug> \
   --input-file zfzal_doc=./ZFZAL.pdf \
   --input-file lv_doc=./list_vlastnictva.pdf \
@@ -194,31 +134,24 @@ eigenpal run agents.<slug> \
   --wait
 ```
 
-There is no live file upload command for Git-backed agents. `agents file list/get/diff`
-are read/compare tools only. Source changes go through Git + `agents save` +
-`agents release` + `agents sync`.
+`agents file list/get/diff` are read/compare commands only. Change agent files
+through Git source, then use `agents save`, `agents release`, and `agents sync`.
 
-### Shared Resource Rollouts
+## Shared Resource Updates
 
-When you edit a shared resource, do not assume every dependent agent should move
-immediately. Find usage, then ask the user which dependents to bump:
+Do not move every dependent agent automatically. Find dependents, ask which ones
+to update, then release and sync only those agents.
 
 ```bash
-# 1. Edit and validate the shared package.
 $EDITOR resources/skills/<slug>/SKILL.md resources/skills/<slug>/run.py
 eigenpal agents validate resources/skills/<slug>
 
-# 2. Find dependent agents/resources.
 rg '<slug>|resources/skills/<slug>|resources/knowledge/<slug>' agents/ resources/
 eigenpal agents deps --dir agents/<dependent-slug>
 
-# 3. Ask the user which dependents should move to the new resource version.
-
-# 4. Release the shared package.
 eigenpal agents save -m "Improve shared <slug>"
 eigenpal agents release patch resources/skills/<slug>
 
-# 5. Bump selected agents' eigenpal.yaml dependency refs, then release/sync them.
 $EDITOR agents/<dependent-slug>/eigenpal.yaml
 eigenpal agents validate agents/<dependent-slug>
 eigenpal agents save -m "Bump <slug> dependency"
@@ -226,206 +159,43 @@ eigenpal agents release patch agents/<dependent-slug>
 eigenpal agents sync agents.<dependent-slug>
 ```
 
-After a shared dependency rollout, run one affected agent and inspect
-`eigenpal.lock` via `runs artifacts fetch` to confirm the dependency
-version and commit that inference actually installed.
+After rollout, run one affected agent and inspect `eigenpal.lock` from run
+artifacts to confirm the dependency version.
 
-### Agent Datasets And Examples
+## Agent Datasets
 
-Agent eval examples are runtime data, not Git source. `eigenpal agents save`
-does not persist them. Keep local examples in a dataset directory and use the
-dataset CLI:
+Agent examples are runtime data, not Git source. `agents save` does not persist
+them.
 
 ```bash
-# Builder sandboxes use /workspace/evals; local projects often use ./dataset.
 eigenpal agents dataset validate /workspace/evals --agent-dir agents/<slug>
 eigenpal agents dataset push agents.<slug> --file /workspace/evals
 eigenpal agents dataset list agents.<slug>
 eigenpal agents dataset pull agents.<slug> --out ./dataset
 ```
 
-Example shape:
+Expected outputs should include stable fields only. Omit timestamps, random IDs,
+and open-ended LLM text.
 
-```text
-evals/<name>/
-  input.json        # scalar/object args
-  input/<field>.*   # file input, when needed
-  expected.json     # partial expected output: only stable fields
-  expected/<file>   # golden file outputs
-  feedback.md       # optional notes
-```
-
-For `expected.json`, include only fields that must be identical on every correct
-run. Omit non-deterministic values such as timestamps, random IDs, and free-form
-LLM text. Validate the actual agent output with the output schema; validate the
-expected file as a partial assertion.
-Run a persisted example with `eigenpal run agents.<slug>@<ref> --example <name> --wait`.
-
-### Debug Agent Runs
+## Runs And Artifacts
 
 ```bash
-eigenpal runs list agents.<slug> --compact
-eigenpal runs list agents.<slug> --type agent --status failed --compact
-eigenpal runs artifacts list <agent-execution-id>
-eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
-eigenpal runs trace <agent-execution-id> --out ./review/<agent-execution-id>/trace.jsonl
-eigenpal runs rerun <agent-execution-id> --wait
-eigenpal runs rerun <agent-execution-id> --version original --wait
-eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
-  --baseline \
-  --normalize-dates
-
-eigenpal runs feedback resolve <source-agent-execution-id> \
-  --message "Fixed and verified in <new-agent-execution-id>."
-```
-
-Agent commands commonly accept `<agent-id-or-slug>`. Agent execution commands
-take an agent execution id. Artifact fetches and comparisons write review
-artifacts under `.eigenpal/artifacts/...` by default. Unqualified run-list
-targets show all source refs; add `@<ref>` only when you want a specific
-release, branch, tag, semver range, or commit. `runs list --json` returns
-`{ runs, total, limit, offset }`; `runs get --json` returns the flattened run object at the top level.
-
-`runs rerun <run-id>` reuses the previous input snapshot with `latest` source
-by default. Use `--version original` only when you need to reproduce the
-previous resolved version exactly.
-
-Use source refs such as `latest`, `main`, exact versions/tags (`1.2.3`),
-semver ranges (`1.2.x`, `1.x`), or exact commit SHAs when you need provenance.
-
-### Git-backed secrets
-
-Set secrets with the authenticated CLI — plaintext goes to
-`POST /api/v1/source/secrets/encrypt`; only ciphertext is written to
-`secrets.enc.yaml`. Organization decrypt keys never leave the server.
-
-```bash
-echo -n "$VALUE" | eigenpal agents secret set OPENAI_API_KEY --stdin
-eigenpal agents secret import ./local.env
-eigenpal agents save -m "Add API key"
-```
-
-Runtime sandboxes decrypt via `eigenpal agents env pull` →
-`POST /api/v1/source/secrets/decrypt` (same API key auth).
-
-## Workflow Recipes
-
-### Author And Validate A Workflow
-
-```bash
-eigenpal workflow step-type list
-eigenpal workflow step-type get <step-type> --json
-eigenpal workflow validate ./workflow.yaml
-eigenpal workflow push --file workflow.yaml
-```
-
-The validator reports structured field-path errors. If the error hints at a
-step type, inspect that type with `eigenpal workflow step-type get <type>`.
-
-### Manage A Dataset
-
-```bash
-eigenpal workflow dataset validate ./dataset
-eigenpal workflow dataset push <workflow-id> --file ./dataset --mode append
-eigenpal workflow dataset list <workflow-id>
-eigenpal workflow dataset pull <workflow-id> --out dataset.zip
-```
-
-Dataset archives use this folder shape:
-
-```text
-dataset/
-└── examples/
-    └── <example-name>/
-        ├── input/
-        │   ├── arguments.json
-        │   └── <file-argument-name>/<file>
-        ├── expected/output.json
-        └── meta.json
-```
-
-For one-off changes, use the per-example commands instead of re-uploading the
-whole dataset:
-
-```bash
-eigenpal workflow dataset example get <workflow-id> <example-id> --json
-eigenpal workflow dataset example update <workflow-id> <example-id> --expected-file expected.json
-eigenpal workflow dataset example create <workflow-id> --name edge-case --input-json '{"language":"en"}'
-eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
-```
-
-### Run And Compare Workflow Executions
-
-```bash
-eigenpal run workflows.<workflow-id> --example <example-name>
+eigenpal runs list <workflow-id> --type workflow --status failed --limit 10
+eigenpal runs list <agent-id-or-slug> --type agent --status failed --compact
 eigenpal runs watch <execution-id>
 eigenpal runs get <execution-id> --expand input,execution --json
-eigenpal runs list <workflow-id> --type workflow --status failed --limit 10
-eigenpal runs compare <execution-id-a> <execution-id-b>
-eigenpal runs cancel <execution-id> --yes
+eigenpal runs artifacts list <execution-id>
+eigenpal runs artifacts fetch <execution-id> --include all --out ./review/<execution-id>
+eigenpal runs trace <execution-id> --out ./review/<execution-id>/trace.jsonl
+eigenpal runs rerun <execution-id> --wait
+eigenpal runs rerun <execution-id> --version original --wait
+eigenpal runs compare <source-execution-id> <new-execution-id> --baseline --normalize-dates
 ```
 
-`runs get --json` returns the CLI's flattened run view at the top level (`id`, `finished`, `output`, `files`, `error`, plus legacy aliases like `stepExecutions`). Prefer `--expand input,execution` for server-backed sections; `--include` only adds local workflow step projection fields on top of the default expand set.
+`runs rerun` reuses the previous input snapshot with latest source by default.
+Use `--version original` only to reproduce the previous resolved version.
 
-### Run And Compare Experiments
-
-```bash
-eigenpal workflow experiment run <workflow-id>
-eigenpal workflow experiment status <workflow-id> <batch-id> --json
-eigenpal workflow experiment watch <workflow-id> <batch-id> --format json
-eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out results.csv
-eigenpal workflow experiment compare <batch-id-a> <batch-id-b> --regression-threshold 0.05
-```
-
-`workflow experiment compare` resolves the owning workflow from the batch ids;
-both batches must belong to the same workflow.
-
-## Agent Recipes
-
-### Inspect Agent Source And Live Files
-
-```bash
-eigenpal agents list
-eigenpal agents show agents.<slug> --json
-eigenpal agents versions agents.<slug> --json
-eigenpal agents clone --out ./source
-cd ./source
-eigenpal agents status
-eigenpal agents deps --dir agents/<slug>
-
-# Live file inspection only. Do not edit through this surface.
-eigenpal agents file list <agent-id-or-slug>
-eigenpal agents file list <agent-id-or-slug> --path agent/knowledge
-eigenpal agents file get <agent-id-or-slug> agent/instructions.md --out instructions.md
-eigenpal agents file diff <agent-id-or-slug> agent/instructions.md instructions.md
-```
-
-Edit `agents/<slug>/...` in Git source, then `agents save`, `agents release`,
-and `agents sync`. Live file commands are read/compare tools.
-
-### Inspect Agent Executions
-
-```bash
-eigenpal runs list <agent-id-or-slug> --type agent --status failed --limit 10
-eigenpal runs get <agent-execution-id> --expand input,execution --json | jq '{id, output, files, error, feedback: .feedback, expected: .expected}'
-eigenpal runs artifacts list <agent-execution-id>
-eigenpal runs artifacts fetch <agent-execution-id> --include all --out ./review/<agent-execution-id>
-```
-
-Use `--compact` on execution lists when you only need triage rows.
-
-### Download Agent Traces
-
-```bash
-eigenpal runs trace <agent-execution-id> --out trace.jsonl
-eigenpal runs trace <agent-execution-id> | jq -r 'select(.toolName? or .tool_name? or .tool?)'
-eigenpal runs trace <agent-execution-id> | rg 'error|tool'
-```
-
-`trace` streams the raw JSONL to stdout by default. Use shell tools such as
-`jq`, `rg`, or `awk` for filtering; use `--out` when you want to save the file.
-
-### Manage Agent Feedback And Expected Artifacts
+## Feedback And Expected Artifacts
 
 ```bash
 eigenpal runs feedback update <agent-execution-id> \
@@ -442,136 +212,38 @@ eigenpal runs expected copy-output <agent-execution-id> result.json --name expec
 eigenpal runs expected pull <agent-execution-id> --out expected/
 ```
 
-Feedback is attached to one execution. Expected artifacts are the references
-used when comparing future runs.
+## Output
 
-### Rerun And Compare Agent Executions
-
-```bash
-eigenpal runs rerun <agent-execution-id> --wait
-eigenpal runs rerun <agent-execution-id> --version original --wait
-eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id>
-eigenpal runs compare <source-agent-execution-id> <new-agent-execution-id> \
-  --baseline \
-  --normalize-dates \
-  --fail-on-diff
-```
-
-By default, compare a new output against the reference execution's expected
-artifacts. Use `--baseline` to compare actual outputs from both executions.
-By default, rerun uses the previous inputs with latest source. Use
-`--version original` for provenance reproduction.
-
-## Output And Exit Codes
-
-Most `list`, `get`, and mutating commands support `--json`. Prefer JSON when a
-script or agent needs to inspect the result with `jq`.
+Prefer `--json` for scripts and agent work.
 
 ```bash
 eigenpal runs list <workflow-id> --type workflow --json | jq '.runs[0].id'
-eigenpal runs list <agent-id-or-slug> --type agent --json | jq '.runs[0].id'
-eigenpal runs get <agent-execution-id> --json | jq '.id'
+eigenpal runs get <execution-id> --json | jq '.id'
 ```
 
-General exit-code convention:
+Exit codes:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Success. |
-| 1 | Runtime or command failure. |
-| 2 | Invalid invocation, unsupported option, or timeout/deadline condition. |
+| 0 | Success |
+| 1 | Runtime or command failure |
+| 2 | Invalid invocation, unsupported option, timeout, or deadline |
 
-Status and progress messages go to stderr. Data intended for piping goes to
-stdout.
+Status messages go to stderr. Pipeable data goes to stdout.
 
-## Schema And Reference Files
+## References
 
-Workflow schemas:
-
-- [`reference/workflow-yaml.md`](reference/workflow-yaml.md) — workflow file shape
-- [`reference/step-types.md`](reference/step-types.md) — step-type catalog
-- [`reference/step-exec.md`](reference/step-exec.md) — single-step execution command
-- [`reference/dataset-format.md`](reference/dataset-format.md) — dataset folder format
-- [`reference/evaluators.md`](reference/evaluators.md) — evaluator configuration
-- [`reference/debugging.md`](reference/debugging.md) — workflow run debugging
-
-CLI command references:
+Use generated references for exact flags and defaults:
 
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
 - [`reference/cli/agents.md`](reference/cli/agents.md)
+- [`reference/cli/runs.md`](reference/cli/runs.md)
 - [`reference/cli/auth.md`](reference/cli/auth.md)
-- [`reference/cli/status.md`](reference/cli/status.md)
+- [`reference/workflow-yaml.md`](reference/workflow-yaml.md)
+- [`reference/step-types.md`](reference/step-types.md)
+- [`reference/dataset-format.md`](reference/dataset-format.md)
+- [`reference/evaluators.md`](reference/evaluators.md)
+- [`reference/debugging.md`](reference/debugging.md)
 
-Use `eigenpal --help` for the grouped command overview and
-`eigenpal <command> --help` for live command help.
-
-## CLI Surface
-
-```text
-eigenpal
-├── auth
-│   ├── login
-│   ├── list
-│   └── use
-├── status
-├── workflow
-│   ├── list
-│   ├── pull
-│   ├── push
-│   ├── validate
-│   ├── move
-│   ├── clear-local
-│   ├── dataset
-│   ├── evaluators
-│   ├── experiment
-│   ├── versions
-│   ├── step-type
-│   └── evaluator-type
-├── agents
-│   ├── run
-│   ├── rerun
-│   ├── list
-│   ├── validate
-│   ├── clone
-│   ├── install
-│   ├── init
-│   ├── pull
-│   ├── commit
-│   ├── save
-│   ├── push
-│   ├── release
-│   ├── sync
-│   ├── status
-│   ├── deps
-│   ├── clean
-│   ├── doctor
-│   ├── show
-│   ├── versions
-│   ├── secret
-│   ├── env
-│   ├── file
-│   ├── dataset
-│   ├── runs
-│   └── experiment
-│   └── session
-└── skill
-    ├── install
-    ├── uninstall
-    └── list
-```
-
-Agent command roles:
-
-- `agents clone` — clone organization source and configure raw Git/IDE auth.
-- `agents pull` — fast-forward source from `origin/main`; not datasets or run artifacts.
-- `agents status` / `agents doctor` / `agents clean` — inspect source health.
-- `agents validate` / `agents deps` — validate one package and inspect workspace dependencies.
-- `agents save` — validate, commit if dirty, and push the current branch.
-- `agents release` — create immutable package release tags.
-- `agents sync` — apply latest released agent manifest/triggers to the server.
-- `run` — start a workflow or agent run from a target ref (`@latest`, version, branch, commit).
-- `runs rerun` — reuse a previous input snapshot; defaults to latest source.
-- `runs list/get/watch/cancel/compare/trace` — inspect and manage executions.
-- `runs artifacts list/fetch` — inventory and download run artifacts by path.
-- `agents dataset` — manage persisted agent examples; runtime data, not Git source.
-- `agents file` — live read/diff inspection only.
+Use `eigenpal --help` for command groups and `eigenpal <command> --help` for live
+command help.

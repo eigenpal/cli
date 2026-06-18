@@ -34,7 +34,7 @@ export const ExactDiffConfigSchema = z
       .boolean()
       .default(true)
       .describe(
-        "When on, extra fields in the actual output don't fail the diff. Off = actual must match expected exactly."
+        'When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly.'
       ),
     passThreshold: ScoreInUnitInterval.default(1.0).describe(
       'Minimum diff score this evaluator must reach for a run to pass. 1.0 = perfect match required.'
@@ -43,7 +43,7 @@ export const ExactDiffConfigSchema = z
       .array(z.string().min(1))
       .optional()
       .describe(
-        "Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you don't want to score."
+        'Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score.'
       ),
   })
   .default({ numericTolerance: 1e-6, allowExtraFields: true, passThreshold: 1.0 });
@@ -173,7 +173,7 @@ export const CustomScriptConfigSchema = z.object({
     })
     .default(5000)
     .describe(
-      "Maximum wall-clock time the script can run before it's killed and the run is marked failed."
+      'Maximum wall-clock time the script can run before it is killed and the run is marked failed.'
     ),
   memoryLimitMb: z
     .number()

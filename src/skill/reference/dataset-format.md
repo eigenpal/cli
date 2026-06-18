@@ -54,8 +54,8 @@ example.
 
 - **Folder names** (example names, argument names, expected document
   keys) must match `[a-z0-9][a-z0-9-_]*`.
-- **`input/arguments.json`** is REQUIRED for every example, even if it's
-  just `{}`. It must be a JSON object (not array, not literal).
+- **`input/arguments.json`** is REQUIRED for every example, even if it is
+  `{}`. It must be a JSON object (not array, not literal).
 - **File-arguments** live in `input/<arg-name>/<filename>`. The
   materialized shape on `triggerInput` is **driven by the workflow YAML's
   `inputs[].type`**, not by the file count:
@@ -201,7 +201,7 @@ The two files are mutually exclusive for the same example (an example
 is either a success-case or a failure-case, never both). The `exact-diff`
 evaluator branches on the envelope shape and reports a clean
 `expectedFailureButSucceeded` or `actualWasUntypedError` reason when
-the actual run doesn't match the expectation.
+the actual run does not match the expectation.
 
 ## Validate before pushing
 
@@ -238,7 +238,7 @@ includes `{ created, expectedSet, … }`:
 
 ## Editing a dataset on the server
 
-To inspect or round-trip what's currently on the server:
+To inspect or round-trip what is currently on the server:
 
 ```bash
 eigenpal workflow dataset list <workflow-id>
@@ -278,7 +278,7 @@ eigenpal workflow dataset example update <workflow-id> <example-id> \
   --expected-file /tmp/correct.json
 ```
 
-`--expected-file -` reads JSON from stdin if you'd rather pipe. Pass
+`--expected-file -` reads JSON from stdin if you would rather pipe. Pass
 empty string to clear an annotation: `--annotation ""`.
 
 ### Add one new example
@@ -292,7 +292,7 @@ eigenpal workflow dataset example create <workflow-id> \
 ```
 
 `--input-json` / `--expected-json` accept inline JSON literals; the
-`-file` variants read from disk (or `-` for stdin). They're mutually
+`-file` variants read from disk (or `-` for stdin). They are mutually
 exclusive — pass one or the other, not both.
 
 File-arg uploads still go through `dataset push`; CRUD only handles

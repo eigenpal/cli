@@ -353,7 +353,7 @@ export function registerAllValidateCommand(parent: Command): void {
   parent
     .command('validate [path]')
     .description(
-      'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.'
+      'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.'
     )
     .option(
       '--dir <path>',

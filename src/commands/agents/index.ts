@@ -32,7 +32,7 @@ export function registerAgentCommands(program: Command): void {
   const agent = program
     .command('agents')
     .description(
-      'Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and releases.'
+      'Manage Eigenpal agents: Git source, datasets, experiments, sessions, and releases.'
     )
     .action(() => {
       process.stderr.write(

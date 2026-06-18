@@ -7,7 +7,7 @@
 > retries, no tracing, no credit metering, no tenant-default LLM, no
 > strict-mode response_format) and assumed shell env state
 > (`WORKER_LLM_*`) that real CLI users — who authenticate via
-> `EIGENPAL_API_KEY` — don't have.
+> `EIGENPAL_API_KEY` — do not have.
 >
 > Calling `eigenpal workflow step exec <type>` today exits 2 with a
 > redirect message. The server-side replacement is tracked in EIG-104:
@@ -30,7 +30,7 @@ eigenpal workflow experiment status <workflow-id> <batchId> --watch
 ```
 
 For `--example-id`, the human slug works too (`ex-01-koifer-97zf`),
-not just the `evx_…` id — added as part of the same iteration.
+not the `evx_…` id — added as part of the same iteration.
 
 To inspect what a step actually produced (input / output / resolved
 config), use:

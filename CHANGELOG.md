@@ -1,5 +1,71 @@
 # @eigenpal/cli
 
+## 0.8.0
+
+### Minor Changes
+
+- d620a00: Expose the clean public automation API around automations, runs, files/artifacts, datasets, evaluators, experiments, evaluation results, and run promotion. This intentionally breaks the pre-v1 SDK/CLI surface that exposed workflow- and agent-specific top-level resources outside the explicit legacy compatibility routes.
+
+  > [!WARNING]
+  > **Breaking change (pre-v1).** The workflow- and agent-specific top-level
+  > resources have been removed in favor of a single automation-centric surface.
+  > These packages are still 0.x, so this breaking redesign ships as a `minor`
+  > bump. Update your integration before upgrading.
+
+  #### Removed
+  - Top-level workflow resources, e.g. `client.workflows.*`, including
+    `client.workflows.executions.runAndWait(...)` and the rest of the
+    `client.workflows.executions.*` tree.
+  - Top-level agent resources, e.g. `client.agents.*` (runs, feedback, traces,
+    files, expected artifacts).
+  - Top-level source/git resources, e.g. `client.sources.*`.
+
+  #### New equivalents
+  - **Start a run:** use `client.run('workflows.<slug>', input, options)` (and
+    `client.run('agents.<slug>', ...)`). In the TypeScript SDK, `run-and-wait`
+    is `client.run(target, input, { waitForCompletion })`; in the Python SDK use
+    `client.run_and_wait(target, input=...)`.
+  - **Browse automations** (workflows + agents): `client.automations.list()`,
+    `client.automations.get(id)`, `client.automations.versions(id)`,
+    `client.automations.triggers(id)`, plus
+    `client.automations.dataset|examples|evaluators|experiments.*`.
+  - **Inspect & control runs:** `client.runs.list()`, `client.runs.get(id)`,
+    `client.runs.cancel(id)`, `client.runs.rerun(id)`, `client.runs.promote(id)`,
+    `client.runs.usage(id)`, `client.runs.steps(id)`, `client.runs.events(id)`,
+    and `client.runs.artifacts|eval_results|feedback|trace.*`.
+  - **Manage reusable files:** `client.files.upload(...)`, `client.files.get(id)`,
+    `client.files.download(id)`, `client.files.delete(id)`.
+
+  #### Migration
+  - `client.workflows.executions.runAndWait('<slug>', input)` →
+    `client.run('workflows.<slug>', input, { waitForCompletion })` (TS) /
+    `client.run_and_wait('workflows.<slug>', input=...)` (Python).
+  - `client.workflows.executions.create('<slug>', input)` →
+    `client.run('workflows.<slug>', input)`.
+  - `client.agents.runs.create('<slug>', input)` →
+    `client.run('agents.<slug>', input)`.
+  - `client.workflows.get('<slug>')` / `client.agents.get('<slug>')` →
+    `client.automations.get('workflows.<slug>')` /
+    `client.automations.get('agents.<slug>')`.
+  - Listing/inspecting executions previously under
+    `client.workflows.executions.*` / `client.agents.runs.*` →
+    `client.runs.*` (e.g. `client.runs.list()`, `client.runs.get(id)`).
+  - `eigenpal runs promote` now accepts only `--name` (optional). Use
+    `eigenpal runs feedback update` to set expected JSON before promoting.
+    Feedback and expected commands work for both workflow and agent runs.
+
+  #### DX fixes
+  - `client.runs.*` read methods are now typed against the generated OpenAPI
+    models; use `isRunFinished()` to narrow `run()` / `rerun()` responses before
+    accessing `output`.
+  - `eigenpal agents dataset push --file` accepts a `.zip` archive (matching
+    `pull` output) as well as a directory.
+
+### Patch Changes
+
+- e2e88d7: Drop the deprecated `git` passthrough and the `completion` helper from the generated CLI reference docs and bundled skill reference. Both commands remain fully functional and discoverable via `--help`.
+- e67f2f3: Fix staging QA CLI gaps: resolve profiles by tenant display name (e.g. `EIGENPAL_PROFILE="Timur's org"`) and cap workflow experiment example pagination at the API `limit=100` maximum.
+
 ## 0.7.0
 
 ### Minor Changes
@@ -26,7 +92,7 @@
 
 ### Patch Changes
 
-- 5ea0bb5: `workflow dataset pull` gains `--example-id <id>` (repeatable) to export a single example or a selected subset of a dataset, instead of always pulling the whole dataset. The subset ZIP uses the same archive layout as a full pull, so it re-imports into any dataset via `dataset push --mode append`. Requesting an example id that doesn't exist for the workflow exits non-zero.
+- 5ea0bb5: `workflow dataset pull` gains `--example-id <id>` (repeatable) to export a single example or a selected subset of a dataset, instead of always pulling the whole dataset. The subset ZIP uses the same archive layout as a full pull, so it re-imports into any dataset via `dataset push --mode append`. Requesting an example id that does not exist for the workflow exits non-zero.
 
 ## 0.6.10
 
@@ -57,7 +123,7 @@
 
 ### Minor Changes
 
-- 2aeeaf2: Add first-class source `git save` and branch-aware `git release` flows for Git-backed builder workspaces.
+- 2aeeaf2: Add native source `git save` and branch-aware `git release` flows for Git-backed builder workspaces.
 
 ### Patch Changes
 
@@ -79,7 +145,7 @@
 ### Patch Changes
 
 - 99cad97: Skill reference (auto-generated from `WorkflowDefinitionSchema`) now documents the new `values` row for enum inputs, alongside the existing `items` row used by array inputs. Output-only doc refresh — no CLI behavior change.
-- d70f697: Document the `control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`, and `control.block` step types in the bundled skill reference. The auto-generated catalog can't render nested step shapes, so the YAML form, output access paths (e.g. `steps.<parallel>.output.<branch>.<inner>.<field>`), and scoping rules now live as hand-written prose. Also documents the multi-step iteration footgun: only the LAST inner step's output is keyed into each `items[i]` for `parallel_map` / `foreach` — end the body with a `transform.script` if you need to preserve intermediate fields.
+- d70f697: Document the `control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`, and `control.block` step types in the bundled skill reference. The auto-generated catalog cannot render nested step shapes, so the YAML form, output access paths (e.g. `steps.<parallel>.output.<branch>.<inner>.<field>`), and scoping rules now live as hand-written prose. Also documents the multi-step iteration hazard: only the LAST inner step's output is keyed into each `items[i]` for `parallel_map` / `foreach` — end the body with a `transform.script` if you need to preserve intermediate fields.
 - ed2cde6: Fix `eigenpal workflow pull` writing a 0-byte file. The v1 single-workflow endpoint now returns the current YAML at the top level (`yamlContent`) via a new `WorkflowDetail` response shape, and the CLI throws a clear error instead of silently writing empty output when no version has been published. Also fixes adjacent regressions caused by the same picker: `workflow list` now shows the workflow name and version columns (previously always `-`), `workflow push --bump` reads the server's current version correctly, the "did you mean?" suggestion on a slug typo lists candidates again, and `workflow execution list` shows a duration column computed from the run start/end timestamps.
 
 ## 0.5.11
@@ -149,7 +215,7 @@
   - `eigenpal status` exits non-zero when authentication fails, so scripts can `eigenpal status && deploy`.
   - New `eigenpal completion <bash|zsh|fish>` command — emits a shell-completion script for the live command tree. Install via `eigenpal completion bash > /usr/local/etc/bash_completion.d/eigenpal` (or your shell's equivalent).
   - New global `--quiet` / `-q` flag — suppresses `success()` / `info()` / `dim()` lines while keeping `error()` and `warn()` (and JSON output) intact.
-  - New `addJsonFlagMutation()` helper alongside `addJsonFlag()`. Mutating commands that don't have a curated table view now use it so `--verbose` no longer appears in `--help` where it's a no-op. (Wire-up in mutating handlers happens in a follow-up commit on this branch.)
+  - New `addJsonFlagMutation()` helper alongside `addJsonFlag()`. Mutating commands that do not have a curated table view now use it so `--verbose` no longer appears in `--help` where it is a no-op. (Wire-up in mutating handlers happens in a follow-up commit on this branch.)
 
 - b2c4308: CLI: per-example dataset CRUD.
 
@@ -164,7 +230,7 @@
 
   Skill recipes restored: `SKILL.md` and `reference/dataset-format.md` document the three flows (capture corrected output as new GT, add one example, delete one bad row).
 
-- d41ee8b: CLI: drop the `--wait` flag from `workflow execution run`. The local-folder runner already waits for every example to reach a terminal state, so the flag was a documented no-op kept "for symmetry with `experiment run --wait`." That symmetry isn't worth a dead flag in the user-facing help screen — `experiment run --wait` is meaningful (it polls batch status), `execution run --wait` never was.
+- d41ee8b: CLI: drop the `--wait` flag from `workflow execution run`. The local-folder runner already waits for every example to reach a terminal state, so the flag was a documented no-op kept "for symmetry with `experiment run --wait`." That symmetry is not worth a dead flag in the user-facing help screen — `experiment run --wait` is meaningful (it polls batch status), `execution run --wait` never was.
 
   Behavior is unchanged. Scripts that passed `--wait` will now see an unknown-option error from Commander; remove the flag.
 
@@ -238,7 +304,7 @@
 
 - 9dc84b9: CLI: agent-friendly experiment polling, watching, and comparison.
 
-  Four small additions so agents (and humans writing monitoring scripts) don't have to roll their own bash pollers, JSON parsers, or aggregators on top of `experiment status`.
+  Four small additions so agents (and humans writing monitoring scripts) do not have to roll their own bash pollers, JSON parsers, or aggregators on top of `experiment status`.
   - **`experiment status --json` now includes a top-level `summary` rollup** — `{ total, terminal, complete, completedCount, failedCount, cancelledCount, rejectedCount, runningCount, pendingCount }`. Polling scripts can read `.summary.complete` / `.summary.failedCount` directly instead of folding `executions[].status` themselves. `executions[]` stays as-is for backwards compat.
   - **`experiment status --short`** — single-line, awk-friendly stdout summary (e.g. `6/6 done failed=0 cancelled=0 rejected=0`). Mutually exclusive with `--watch`. Drops the failure detail block + closing tip so monitoring loops stay clean.
   - **New `experiment watch <workflow-id> <batchId>`** — polls until terminal, then auto-pulls eval results to `./results-<batchId>.<format>` in one command. Replaces the old "monitor + status + pull + score" recipe. Flags: `--interval`, `--max-wait`, `--format csv|json`, `--pull-on-complete <path>` to override destination, `--no-pull` to opt out. Exit codes match `experiment status --watch` (0 clean, 1 any failure, 2 deadline).
@@ -321,7 +387,7 @@
 
   Existing evaluator YAML must be ported by hand: rename `body` (or
   `code`) to `function`, and add the `function scoreScript(expected,
-actual) { ... }` declaration around your statements. Parameter order is
+actual) {... }` declaration around your statements. Parameter order is
   load-bearing — swapping `expected` and `actual` would silently invert
   every score.
 
@@ -373,7 +439,7 @@ actual) { ... }` declaration around your statements. Parameter order is
   migrates `code:` to `function:` on the next save. New workflows
   should use `function:`. The schema rejects:
   - function names other than `script`
-  - parameter lists that don't match `Object.keys(inputs)` in order
+  - parameter lists that do not match `Object.keys(inputs)` in order
   - `async` / `import()` / `require()` (sandbox-incompatible)
   - bodies with no `return` or `throw`
 
@@ -394,7 +460,7 @@ actual) { ... }` declaration around your statements. Parameter order is
 
   **`--json` returns the table's columns, not the server envelope.** Previously `--json` dumped `{ data: [{...full server rows}], total }`. Now it emits an array containing exactly the fields the table renders (e.g. `[{id, name, version, updatedAt}]` for `workflow list`). `total` still goes to stderr in both modes.
 
-  **`--verbose`** opts into the firehose: `--json --verbose` emits the full server rows for the rare cases you need fields the table doesn't surface.
+  **`--verbose`** opts into full rows: `--json --verbose` emits the full server rows for the rare cases you need fields the table does not surface.
 
   `workflow list --json | jq '.[0].id'` — the natural shape for piping.
 
@@ -408,7 +474,7 @@ actual) { ... }` declaration around your statements. Parameter order is
   ("Create a new key, copy it, paste below"), and the API key prompt **hides
   input** as you type or paste — same as `gh auth login`, `stripe login`, etc.
 - d41ee8b: CLI: two cleanups for the audit follow-ups.
-  - **`init agent` and bare `agent` now exit 2** instead of 0 when invoked. Both subcommands are reserved-but-unimplemented placeholders, and exiting 0 made it possible for a CI script that misrouted into one of them to silently no-op. POSIX exit 2 ("command exists but isn't usable as invoked") makes the misroute fail loudly. The human-readable "coming soon" stderr message is unchanged.
+  - **`init agent` and bare `agent` now exit 2** instead of 0 when invoked. Both subcommands are reserved-but-unimplemented placeholders, and exiting 0 made it possible for a CI script that misrouted into one of them to silently no-op. POSIX exit 2 ("command exists but is not usable as invoked") makes the misroute fail loudly. The human-readable "coming soon" stderr message is unchanged.
   - **New `--no-color` global flag.** Disables ANSI colors in all output, matching the convention shared by `gh`, `kubectl`, `npm`, and `terraform`. Equivalent to setting `NO_COLOR=1` in the environment, but takes effect for the current invocation only. Implemented as a lazy picocolors wrapper so the flip propagates to every helper in `lib/ui.ts` (and every downstream caller of `pc`) regardless of when in the command lifecycle the flag is parsed.
 
 - 809f3d4: `auth list`: the org name is now the primary label (bold, immediately after
@@ -416,7 +482,7 @@ actual) { ... }` declaration around your statements. Parameter order is
   to `auth use <name>` or `EIGENPAL_PROFILE=<name>`), and the base URL trails
   on the right. The redundant `(tenantId)` column was dropped — the profile
   slug already disambiguates. `auth use` (interactive picker) now prints the
-  non-interactive form on success so you learn the slug you just picked.
+  non-interactive form on success so you learn the slug you picked.
 - 49a8f94: Fixed a stray `undefined` in the `eigenpal auth login` outro. The success message used `dim(...)` (a stderr printer that returns `void`) inside a template literal where `ui.dim(...)` (the inline string formatter) was meant. The dim "Saved profile X — switch with" hint now renders correctly instead of literal `undefined`.
 - 16c6e83: Updated `@eigenpal/cli` author from `Eigenpal <hello@eigenpal.com>` to `Jedr Blaszyk <jedr@eigenpal.com>`. Surfaces on the npm package page and in `npm view @eigenpal/cli`.
 - b1d2d77: CLI: default `baseUrl` is now `https://studio.eigenpal.com` instead of `http://localhost:3000`.
@@ -461,16 +527,16 @@ actual) { ... }` declaration around your statements. Parameter order is
 - c82a215: Polish on `eigenpal auth login` based on DX review:
   - **Browser fallback** — the prompt's note now repeats the API-keys URL prominently, so when `xdg-open`/`open`/`start` silently fails (headless VMs, WSL without xdg-open, restricted containers) the user has a copyable URL right next to the prompt instead of a dim status line above.
   - **Outro is informative** — distinguishes "Saved profile X" (first login to this tenant) from "Updated profile X" (re-login overwrote prior creds in place) and shows the exact `eigenpal auth use X` command to switch to it later. No more raw `(profile org_xxxx)` dead-end.
-  - **Path-rejection error** suggests the corrected origin: instead of just "URL must be the server origin only", it now says e.g. "Try https://studio.eigenpal.com instead of '/api/v1'".
+  - **Path-rejection error** suggests the corrected origin: instead of "URL must be the server origin only", it now says e.g. "Try https://studio.eigenpal.com instead of '/api/v1'".
   - **Non-TTY error copy** is consistent across CI and pipe-redirect paths — both name the missing piece (interactive terminal) and the workaround (`--base-url` / env var).
 
 - be693a3: `eigenpal auth login` no longer opens your browser as the very first thing it does. The flow now mirrors mature CLIs (`gh auth login`, `vercel login`):
   1. **Pick the server** (existing select prompt).
-  2. **Explain the flow** — a clear step-by-step note tells you what's about to happen and surfaces the dashboard URL prominently so you can copy it manually if you prefer.
+  2. **Explain the flow** — a clear step-by-step note tells you what is about to happen and surfaces the dashboard URL prominently so you can copy it manually if you prefer.
   3. **Confirm browser launch** — "Open the dashboard in your browser?" (default Yes). Users on headless VMs, WSL without xdg-open, or who already have the dashboard open can answer No and skip the best-effort browser launch entirely.
   4. **Paste the API key** — same as before.
 
-  No surprise side effects, no "wait, why did a browser pop?" moment. The URL is also in the explanation note so a failed `openBrowser` doesn't strand you.
+  No surprise side effects, no "wait, why did a browser pop?" moment. The URL is also in the explanation note so a failed `openBrowser` does not strand you.
 
 - c82a215: `package.json` now carries full npm metadata: `license: Apache-2.0`, `keywords`, `repository`, `bugs`, `homepage`, and `author`. The published tarball also bundles `LICENSE` and `CHANGELOG.md` so the npm page renders the license badge instead of "License: none" and surfaces real keywords for search.
 - ee32a73: Three fixes around the public CLI mirror and login UX:
@@ -481,8 +547,8 @@ actual) { ... }` declaration around your statements. Parameter order is
      - Dropped `?from=cli` from the dashboard URL — the dashboard ignores the param, and a clean URL is easier to copy/paste/visit manually.
 
 - c82a215: Public README cleanup:
-  - Removed the duplicated `# @eigenpal/cli` heading and redundant install snippet that was being prepended to the public mirror's README. The bundled CLI README is already self-contained, so the synth header was just stacking a second title on top.
-  - Reordered sections so users hit "what to install + what's available" first: Install → Commands → Use it → Primitives. Primitives is the conceptual reference; it now sits below the hands-on sections instead of above them.
+  - Removed the duplicated `# @eigenpal/cli` heading and redundant install snippet that was being prepended to the public mirror's README. The bundled CLI README is already self-contained, so the synth header was stacking a second title on top.
+  - Reordered sections so users hit "what to install + what is available" first: Install → Commands → Use it → Primitives. Primitives is the conceptual reference; it now sits below the hands-on sections instead of above them.
 
 - ac95906: CLI: `eigenpal skill` now installs into 9 popular AI coding tools instead of 2.
 
@@ -540,16 +606,16 @@ actual) { ... }` declaration around your statements. Parameter order is
 - c82a215: Removed all `localhost:3000` references from user-visible help text and source comments. The `auth login --help` examples no longer suggest `--base-url http://localhost:3000` — local development is an internal concern, not something CLI users need to think about. Defaults still target `https://studio.eigenpal.com`; advanced users with their own deployments can still override via `--base-url` or `EIGENPAL_BASE_URL`.
 - c82a215: `eigenpal --version` now prints `dev` for unpublished local builds instead of the confusing `0.0.0-placeholder`. If you ever see `dev`, the binary on your PATH is a local source build (e.g., `bun cli:install:local`), not the npm-published one — run `which -a eigenpal` to find it.
 
-  CI publish also gained a hard check that fails the release if `dist/cli.js --version` doesn't match the `release_tag`, so a placeholder version can never reach users via npm.
+  CI publish also gained a hard check that fails the release if `dist/cli.js --version` does not match the `release_tag`, so a placeholder version can never reach users via npm.
 
 - 71361fd: `eigenpal --version` (and `-v`) now reports the actual published package version instead of a hardcoded `0.0.1`. For local dev (`eigenpal-dev`) the placeholder value (`0.0.0-placeholder`) makes it obvious the bundle came from a workspace build, not npm.
 - 71361fd: Dataset folder format made symmetric — `expected/` mirrors `input/` exactly:
   - `input/arguments.json` (scalar args) ↔ `expected/output.json` (raw data ground truth, **no envelope wrapper**)
   - `input/<argName>/<file>` (input file binary) ↔ `expected/<docKey>/<file>` (expected file output binary)
 
-  `expected/output.json` is now the raw user JSON, mirroring the workflow's `output:` shape 1:1. Drop the `{ data, expectedDocuments }` envelope requirement at the dataset boundary; the server still stores the envelope shape internally but the translation happens at import/export time, just like input file uploads. This is a pre-launch breaking change to the dataset folder layout — re-export your datasets to pick up the cleaner shape.
+  `expected/output.json` is now the raw user JSON, mirroring the workflow's `output:` shape 1:1. Drop the `{ data, expectedDocuments }` envelope requirement at the dataset boundary; the server still stores the envelope shape internally but the translation happens at import/export time, matching input file uploads. This is a pre-launch breaking change to the dataset folder layout — re-export your datasets to pick up the cleaner shape.
 
-  Server import walks `expected/<docKey>/` folders, uploads binaries via `evalExpectedKey`, builds the `expectedDocuments` map server-side. Server export reverses: writes `expectedOutput.data` as raw `output.json`, emits each `expectedDocuments[docKey]` entry as a binary under `expected/<docKey>/<filename>`. Round-trip clean.
+  Server import walks `expected/<docKey>/` folders, uploads binaries via the workflow eval expected storage template, builds the `expectedDocuments` map server-side. Server export reverses: writes `expectedOutput.data` as raw `output.json`, emits each `expectedDocuments[docKey]` entry as a binary under `expected/<docKey>/<filename>`. Round-trip clean.
 
   CLI `validate dataset` accepts any JSON object as `output.json` (drops the envelope check), and validates `expected/<docKey>/` folder names match the same `[a-z0-9][a-z0-9-_]*` pattern as input arg folders. `reference/dataset-format.md` documents the new symmetric layout with a worked example.
 
@@ -592,7 +658,7 @@ actual) { ... }` declaration around your statements. Parameter order is
   - `workflow get-experiment-status --watch` exited 0 when the first poll raced before the server enqueued executions (`0/0 terminal` was vacuously "done"). Now requires `total > 0` to consider the batch terminal.
   - `workflow set-dataset` exited 0 on an unrecognized terminal NDJSON phase (truncated stream or future server-side phase). Now exits 1 with a clear `Import response had unexpected terminal phase` message.
   - Dataset import silently dropped extra files when a folder under `input/<argName>/` had multiple binaries but the workflow input was declared `type: file` (single). Now rejects up front with `code: single_file_input_overpopulated` and a hint to either trim the folder or change the input to the array form.
-  - Misleading import error: entries under `expected/` that didn't fit the `<docKey>/<file>` pattern got an error message saying "entry under input/ ..." with an `input/` example. Message now branches on the actual parent.
+  - Misleading import error: entries under `expected/` that didn't fit the `<docKey>/<file>` pattern got an error message saying "entry under input/..." with an `input/` example. Message now branches on the actual parent.
   - `validate dataset` could crash on broken symlinks / FIFOs. `statSync` now wrapped in try/catch with a structured "unreadable filesystem entry" issue.
 
   **Simplifications** (net −21 LOC after both passes):
@@ -617,11 +683,11 @@ actual) { ... }` declaration around your statements. Parameter order is
     `NO_COLOR` and non-TTY stdout automatically.
 
 - 71361fd: Add a "Common recipes" section to the bundled skill (`SKILL.md`) covering the typical end-to-end command sequences agents need: scaffolding a workflow, validating + pushing workflow YAML, validating + pushing evaluators, building + uploading a dataset (and editing examples server-side), running an experiment + collecting results, and debugging a failing execution.
-- 71361fd: Generate the skill reference (step types, evaluators, workflow YAML) from the canonical Zod schemas in `@eigenpal/types` on every build, with a CI gate that blocks PRs whose schema changes don't ship the regenerated docs.
+- 71361fd: Generate the skill reference (step types, evaluators, workflow YAML) from the canonical Zod schemas in `@eigenpal/types` on every build, with a CI gate that blocks PRs whose schema changes do not ship the regenerated docs.
 - 71361fd: Tighten error-message quality across the dataset/eval/execute pipeline so the CLI surfaces actionable feedback instead of opaque dumps.
-  - `eigenpal workflow set-dataset` now decodes the import endpoint's NDJSON terminal event: `aborted` renders the structured `issues[]` with an aligned field column and exits non-zero; `done` warns loudly when `expectedSet < created` so missing `expected/output.json` files don't slip through silently. Adds smart hints for `invalid_expected_output` and `argument_name_collision` codes.
+  - `eigenpal workflow set-dataset` now decodes the import endpoint's NDJSON terminal event: `aborted` renders the structured `issues[]` with an aligned field column and exits non-zero; `done` warns loudly when `expectedSet < created` so missing `expected/output.json` files do not slip through silently. Adds smart hints for `invalid_expected_output` and `argument_name_collision` codes.
   - `POST /api/v1/execute` replaced its legacy `{ error, details }` payload with the structured envelope (`{ issues, hint, requestId, docsUrl }`) the CLI's `printApiError` already consumes.
-  - `exact-diff` evaluator no longer falls back to "compare whole envelope when `.data` is missing." That fallback silently absorbed the import shape bugs we just fixed; it now requires `.data` on both sides (matching the system-wide `WorkflowResult` and `ExpectedOutputSchema` contracts) so any future shape regression fails loudly.
+  - `exact-diff` evaluator no longer falls back to "compare whole envelope when `.data` is missing." That fallback silently absorbed the import shape bugs we fixed; it now requires `.data` on both sides (matching the system-wide `WorkflowResult` and `ExpectedOutputSchema` contracts) so any future shape regression fails loudly.
   - Exports `printIssues` from the CLI's `validate` command so other commands reuse the same field-aligned issue formatter.
 
 - 71361fd: Structured validation errors with introspection hints. `workflow set-definition`

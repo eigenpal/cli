@@ -96,14 +96,14 @@ workflow
 
 ### Core
 
-| Command                                                 | Description                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                           |
-| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                          |
-| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                 |
-| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                  |
-| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
-| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                      |
+| Command                                                 | Description                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                      |
+| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                     |
+| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                            |
+| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                             |
+| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
+| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                 |
 
 ### Evaluators
 
@@ -233,7 +233,7 @@ Move a workflow to a folder path, creating folders as needed
 
 ### `eigenpal workflow validate [options] [path]`
 
-Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates just that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.
+Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.
 
 ### Arguments
 
@@ -601,7 +601,7 @@ Poll until terminal, then auto-pull results — replaces `status --watch` + `res
 | `--max-wait <seconds>`      | no       | `1800`   | Hard ceiling in seconds (default 1800 = 30 min)                         |
 | `--pull-on-complete <path>` | no       |          | Destination for the results file. Default: ./results-<batchId>.<format> |
 | `--format <csv\|json>`      | no       | `"json"` | Results export format (default json)                                    |
-| `--no-pull`                 | no       |          | Skip auto-pulling results on terminal (just watch)                      |
+| `--no-pull`                 | no       |          | Skip auto-pulling results on terminal (watch only)                      |
 | `--base-url <url>`          | no       |          | Server base URL                                                         |
 
 ### `eigenpal workflow versions list|ls [options] <workflow-id>`

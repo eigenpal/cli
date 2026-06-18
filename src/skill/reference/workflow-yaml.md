@@ -326,7 +326,7 @@ same per-page representation.
 Description-writing tips (mirrors Reducto's guidance):
 
 - Use the document's own terminology — a Slovak contract calls it `Príloha`,
-  not "annex". List the multilingual variants you've seen.
+  not "annex". List the multilingual variants you have seen.
 - Mention stable visual cues if any — a centered title-page header, a
   signature line, the start of a specific table.
 - Be specific. "The collateral schedule table at the start of Príloha 2"
@@ -442,11 +442,11 @@ eigenpal workflow push --file workflow.yaml --workflow-id wf_… --bump patch   
 `--bump` requires `--workflow-id` (it bumps from the current server
 version). `--set-version` works with or without `--workflow-id`. The
 YAML's top-level `version:` field is the fallback when neither flag is
-passed — server rejects pushes whose version doesn't strictly increase.
+passed — server rejects pushes whose version does not strictly increase.
 
 ## Discover step + evaluator types
 
-Don't memorize fields — introspect:
+Do not memorize fields — introspect:
 
 ```bash
 eigenpal workflow step-type      list                 # full step catalog
@@ -456,7 +456,7 @@ eigenpal workflow evaluator-type get <type>           # config schema for one ev
 ```
 
 Both catalogs are generated from the canonical Zod schemas in
-`@eigenpal/types`, so they're always in sync with what the deployment
+`@eigenpal/types`, so they are always in sync with what the deployment
 supports.
 
 <!-- GENERATED:WORKFLOW_REFERENCE START -->

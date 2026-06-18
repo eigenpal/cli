@@ -85,6 +85,23 @@ describe('credentials (profile-based)', () => {
     expect(readActiveCredentials()?.apiKey).toBe('k2');
   });
 
+  it('resolves profile by tenant display name', () => {
+    upsertProfile(
+      {
+        apiKey: 'k-staging',
+        baseUrl: 'https://staging.eigenpal.com',
+        tenantName: "Timur's org",
+      },
+      'staging'
+    );
+
+    process.env.EIGENPAL_PROFILE = "Timur's org";
+    expect(activeProfileName()).toBe('staging');
+    expect(readActiveCredentials()?.apiKey).toBe('k-staging');
+    expect(setCurrentProfile("Timur's org")).toBe(true);
+    expect(listProfiles().current).toBe('staging');
+  });
+
   it('deleteProfile advances current to a remaining profile', () => {
     upsertProfile({ apiKey: 'k1', baseUrl: 'http://h1' }, 'acme');
     upsertProfile({ apiKey: 'k2', baseUrl: 'http://h2' }, 'staging');

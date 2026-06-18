@@ -133,14 +133,21 @@ interface DatasetExampleRow {
   id: string;
   name?: string | null;
   rowOrder?: number | null;
+  input?: Record<string, unknown> | null;
   triggerInput?: Record<string, unknown> | null;
   updatedAt?: string | null;
   [k: string]: unknown;
 }
 
 interface ExperimentRow {
+  id?: string | null;
   batchId?: string | null;
   status?: string | null;
+  runCount?: number | null;
+  completedCount?: number | null;
+  passedCount?: number | null;
+  failedCount?: number | null;
+  avgScore?: number | null;
   total?: number | null;
   passRate?: number | null;
   evalScore?: number | null;
@@ -206,7 +213,7 @@ async function readDirAsZip(dir: string): Promise<Uint8Array> {
  * server returns just those examples. Each id is URL-encoded. Exported for tests.
  */
 export function datasetExportPath(workflowId: string, exampleIds?: string[]): string {
-  const base = `/api/v1/workflows/${workflowId}/dataset/export`;
+  const base = `/api/v1/automations/${workflowId}/dataset/export`;
   if (!exampleIds || exampleIds.length === 0) return base;
   const query = exampleIds.map((id) => encodeURIComponent(id)).join(',');
   return `${base}?exampleIds=${query}`;
@@ -720,8 +727,10 @@ function registerEvaluatorsCommands(parent: Command): void {
   withBaseUrl(pullCmd).action(
     action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
       const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-      const res = await client.getStream(`/api/v1/workflows/${workflowId}/evaluators/export`);
-      await writeOrPrint(opts.out, await res.text());
+      const result = (await client.get(`/api/v1/automations/${workflowId}/evaluators`)) as {
+        yaml?: string;
+      };
+      await writeOrPrint(opts.out, result.yaml ?? '');
     })
   );
 
@@ -734,7 +743,7 @@ function registerEvaluatorsCommands(parent: Command): void {
       async (workflow: string, opts: WorkflowCommandConfig & { file: string; json?: boolean }) => {
         const yaml = await fs.readFile(opts.file, 'utf8');
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const result = (await client.post(`/api/v1/workflows/${workflowId}/evaluators/import`, {
+        const result = (await client.put(`/api/v1/automations/${workflowId}/evaluators`, {
           yaml,
         })) as { count?: number; evaluators?: unknown[]; [k: string]: unknown };
         if (opts.json) {
@@ -776,7 +785,7 @@ function registerDatasetCommands(parent: Command): void {
         opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const raw = await client.get(`/api/v1/workflows/${workflowId}/eval-examples`, {
+        const raw = await client.get(`/api/v1/automations/${workflowId}/examples`, {
           limit: String(opts.limit),
           offset: String(opts.offset),
         });
@@ -786,11 +795,12 @@ function registerDatasetCommands(parent: Command): void {
             { key: 'name', header: 'name' },
             { key: 'rowOrder', header: 'rowOrder', align: 'right' },
             {
-              key: 'triggerInput',
+              key: 'input',
               header: 'inputs',
-              format: (v) => {
-                if (v == null) return '-';
-                const keys = Object.keys(v as Record<string, unknown>);
+              format: (v, row) => {
+                const input = v ?? (row as DatasetExampleRow).triggerInput;
+                if (input == null) return '-';
+                const keys = Object.keys(input as Record<string, unknown>);
                 return keys.length === 0 ? '-' : keys.join(',');
               },
             },
@@ -917,16 +927,23 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
         formData.append('file', new Blob([data as unknown as any]), filename);
         formData.append('mode', opts.mode);
 
-        // Result is NDJSON-streamed from the import route; surface the
-        // terminal frame to the user.
+        // The public import route returns a plain JSON result. Keep the old
+        // NDJSON terminal-frame parser as a fallback so older dev servers still
+        // produce useful output during local cutovers.
         const res = await postMultipart(
           client,
-          `/api/v1/workflows/${workflowId}/dataset/import`,
+          `/api/v1/automations/${workflowId}/dataset/import`,
           formData
         );
         const text = await res.text();
-        const events = parseNdjsonEvents(text);
-        const terminal = events[events.length - 1];
+        let terminal: Record<string, unknown> | undefined;
+        try {
+          const json = JSON.parse(text) as Record<string, unknown>;
+          terminal = { phase: 'done', ...json };
+        } catch {
+          const events = parseNdjsonEvents(text);
+          terminal = events[events.length - 1];
+        }
         if (!terminal || typeof terminal.phase !== 'string') {
           error('Import response had no terminal event.');
           process.stdout.write(text);
@@ -1083,6 +1100,8 @@ interface ExampleRow {
  *  Zod schema; we surface the fields the CLI cares about and pass the rest
  *  through to `--json`. */
 interface FullExampleRow extends ExampleRow {
+  input?: Record<string, unknown> | null;
+  expected?: unknown | null;
   triggerInput?: Record<string, unknown> | null;
   expectedOutput?: Record<string, unknown> | null;
   annotation?: string | null;
@@ -1142,13 +1161,13 @@ handles scalar args + \`expected/output.json\`-style outputs.
           'expected'
         );
         const body: Record<string, unknown> = { name: opts.name };
-        if (triggerInput !== undefined) body.triggerInput = triggerInput;
-        if (expectedOutput !== undefined) body.expectedOutput = expectedOutput;
+        if (triggerInput !== undefined) body.input = triggerInput;
+        if (expectedOutput !== undefined) body.expected = expectedOutput;
         if (opts.annotation !== undefined) body.annotation = opts.annotation;
 
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/v1/workflows/${workflowId}/eval-examples`,
+          `/api/v1/automations/${workflowId}/examples`,
           body
         )) as ExampleRow;
         if (opts.json) {
@@ -1173,11 +1192,8 @@ handles scalar args + \`expected/output.json\`-style outputs.
     .option('--row-order <n>', 'Reorder the row (0-based)', intArg);
   addJsonFlag(withBaseUrl(updateCmd)).action(
     action(
-      // _workflow is unused on the server (PATCH route is by example id) but
-      // we keep it as the first positional so the command stays consistent
-      // with `create` and `delete`.
       async (
-        _workflow: string,
+        workflow: string,
         exampleId: string,
         opts: WorkflowCommandConfig & {
           name?: string;
@@ -1198,17 +1214,17 @@ handles scalar args + \`expected/output.json\`-style outputs.
         );
         const body: Record<string, unknown> = {};
         if (opts.name !== undefined) body.name = opts.name;
-        if (triggerInput !== undefined) body.triggerInput = triggerInput;
-        if (expectedOutput !== undefined) body.expectedOutput = expectedOutput;
+        if (triggerInput !== undefined) body.input = triggerInput;
+        if (expectedOutput !== undefined) body.expected = expectedOutput;
         if (opts.annotation !== undefined) body.annotation = opts.annotation;
         if (opts.rowOrder !== undefined) body.rowOrder = opts.rowOrder;
         if (Object.keys(body).length === 0) {
           throw new Error('example update: pass at least one field to update');
         }
 
-        const client = buildClient(opts);
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.patch(
-          `/api/v1/eval-examples/${exampleId}`,
+          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`,
           body
         )) as ExampleRow;
         if (opts.json) {
@@ -1247,7 +1263,9 @@ handles scalar args + \`expected/output.json\`-style outputs.
         // The server's DELETE returns the deleted row so the success line
         // can echo a human-readable name without a pre-flight GET.
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const deleted = (await client.delete(`/api/v1/eval-examples/${exampleId}`)) as ExampleRow;
+        const deleted = (await client.delete(
+          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
+        )) as ExampleRow;
         if (opts.json) {
           printJson(deleted);
           return;
@@ -1268,15 +1286,15 @@ handles scalar args + \`expected/output.json\`-style outputs.
     .description('Fetch one eval example with full triggerInput, expectedOutput, and metadata.');
   addJsonFlag(withBaseUrl(getCmd)).action(
     action(
-      // _workflow mirrors create/update/delete so the positional shape stays
-      // consistent — the GET endpoint is keyed by example id only.
       async (
-        _workflow: string,
+        workflow: string,
         exampleId: string,
         opts: WorkflowCommandConfig & { json?: boolean }
       ) => {
-        const client = buildClient(opts);
-        const row = (await client.get(`/api/v1/eval-examples/${exampleId}`)) as FullExampleRow;
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const row = (await client.get(
+          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
+        )) as FullExampleRow;
         if (opts.json) {
           printJson(row);
           return;
@@ -1299,10 +1317,10 @@ function renderExampleHuman(row: FullExampleRow): void {
   console.log(`${ui.bold(name)}  ${ui.dim(`(${row.id})`)}`);
   console.log('');
   console.log(ui.bold('Inputs'));
-  console.log(JSON.stringify(row.triggerInput ?? null, null, 2));
+  console.log(JSON.stringify(row.input ?? row.triggerInput ?? null, null, 2));
   console.log('');
   console.log(ui.bold('Expected'));
-  console.log(JSON.stringify(row.expectedOutput ?? null, null, 2));
+  console.log(JSON.stringify(row.expected ?? row.expectedOutput ?? null, null, 2));
   console.log('');
   console.log(ui.bold('Metadata'));
   const meta: Record<string, unknown> = {
@@ -1335,11 +1353,11 @@ async function resolveExampleIds(
   // explicit pagination a workflow with >50 examples would silently miss
   // slugs beyond the first page and we'd exit 2 with a "no example with
   // name X" error even though the example exists.
-  const PAGE_SIZE = 200;
+  const PAGE_SIZE = 100; // API `limit` max (public examples list)
   const bySlug = new Map<string, string>();
   let offset = 0;
   while (true) {
-    const list = (await client.get(`/api/v1/workflows/${workflowId}/eval-examples`, {
+    const list = (await client.get(`/api/v1/automations/${workflowId}/examples`, {
       limit: String(PAGE_SIZE),
       offset: String(offset),
     })) as { data?: Array<{ id: string; name?: string | null }> };
@@ -1392,24 +1410,32 @@ function registerExperimentCommands(parent: Command): void {
           offset: String(opts.offset),
         };
         if (opts.batchId) params.batchId = opts.batchId;
-        const raw = await client.get(`/api/v1/workflows/${workflowId}/experiments`, params);
+        const raw = await client.get(`/api/v1/automations/${workflowId}/experiments`, params);
         renderListResult<ExperimentRow>(
           raw,
           [
-            { key: 'batchId', header: 'batchId' },
+            { key: 'id', header: 'experiment' },
             { key: 'status', header: 'status' },
-            { key: 'total', header: 'total', align: 'right' },
             {
-              key: 'passRate',
-              header: 'passRate',
+              key: 'runCount',
+              header: 'runs',
               align: 'right',
-              format: (v) => (typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : '-'),
+              format: (v, row) => String(v ?? row.total ?? '-'),
             },
             {
-              key: 'evalScore',
-              header: 'evalScore',
+              key: 'passedCount',
+              header: 'passed',
               align: 'right',
-              format: (v) => (typeof v === 'number' ? v.toFixed(2) : '-'),
+              format: (v) => String(v ?? '-'),
+            },
+            {
+              key: 'avgScore',
+              header: 'avgScore',
+              align: 'right',
+              format: (v, row) => {
+                const score = typeof v === 'number' ? v : row.evalScore;
+                return typeof score === 'number' ? score.toFixed(2) : '-';
+              },
             },
           ],
           { ...opts, entityLabel: 'experiment' }
@@ -1460,29 +1486,35 @@ returns immediately with \`{ batchId, total }\`; poll
           opts.exampleId.length > 0
             ? await resolveExampleIds(client, workflowId, opts.exampleId)
             : undefined;
-        const start = (await client.post(`/api/v1/workflows/${workflowId}/evals/run`, {
+        const start = (await client.post(`/api/v1/automations/${workflowId}/experiments`, {
           examples,
-        })) as { batchId: string; total: number };
+        })) as { id?: string; batchId?: string; runCount?: number; total?: number };
+        const experimentId = start.id ?? start.batchId;
+        if (!experimentId) throw new Error('Experiment response did not include an id');
+        const total = start.runCount ?? start.total ?? 0;
         if (!opts.wait) {
           if (opts.json) {
             printJson(start);
             return;
           }
           success(
-            `Started experiment ${ui.bold(start.batchId)} ${ui.dim(`(${start.total} execution${start.total === 1 ? '' : 's'} queued)`)}`
+            `Started experiment ${ui.bold(experimentId)} ${ui.dim(`(${total} run${total === 1 ? '' : 's'} queued)`)}`
           );
           process.stderr.write(
-            `   ${ui.dim(`Watch + auto-pull: eigenpal workflow experiment watch ${workflowId} ${start.batchId}`)}\n`
+            `   ${ui.dim(`Watch + auto-pull: eigenpal workflow experiment watch ${workflowId} ${experimentId}`)}\n`
           );
           return;
         }
         const intervalMs = Math.max(1, opts.interval) * 1000;
         while (true) {
           const status = (await client.get(
-            `/api/v1/workflows/${workflowId}/experiments/${start.batchId}`
+            `/api/v1/automations/${workflowId}/experiments/${experimentId}`
           )) as {
             status: string;
             passRate?: number;
+            failedCount?: number;
+            completedCount?: number;
+            runCount?: number;
             evalScore?: number | null;
             completed: number;
             total: number;
@@ -1493,11 +1525,15 @@ returns immediately with \`{ batchId, total }\`; poll
             // workflow with no graded examples returns `passRate: undefined`,
             // which is not the same as 0 — treat it as "nothing to grade,
             // success" rather than "everyone failed".
-            if (typeof status.passRate === 'number' && status.passRate < 1.0) process.exit(1);
+            if (
+              (typeof status.passRate === 'number' && status.passRate < 1.0) ||
+              (typeof status.failedCount === 'number' && status.failedCount > 0)
+            )
+              process.exit(1);
             return;
           }
           console.error(
-            `${ui.dim(`[${start.batchId}]`)} ${status.completed}/${status.total} ${ui.dim(`(status=${status.status})`)}`
+            `${ui.dim(`[${experimentId}]`)} ${status.completedCount ?? status.completed}/${status.runCount ?? status.total} ${ui.dim(`(status=${status.status})`)}`
           );
           await new Promise((r) => setTimeout(r, intervalMs));
         }
@@ -1561,14 +1597,15 @@ returns immediately with \`{ batchId, total }\`; poll
         );
         const includePayload = includes.has('payload');
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const url = `/api/v1/workflows/${workflowId}/experiments/${batchId}`;
+        const url = `/api/v1/automations/${workflowId}/experiments/${batchId}`;
 
         if (!opts.watch) {
           const result = (await client.get(url)) as {
             executions?: Array<{ status?: string }>;
+            runs?: Array<{ status?: string }>;
             [k: string]: unknown;
           };
-          const execs = result.executions ?? [];
+          const execs = result.executions ?? result.runs ?? [];
           const summary = summarizeExperimentExecutions(execs);
           if (opts.json) {
             printJson({ ...result, summary: rollupForJson(summary) });
@@ -1671,7 +1708,7 @@ Behavior:
         }
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/v1/workflows/${workflowId}/experiments/${batchId}/cancel`
+          `/api/v1/automations/${workflowId}/experiments/${batchId}/cancel`
         )) as {
           batchId: string;
           total: number;
@@ -1729,6 +1766,12 @@ Behavior:
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const params = new URLSearchParams({ format: opts.format });
         if (batchId) params.set('batchId', batchId);
+        // Intentional internal-only CLI surface: the streamed CSV/JSON export
+        // (server-side filename stamping + exact column serialization, plus the
+        // whole-workflow form with no batchId) has no public equivalent. Faithful
+        // client-side reproduction would risk format drift and turn one streamed
+        // download into an N+1 fan-out. FOLLOW-UP: expose a public
+        // `GET /api/v1/automations/{id}/eval-results/export` and migrate here.
         await downloadStreamToFile(
           client,
           `/api/v1/workflows/${workflowId}/eval-results/export?${params.toString()}`,
@@ -1840,7 +1883,7 @@ batches must belong to the same workflow within the caller's tenant.
       parseExportFormat,
       'json'
     )
-    .option('--no-pull', 'Skip auto-pulling results on terminal (just watch)')
+    .option('--no-pull', 'Skip auto-pulling results on terminal (watch only)')
     .addHelpText(
       'after',
       `
@@ -1888,7 +1931,7 @@ Behavior:
           process.exit(2);
         }
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const url = `/api/v1/workflows/${workflowId}/experiments/${batchId}`;
+        const url = `/api/v1/automations/${workflowId}/experiments/${batchId}`;
         const dest = opts.pull
           ? (opts.pullOnComplete ?? `./results-${batchId}.${opts.format}`)
           : null;
@@ -1913,6 +1956,10 @@ Behavior:
             if (!dest) return;
             const params = new URLSearchParams({ format: opts.format, batchId });
             try {
+              // Intentional internal-only CLI surface (see `experiment results`
+              // above): no public eval-results export route exists yet.
+              // FOLLOW-UP: migrate to a public
+              // `GET /api/v1/automations/{id}/eval-results/export` once added.
               await downloadStreamToFile(
                 client,
                 `/api/v1/workflows/${workflowId}/eval-results/export?${params.toString()}`,
@@ -2073,11 +2120,19 @@ async function pollExperimentUntilTerminal({
   interval: number;
   maxWait: number;
   onTerminal: (
-    result: { executions?: Array<{ status?: string }>; [k: string]: unknown },
+    result: {
+      executions?: Array<{ status?: string }>;
+      runs?: Array<{ status?: string }>;
+      [k: string]: unknown;
+    },
     summary: ReturnType<typeof summarizeExperimentExecutions>
   ) => Promise<void> | void;
   onDeadline?: (
-    result: { executions?: Array<{ status?: string }>; [k: string]: unknown },
+    result: {
+      executions?: Array<{ status?: string }>;
+      runs?: Array<{ status?: string }>;
+      [k: string]: unknown;
+    },
     summary: ReturnType<typeof summarizeExperimentExecutions>
   ) => void;
 }): Promise<void> {
@@ -2087,9 +2142,10 @@ async function pollExperimentUntilTerminal({
   while (true) {
     const result = (await client.get(url)) as {
       executions?: Array<{ status?: string }>;
+      runs?: Array<{ status?: string }>;
       [k: string]: unknown;
     };
-    const execs = result.executions ?? [];
+    const execs = result.executions ?? result.runs ?? [];
     const summary = summarizeExperimentExecutions(execs);
     const line = renderTickLine(summary);
     if (line !== lastSummary) {

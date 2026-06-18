@@ -130,17 +130,21 @@ export function readActiveCredentials(profileOverride?: string): ProfileCredenti
     process.env.EIGENPAL_PROFILE ||
     file.current ||
     DEFAULT_PROFILE_NAME;
-  return file.profiles[name] ?? null;
+  const resolved = resolveProfileKey(name, file.profiles) ?? name;
+  return file.profiles[resolved] ?? null;
 }
 
 /** Name of the active profile under the same priority as `readActiveCredentials`. */
 export function activeProfileName(profileOverride?: string): string {
-  if (profileOverride) return profileOverride;
-  // Read directly so tests can mutate process.env between assertions.
-  // eslint-disable-next-line no-process-env
-  if (process.env.EIGENPAL_PROFILE) return process.env.EIGENPAL_PROFILE;
   const file = readFile();
-  return file?.current ?? DEFAULT_PROFILE_NAME;
+  const raw =
+    profileOverride ||
+    // eslint-disable-next-line no-process-env
+    process.env.EIGENPAL_PROFILE ||
+    file?.current ||
+    DEFAULT_PROFILE_NAME;
+  if (!file) return raw;
+  return resolveProfileKey(raw, file.profiles) ?? raw;
 }
 
 /**
@@ -162,8 +166,10 @@ export function upsertProfile(creds: ProfileCredentials, name?: string): string 
 /** Switch the persistent `current` pointer. Returns false if profile missing. */
 export function setCurrentProfile(name: string): boolean {
   const file = readFile();
-  if (!file || !file.profiles[name]) return false;
-  file.current = name;
+  if (!file) return false;
+  const resolved = resolveProfileKey(name, file.profiles);
+  if (!resolved) return false;
+  file.current = resolved;
   writeFile(file);
   return true;
 }
@@ -202,4 +208,20 @@ function slugify(value: string): string | null {
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || null;
+}
+
+/** Resolve a profile key by exact name, tenant display name, or slugified alias. */
+export function resolveProfileKey(
+  name: string,
+  profiles: Record<string, ProfileCredentials>
+): string | null {
+  if (profiles[name]) return name;
+  const normalized = name.trim().toLowerCase();
+  for (const [key, creds] of Object.entries(profiles)) {
+    if (key.toLowerCase() === normalized) return key;
+    if (creds.tenantName?.trim().toLowerCase() === normalized) return key;
+  }
+  const slug = slugify(name);
+  if (slug && profiles[slug]) return slug;
+  return null;
 }

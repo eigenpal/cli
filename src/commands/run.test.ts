@@ -192,4 +192,59 @@ describe('root run commands', () => {
       }
     );
   });
+
+  test('runs feedback update uses the canonical PUT endpoint', async () => {
+    const calls: Array<{ method: string; pathname: string; body?: unknown }> = [];
+    await withRunServer(
+      async (request) => {
+        const url = new URL(request.url);
+        calls.push({ method: request.method, pathname: url.pathname });
+        if (request.method === 'GET' && url.pathname === '/api/v1/runs/aex_1') {
+          return json({ id: 'aex_1', type: 'agent', finished: true });
+        }
+        if (request.method === 'PUT' && url.pathname === '/api/v1/runs/aex_1/feedback') {
+          calls[calls.length - 1] = {
+            method: request.method,
+            pathname: url.pathname,
+            body: await request.json(),
+          };
+          return json({
+            feedback: { status: 'open', rating: 'fail', message: 'needs review' },
+            expected: null,
+            expectedFiles: [],
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'runs',
+            'feedback',
+            'update',
+            'aex_1',
+            '--rating',
+            'fail',
+            '--message',
+            'needs review',
+            '--json',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+
+        expect(result.status).toBe(0);
+        expect(calls).toEqual([
+          { method: 'GET', pathname: '/api/v1/runs/aex_1' },
+          {
+            method: 'PUT',
+            pathname: '/api/v1/runs/aex_1/feedback',
+            body: { rating: 'fail', body: 'needs review' },
+          },
+        ]);
+        expect(JSON.parse(result.stdout)).toMatchObject({ feedback: { rating: 'fail' } });
+      }
+    );
+  });
 });

@@ -149,6 +149,7 @@ export {
   // Trigger method helper functions
   getTriggerMethods,
   hasTriggerMethod,
+  isManualTriggerEnabled,
   suggestWorkflowName,
   // Trigger method types
   type ApiTriggerMethod,

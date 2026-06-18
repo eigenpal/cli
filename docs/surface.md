@@ -108,6 +108,7 @@ eigenpal
 │   ├── get <run-id>
 │   ├── compare|diff <reference-run-id> <run-id>
 │   ├── rerun <run-id>
+│   ├── promote <run-id>
 │   ├── artifacts|artifact
 │   │   ├── list|ls <run-id>
 │   │   └── fetch <run-id>
@@ -125,8 +126,6 @@ eigenpal
 │   │   └── delete <run-id> <name>
 │   ├── watch <run-id>
 │   └── cancel <run-id>
-├── git [gitArgs...]
-├── completion <shell>
 └── skill
     ├── install
     ├── uninstall [toolIds...]

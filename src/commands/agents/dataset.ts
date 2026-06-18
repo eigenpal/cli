@@ -1,4 +1,6 @@
 import { type Command } from 'commander';
+import { zipSync } from 'fflate';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { action } from '../../lib/format-error';
 import {
@@ -13,16 +15,14 @@ import {
   type PaginationOpts,
 } from '../../lib/ui';
 import {
-  AgentFile,
   BaseOpts,
   DATASET_DIR,
+  agentAutomationId,
   buildClient,
   compactParams,
   confirmTyped,
   parseDatasetMode,
   printJson,
-  readFilesUnder,
-  writeBase64File,
 } from './shared';
 import { validateDatasetDir } from './validation';
 
@@ -42,15 +42,15 @@ export function registerDatasetCommands(agent: Command): void {
     .action(action(listDataset));
 
   addJsonFlag(withBaseUrl(dataset.command('push <agent-id-or-slug>')))
-    .description('Upload dataset examples from a local dataset directory.')
-    .requiredOption('--file <path>', 'Dataset directory')
+    .description('Upload dataset examples from a local dataset directory or zip archive.')
+    .requiredOption('--file <path>', 'Dataset directory or .zip archive')
     .option('--mode <append|replace>', 'Upload mode', parseDatasetMode, 'append')
     .option('--yes', 'Confirm replace mode in non-interactive environments')
     .action(action(pushDataset));
 
   withBaseUrl(dataset.command('pull <agent-id-or-slug>'))
-    .description('Download an agent dataset directory.')
-    .option('--out <dir>', 'Output directory', DATASET_DIR)
+    .description('Download an agent dataset as a .zip archive.')
+    .option('--out <path>', 'Output .zip path (default: dataset.zip)', DATASET_DIR)
     .action(action(pullDataset));
 
   addJsonFlag(dataset.command('validate [path]'))
@@ -62,18 +62,22 @@ export function registerDatasetCommands(agent: Command): void {
 async function listDataset(agentId: string, opts: BaseOpts & PaginationOpts) {
   const client = buildClient(opts);
   const payload = (await client.get(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/dataset`,
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/examples`,
     compactParams(opts)
-  )) as { examples: string[]; total: number };
+  )) as { data?: Array<{ id?: string; name?: string }>; total: number };
+  const examples = payload.data ?? [];
   if (opts.json) return printJson(payload);
   console.log(
     table(
-      payload.examples.map((id) => ({ id })),
-      [{ key: 'id', header: 'EXAMPLE' }]
+      examples.map((row) => ({ id: row.id, name: row.name })),
+      [
+        { key: 'id', header: 'ID' },
+        { key: 'name', header: 'NAME' },
+      ]
     )
   );
   dim(
-    `${payload.examples.length}${payload.total > payload.examples.length ? ` of ${payload.total}` : ''} examples · use --json for the raw payload`
+    `${examples.length}${payload.total > examples.length ? ` of ${payload.total}` : ''} examples · use --json for the raw payload`
   );
 }
 
@@ -84,26 +88,40 @@ async function pushDataset(
   if (opts.mode === 'replace' && !(opts.yes || (await confirmTyped(agentId, 'replace dataset')))) {
     throw new Error('Dataset replace aborted');
   }
-  const files = await readFilesUnder(path.resolve(opts.file));
+  const resolved = path.resolve(opts.file);
+  const stat = await fs.stat(resolved);
+  const archive: Uint8Array = stat.isDirectory()
+    ? await readDirAsZip(resolved)
+    : new Uint8Array(await fs.readFile(resolved));
+  const form = new FormData();
+  // DOM typings reject Uint8Array<ArrayBufferLike> under strict mode; the runtime
+  // accepts it and the workflow dataset command uses the same cast.
+
+  form.set(
+    'file',
+    new Blob([archive as unknown as BlobPart], { type: 'application/zip' }),
+    stat.isDirectory() ? 'dataset.zip' : path.basename(resolved)
+  );
+  form.set('mode', opts.mode);
   const client = buildClient(opts);
-  const payload = await client.post(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/dataset?mode=${opts.mode}`,
-    { files }
+  const payload = await client.postFormData(
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/import`,
+    form
   );
   if (opts.json) return printJson(payload);
-  success(`${opts.mode === 'replace' ? 'Replaced' : 'Uploaded'} ${files.length} dataset files`);
+  success(`${opts.mode === 'replace' ? 'Replaced' : 'Uploaded'} dataset archive`);
 }
 
 async function pullDataset(agentId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(agentId)}/dataset`, {
-    include: 'files',
-  })) as { files: AgentFile[] };
+  const res = await client.getStream(
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/export`
+  );
+  const archive = Buffer.from(await res.arrayBuffer());
   const out = path.resolve(opts.out ?? DATASET_DIR);
-  for (const file of payload.files) {
-    await writeBase64File(path.join(out, file.path), file.contentBase64);
-  }
-  success(`Pulled dataset to ${ui.bold(out)}`);
+  await fs.mkdir(path.dirname(out), { recursive: true });
+  await fs.writeFile(out.endsWith('.zip') ? out : `${out}.zip`, archive);
+  success(`Pulled dataset to ${ui.bold(out.endsWith('.zip') ? out : `${out}.zip`)}`);
 }
 
 async function validateDatasetCommand(
@@ -117,4 +135,21 @@ async function validateDatasetCommand(
   if (result.valid) return success('Dataset is valid');
   for (const issue of result.errors) error(issue);
   process.exit(1);
+}
+
+async function readDirAsZip(dir: string): Promise<Uint8Array> {
+  if (!existsSync(dir)) throw new Error(`directory does not exist: ${dir}`);
+  const files: Record<string, Uint8Array> = {};
+  async function walk(current: string, relPrefix: string): Promise<void> {
+    for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const absolute = path.join(current, entry.name);
+      const relative = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(absolute, relative);
+      else if (entry.isFile()) files[relative] = new Uint8Array(await fs.readFile(absolute));
+    }
+  }
+  await walk(dir, '');
+  if (Object.keys(files).length === 0) throw new Error(`directory is empty: ${dir}`);
+  return zipSync(files);
 }

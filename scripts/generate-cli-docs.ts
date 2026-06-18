@@ -34,6 +34,14 @@ const __dirname = dirname(__filename);
 const DOCS_DIR = join(__dirname, '..', 'docs');
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 
+/**
+ * Top-level commands intentionally kept OUT of the generated reference docs.
+ * They remain fully functional and discoverable via `--help`; they just don't
+ * get their own reference page or surface-tree entry. `git` is a deprecated
+ * passthrough (use `agents`); `completion` is shell-setup plumbing.
+ */
+const DOCS_EXCLUDED_TOP_LEVEL = new Set(['git', 'completion']);
+
 function escapeCell(text: string): string {
   return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 }
@@ -56,6 +64,17 @@ function commandPath(cmd: Command): string {
 function visibleCommands(cmd: Command): Command[] {
   // commander stamps a hidden `help` command on every node; skip it.
   return cmd.commands.filter((c) => !c.hidden && c.name() !== 'help');
+}
+
+/**
+ * Children of a command for doc purposes. At the program root this drops the
+ * `DOCS_EXCLUDED_TOP_LEVEL` commands; for any nested command it is identical to
+ * `visibleCommands` (so a same-named subcommand elsewhere is never affected).
+ */
+function docChildren(cmd: Command): Command[] {
+  const children = visibleCommands(cmd);
+  if (cmd !== program) return children;
+  return children.filter((c) => !DOCS_EXCLUDED_TOP_LEVEL.has(c.name()));
 }
 
 function visibleOptions(cmd: Command): Option[] {
@@ -253,7 +272,7 @@ function argSignature(cmd: Command): string {
 function renderASCIITree(cmd: Command, prefix = '', isRoot = true): string {
   const lines: string[] = [];
   if (isRoot) lines.push(cmd.name());
-  const children = visibleCommands(cmd);
+  const children = docChildren(cmd);
   children.forEach((child, idx) => {
     const isLast = idx === children.length - 1;
     const branch = isLast ? '└── ' : '├── ';
@@ -345,7 +364,7 @@ async function collectFiles(): Promise<GeneratedFile[]> {
     path: join(DOCS_DIR, 'surface.md'),
     content: await format(renderFullSurfaceFile()),
   });
-  for (const cmd of visibleCommands(program)) {
+  for (const cmd of docChildren(program)) {
     files.push({
       path: join(DOCS_DIR, `${cmd.name()}.md`),
       content: await format(renderTopLevelCommandFile(cmd)),

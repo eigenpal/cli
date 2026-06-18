@@ -15,7 +15,7 @@ Add more examples under `dataset/examples/<name>/`. Each example needs an
 `input/arguments.json`; `expected/output.json` and `meta.json` are optional.
 File arguments live in `input/<arg-name>/<filename>`.
 
-When you're ready to push this workflow to the server:
+When you are ready to push this workflow to the server:
 
 ```bash
 eigenpal workflow push --file workflow.yaml

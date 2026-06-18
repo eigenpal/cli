@@ -1,6 +1,6 @@
 # eigenpal agents
 
-Manage Eigenpal agents: Git source, datasets, runs, experiments, sessions, and releases.
+Manage Eigenpal agents: Git source, datasets, experiments, sessions, and releases.
 
 ## Contents
 
@@ -157,20 +157,20 @@ agents
 | Command                                                         | Description                                                                |
 | --------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>` | List dataset examples for an agent.                                        |
-| `eigenpal agents dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory.                    |
-| `eigenpal agents dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset directory.                                       |
+| `eigenpal agents dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory or zip archive.     |
+| `eigenpal agents dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset as a .zip archive.                               |
 | `eigenpal agents dataset validate [options] [path]`             | Validate a local dataset directory against the agent input/output schemas. |
 
 ### Experiment
 
-| Command                                                                             | Description                                     |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `eigenpal agents experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.      |
-| `eigenpal agents experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                          |
-| `eigenpal agents experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.        |
-| `eigenpal agents experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                               |
-| `eigenpal agents experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Compare two experiment batches.                 |
-| `eigenpal agents experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment. |
+| Command                                                                             | Description                                      |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `eigenpal agents experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.       |
+| `eigenpal agents experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                           |
+| `eigenpal agents experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.         |
+| `eigenpal agents experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                                |
+| `eigenpal agents experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Diff eval scores between two experiment batches. |
+| `eigenpal agents experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment.  |
 
 ### Session
 
@@ -572,7 +572,7 @@ List dataset examples for an agent.
 
 ### `eigenpal agents dataset push [options] <agent-id-or-slug>`
 
-Upload dataset examples from a local dataset directory.
+Upload dataset examples from a local dataset directory or zip archive.
 
 ### Arguments
 
@@ -586,13 +586,13 @@ Upload dataset examples from a local dataset directory.
 | -------------------------- | -------- | ---------- | ---------------------------------------------------- |
 | `--base-url <url>`         | no       |            | Server base URL                                      |
 | `--json`                   | no       |            | Output the raw server response as JSON               |
-| `--file <path>`            | yes      |            | Dataset directory                                    |
+| `--file <path>`            | yes      |            | Dataset directory or .zip archive                    |
 | `--mode <append\|replace>` | no       | `"append"` | Upload mode                                          |
 | `--yes`                    | no       |            | Confirm replace mode in non-interactive environments |
 
 ### `eigenpal agents dataset pull [options] <agent-id-or-slug>`
 
-Download an agent dataset directory.
+Download an agent dataset as a .zip archive.
 
 ### Arguments
 
@@ -602,10 +602,10 @@ Download an agent dataset directory.
 
 ### Options
 
-| Flag               | Required | Default     | Description      |
-| ------------------ | -------- | ----------- | ---------------- |
-| `--base-url <url>` | no       |             | Server base URL  |
-| `--out <dir>`      | no       | `"dataset"` | Output directory |
+| Flag               | Required | Default     | Description                             |
+| ------------------ | -------- | ----------- | --------------------------------------- |
+| `--base-url <url>` | no       |             | Server base URL                         |
+| `--out <path>`     | no       | `"dataset"` | Output .zip path (default: dataset.zip) |
 
 ### `eigenpal agents dataset validate [options] [path]`
 
@@ -707,7 +707,7 @@ List experiments.
 
 ### `eigenpal agents experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`
 
-Compare two experiment batches.
+Diff eval scores between two experiment batches.
 
 ### Arguments
 
@@ -718,12 +718,12 @@ Compare two experiment batches.
 
 ### Options
 
-| Flag                         | Required | Default | Description                                                   |
-| ---------------------------- | -------- | ------- | ------------------------------------------------------------- |
-| `--base-url <url>`           | no       |         | Server base URL                                               |
-| `--json`                     | no       |         | Output the raw server response as JSON                        |
-| `--sort <mode>`              | no       |         | Accepted for compatibility; sorting happens client-side later |
-| `--regression-threshold <n>` | no       |         | Accepted for compatibility                                    |
+| Flag                                                   | Required | Default            | Description                                            |
+| ------------------------------------------------------ | -------- | ------------------ | ------------------------------------------------------ |
+| `--base-url <url>`                                     | no       |                    | Server base URL                                        |
+| `--json`                                               | no       |                    | Output the raw server response as JSON                 |
+| `--sort <abs-delta-desc\|delta-asc\|delta-desc\|name>` | no       | `"abs-delta-desc"` | Row sort order (default: biggest movers first)         |
+| `--regression-threshold <n>`                           | no       | `0.05`             | Δ below this is flagged as a regression (default 0.05) |
 
 ### `eigenpal agents experiment|exp cancel [options] <agent-id-or-slug> <batch-id>`
 

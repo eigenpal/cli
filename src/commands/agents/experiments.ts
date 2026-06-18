@@ -11,7 +11,14 @@ import {
   type PaginationOpts,
 } from '../../lib/ui';
 import {
+  buildBatchDiff,
+  fetchEvalResults,
+  normalizeCompareSort,
+  renderBatchDiffHuman,
+} from '../workflow/experiment-compare';
+import {
   BaseOpts,
+  agentAutomationId,
   buildClient,
   compactParams,
   parseResultsFormat,
@@ -59,9 +66,18 @@ export function registerExperimentCommands(agent: Command): void {
     .action(action(listExperiments));
 
   addJsonFlag(withBaseUrl(experiment.command('compare <batch-id-a> <batch-id-b>')))
-    .description('Compare two experiment batches.')
-    .option('--sort <mode>', 'Accepted for compatibility; sorting happens client-side later')
-    .option('--regression-threshold <n>', 'Accepted for compatibility', intArg)
+    .description('Diff eval scores between two experiment batches.')
+    .option(
+      '--sort <abs-delta-desc|delta-asc|delta-desc|name>',
+      'Row sort order (default: biggest movers first)',
+      'abs-delta-desc'
+    )
+    .option(
+      '--regression-threshold <n>',
+      'Δ below this is flagged as a regression (default 0.05)',
+      Number.parseFloat,
+      0.05
+    )
     .action(action(compareExperiments));
 
   addJsonFlag(withBaseUrl(experiment.command('cancel <agent-id-or-slug> <batch-id>')))
@@ -75,13 +91,18 @@ async function runExperiment(
   opts: BaseOpts & { exampleId?: string; wait?: boolean; interval: number }
 ) {
   const client = buildClient(opts);
-  let payload = (await client.post(`/api/v1/agents/${encodeURIComponent(agentId)}/experiments`, {
-    ...(opts.exampleId ? { exampleId: opts.exampleId } : {}),
-  })) as Record<string, unknown> & { batchId?: string };
-  if (opts.wait && payload.batchId) {
-    payload = await pollExperiment(client, agentId, payload.batchId, opts.interval, 1800);
+  const automationId = agentAutomationId(agentId);
+  let payload = (await client.post(
+    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments`,
+    {
+      ...(opts.exampleId ? { examples: [opts.exampleId] } : {}),
+    }
+  )) as Record<string, unknown> & { id?: string; batchId?: string };
+  const experimentId = payload.id ?? payload.batchId;
+  if (opts.wait && experimentId) {
+    payload = await pollExperiment(client, automationId, experimentId, opts.interval, 1800);
   }
-  renderGeneric(payload, opts, `Started experiment ${payload.batchId ?? ''}`);
+  renderGeneric(payload, opts, `Started experiment ${experimentId ?? ''}`);
 }
 
 async function experimentStatus(
@@ -90,10 +111,11 @@ async function experimentStatus(
   opts: BaseOpts & { watch?: boolean; interval: number; maxWait: number }
 ) {
   const client = buildClient(opts);
+  const automationId = agentAutomationId(agentId);
   const payload = opts.watch
-    ? await pollExperiment(client, agentId, batchId, opts.interval, opts.maxWait)
+    ? await pollExperiment(client, automationId, batchId, opts.interval, opts.maxWait)
     : await client.get(
-        `/api/v1/agents/${encodeURIComponent(agentId)}/experiments/${encodeURIComponent(batchId)}`
+        `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
       );
   renderGeneric(payload, opts, `Experiment ${batchId}`);
 }
@@ -104,19 +126,20 @@ async function experimentResults(
   opts: BaseOpts & { format: 'csv' | 'json'; out?: string }
 ) {
   const client = buildClient(opts);
+  const automationId = agentAutomationId(agentId);
   const selected =
     batchId ??
     String(
       (
-        (await client.get(`/api/v1/agents/${encodeURIComponent(agentId)}/experiments`, {
+        (await client.get(`/api/v1/automations/${encodeURIComponent(automationId)}/experiments`, {
           limit: '1',
           offset: '0',
-        })) as { experiments?: Array<{ batchId?: string }> }
-      ).experiments?.[0]?.batchId ?? ''
+        })) as { data?: Array<{ id?: string }> }
+      ).data?.[0]?.id ?? ''
     );
   if (!selected) throw new Error('No experiment batch found');
   const payload = (await client.get(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/experiments/${encodeURIComponent(selected)}`
+    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
   )) as { runs: Record<string, unknown>[] };
   const content =
     opts.format === 'json'
@@ -135,29 +158,55 @@ async function listExperiments(
   opts: BaseOpts & PaginationOpts & { batchId?: string }
 ) {
   const client = buildClient(opts);
+  const automationId = agentAutomationId(agentId);
   const payload = (await client.get(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/experiments`,
+    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments`,
     compactParams(opts)
-  )) as { experiments: Record<string, unknown>[] };
+  )) as { data?: Record<string, unknown>[] };
+  const experiments = payload.data ?? [];
   if (opts.batchId) {
-    payload.experiments = payload.experiments.filter((row) => row.batchId === opts.batchId);
+    payload.data = experiments.filter(
+      (row) => row.id === opts.batchId || row.batchId === opts.batchId
+    );
   }
   if (opts.json) return printJson(payload);
   console.log(
-    table(payload.experiments, [
-      { key: 'batchId', header: 'BATCH' },
-      { key: 'total', header: 'TOTAL' },
+    table(payload.data ?? experiments, [
+      { key: 'id', header: 'EXPERIMENT' },
+      { key: 'runCount', header: 'RUNS' },
     ])
   );
 }
 
-async function compareExperiments(batchIdA: string, batchIdB: string, opts: BaseOpts) {
+async function compareExperiments(
+  batchIdA: string,
+  batchIdB: string,
+  opts: BaseOpts & { sort: string; regressionThreshold: number }
+) {
+  const sort = normalizeCompareSort(opts.sort);
+  const threshold = opts.regressionThreshold;
+  if (!Number.isFinite(threshold) || threshold < 0) {
+    throw new Error('--regression-threshold must be a non-negative number');
+  }
+  // The internal `/api/v1/agents/experiments/compare` endpoint was removed from
+  // the public surface. Rebuild the side-by-side diff entirely from public
+  // routes (runs?batchId + per-run eval-results) so workflow and agent compare
+  // share one code path.
   const client = buildClient(opts);
-  const payload = await client.get('/api/v1/agents/experiments/compare', {
-    a: batchIdA,
-    b: batchIdB,
+  const [rowsA, rowsB] = await Promise.all([
+    fetchEvalResults(client, batchIdA),
+    fetchEvalResults(client, batchIdB),
+  ]);
+  const diff = buildBatchDiff({
+    batchIdA,
+    batchIdB,
+    rowsA: rowsA.results,
+    rowsB: rowsB.results,
+    sort,
+    regressionThreshold: threshold,
   });
-  renderGeneric(payload, opts, `Compared ${batchIdA} and ${batchIdB}`);
+  if (opts.json) return printJson(diff);
+  renderBatchDiffHuman(diff);
 }
 
 async function cancelExperiment(
@@ -168,8 +217,8 @@ async function cancelExperiment(
   if (!(opts.yes || process.stdin.isTTY))
     throw new Error('Pass --yes to cancel in non-interactive mode');
   const client = buildClient(opts);
-  const payload = await client.delete(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/experiments/${encodeURIComponent(batchId)}`
+  const payload = await client.post(
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments/${encodeURIComponent(batchId)}/cancel`
   );
   renderGeneric(payload, opts, `Cancelled experiment ${batchId}`);
 }
