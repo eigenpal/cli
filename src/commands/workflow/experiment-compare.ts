@@ -424,57 +424,19 @@ export function renderBatchDiffHuman(diff: BatchDiffResult): void {
 
 export async function fetchEvalResults(
   client: ApiClient,
-  batchId: string
+  experimentId: string
 ): Promise<EvalResultsExportPayload> {
-  // Built entirely from the public run surface: the removed
-  // `/api/v1/eval-results/export?batchId=` shortcut is replaced by listing the
-  // batch's runs (GET /api/v1/runs?batchId=) and reading each run's eval
-  // results (GET /api/v1/runs/:id/eval-results). The per-(example, evaluator)
-  // rows are joined here so two batch ids still uniquely identify the
-  // experiments without re-typing a workflow.
-  const runs = await listBatchRuns(client, batchId);
-  const results: CompareInputRow[] = [];
-  for (const run of runs) {
-    const payload = (await client.get(
-      `/api/v1/runs/${encodeURIComponent(run.id)}/eval-results`
-    )) as { results?: Array<{ evaluatorName?: unknown; score?: unknown }> };
-    for (const result of payload.results ?? []) {
-      results.push({
-        exampleId: run.exampleId,
-        exampleName: run.exampleName,
-        evaluatorName: String(result.evaluatorName ?? ''),
-        score: typeof result.score === 'number' ? result.score : null,
-      });
-    }
+  const ref = (await client.get(`/api/v1/experiments/${encodeURIComponent(experimentId)}`)) as {
+    automationId: string;
+  };
+  const raw = (await client.get(
+    `/api/v1/automations/${encodeURIComponent(ref.automationId)}/experiments/${encodeURIComponent(experimentId)}/export`,
+    { format: 'json' }
+  )) as EvalResultsExportPayload;
+  if (!raw || !Array.isArray(raw.results)) {
+    throw new Error(
+      `Unexpected experiment export response for ${experimentId}: missing 'results' array`
+    );
   }
-  return { results };
-}
-
-interface BatchRunRef {
-  id: string;
-  exampleId: string | null;
-  exampleName: string | null;
-}
-
-/** Page through GET /api/v1/runs?batchId= (cursor-paginated, max 100/page). */
-async function listBatchRuns(client: ApiClient, batchId: string): Promise<BatchRunRef[]> {
-  const out: BatchRunRef[] = [];
-  let cursor: string | undefined;
-  do {
-    const query: Record<string, string> = { batchId, limit: '100' };
-    if (cursor) query.cursor = cursor;
-    const page = (await client.get('/api/v1/runs', query)) as {
-      runs?: Array<{ id: string; eval?: { exampleId?: string | null; example?: string | null } }>;
-      nextCursor?: string | null;
-    };
-    for (const run of page.runs ?? []) {
-      out.push({
-        id: run.id,
-        exampleId: run.eval?.exampleId ?? null,
-        exampleName: run.eval?.example ?? null,
-      });
-    }
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
-  return out;
+  return raw;
 }

@@ -612,49 +612,49 @@ describe('git passthrough and agents source commands', () => {
     await withApiServer(
       (request) => {
         const url = new URL(request.url);
-        if (url.pathname === '/api/v1/agents') {
+        if (url.pathname === '/api/v1/automations' && url.searchParams.get('type') === 'agent') {
           return Response.json({
             data: [
               {
+                id: 'awf_invoice',
+                type: 'agent',
                 slug: 'invoice-agent',
                 name: 'Invoice Agent',
+                description: 'Extract invoices',
                 status: 'active',
-                sourceIntegrity: 'healthy',
-                latestVersion: '1.2.3',
+                version: null,
+                implementationAvailable: true,
+                triggers: { api: true, email: false, manual: true, cron: false },
+                createdAt: '2026-01-01T00:00:00Z',
+                updatedAt: '2026-01-02T00:00:00Z',
               },
               {
+                id: 'awf_unregistered',
+                type: 'agent',
                 slug: 'unregistered-agent',
                 name: 'unregistered-agent',
                 status: 'unregistered',
-                sourceIntegrity: 'unregistered',
-                latestVersion: null,
+                version: null,
+                implementationAvailable: false,
+                createdAt: '2026-01-01T00:00:00Z',
               },
             ],
             total: 2,
           });
         }
-        if (url.pathname === '/api/v1/agents/invoice-agent') {
+        if (url.pathname === '/api/v1/automations/agents.invoice-agent') {
           return Response.json({
-            agent: {
-              slug: 'invoice-agent',
-              name: 'Invoice Agent',
-              description: 'Extract invoices',
-              status: 'active',
-              sourceIntegrity: 'healthy',
-              latestVersion: '1.2.3',
-              latestCommit: 'abcdef1234567890',
-              recentRuns: [
-                {
-                  id: 'exec_1',
-                  createdAt: '2026-01-01T00:00:00Z',
-                  durationMs: 1200,
-                  triggeredBy: 'api',
-                  requestedVersion: 'latest',
-                  resolvedVersion: '1.2.3',
-                  status: 'completed',
-                },
-              ],
-            },
+            id: 'awf_invoice',
+            type: 'agent',
+            slug: 'invoice-agent',
+            name: 'Invoice Agent',
+            description: 'Extract invoices',
+            status: 'active',
+            version: null,
+            implementationAvailable: true,
+            triggers: { api: true, email: false, manual: true, cron: false },
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-02T00:00:00Z',
           });
         }
         if (url.pathname === '/api/v1/source/releases') {
@@ -678,14 +678,19 @@ describe('git passthrough and agents source commands', () => {
         const show = await cliAsync(['agents', 'show', 'agents.invoice-agent'], { baseUrl });
         expect(show.status).toBe(0);
         expect(show.stdout).toContain('Extract invoices');
-        expect(show.stdout).toContain('recent runs');
-        expect(show.stdout).toContain('exec_1');
+        expect(show.stdout).toContain('api,manual');
 
         const showBySlug = await cliAsync(['agents', 'show', 'invoice-agent', '--json'], {
           baseUrl,
         });
         expect(showBySlug.status).toBe(0);
-        expect(JSON.parse(showBySlug.stdout).agent.slug).toBe('invoice-agent');
+        expect(JSON.parse(showBySlug.stdout).slug).toBe('invoice-agent');
+
+        const showByName = await cliAsync(['agents', 'show', 'Invoice Agent', '--json'], {
+          baseUrl,
+        });
+        expect(showByName.status).toBe(0);
+        expect(JSON.parse(showByName.stdout).id).toBe('awf_invoice');
 
         const versions = await cliAsync(['agents', 'versions', 'agents.invoice-agent', '--json'], {
           baseUrl,
@@ -732,7 +737,7 @@ describe('git passthrough and agents source commands', () => {
           }
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/automations/agents.invoice-agent/sync'
+            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -748,7 +753,7 @@ describe('git passthrough and agents source commands', () => {
             }
           );
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
 
           const tags = spawnSync('git', ['--git-dir', remote, 'tag'], { encoding: 'utf8' });
           expect(tags.stdout).toContain('agents.invoice-agent@1.3.0');
@@ -806,7 +811,7 @@ describe('git passthrough and agents source commands', () => {
           }
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/automations/agents.invoice-agent/sync'
+            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -822,7 +827,7 @@ describe('git passthrough and agents source commands', () => {
             }
           );
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
 
           const currentBranch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
             cwd: root,
@@ -862,7 +867,7 @@ describe('git passthrough and agents source commands', () => {
           const url = new URL(request.url);
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/automations/agents.invoice-agent/sync'
+            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -874,7 +879,7 @@ describe('git passthrough and agents source commands', () => {
             baseUrl,
           });
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
         }
       );
     } finally {

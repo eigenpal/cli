@@ -339,7 +339,7 @@ process.
 The synchronous run endpoint surfaces the `statusCode` as the HTTP
 response status; async runs persist `{ code, message, step }` to
 `executions.error` so the eval scorer can match against
-`expected/error.json` (see `reference/dataset-format.md`). When
+`expected.json` with `$error` (see `reference/dataset-format.md`). When
 `condition` is omitted, `control.fail` always fails when reached, so
 compose with `control.if` for legacy gating.
 
@@ -526,7 +526,7 @@ Merge multiple named inputs into a single output
 
 #### `transform.template` — Fill Template
 
-Fill a DOCX template with data. Use list_templates tool to get template IDs and their placeholder schemas.
+Fill a DOCX template with data from previous steps. Select a template in the workflow builder or provide a template ID from your workspace.
 
 **Config** (in `step.with`):
 

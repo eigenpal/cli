@@ -64,7 +64,10 @@ export function registerAgentCommands(program: Command): void {
 
 async function listAgents(opts: BaseOpts & PaginationOpts & { search?: string }) {
   const client = buildClient(opts);
-  const payload = (await client.get('/api/v1/agents', compactParams(opts))) as {
+  const payload = (await client.get('/api/v1/automations', {
+    ...compactParams(opts),
+    type: 'agent',
+  })) as {
     data: Record<string, unknown>[];
     total: number;
   };

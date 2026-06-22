@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.9.0
+
+### Minor Changes
+
+- c35d5d4: Clean up the public runs and evaluation API surface: move workflow eval operations onto automations, expose run scores/artifacts through the unified runs API, and update CLI/SDK helpers to use the canonical routes.
+
+  Breaking: `runs.evalResults` and `GET /api/v1/runs/{id}/eval-results` are replaced by `runs.scores` and `GET /api/v1/runs/{id}/scores`.
+
+### Patch Changes
+
+- c35d5d4: Clarify `--max-wait` help text so timeout exit behavior reads naturally.
+
 ## 0.8.0
 
 ### Minor Changes

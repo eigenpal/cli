@@ -663,7 +663,7 @@ Get experiment status.
 | `--json`               | no       |         | Output the raw server response as JSON |
 | `--watch`              | no       |         | Poll until complete                    |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2          |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2        |
 | `--include <parts>`    | no       |         | Reserved for future detailed parts     |
 
 ### `eigenpal agents experiment|exp results [options] <agent-id-or-slug> [batch-id]`

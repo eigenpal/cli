@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { compileTypedScript } from '../typed-script';
 
 /**
- * Evaluator configuration — stored in `workflows.evalConfigYaml` as YAML, parsed into this shape.
+ * Evaluator configuration — stored in `automations.eval_config_yaml` as YAML, parsed into this shape.
  * Every evaluator returns a normalized score in [0, 1]; multiple evaluators combine into a
  * weighted mean per execution.
  */

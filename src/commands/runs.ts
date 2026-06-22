@@ -101,7 +101,7 @@ export function registerRunsCommands(program: Command): void {
     .option('--source-ref <ref>', 'Alias for --version')
     .option('--wait', 'Poll until the rerun reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .action(action(rerunRun));
 
   addJsonFlag(withBaseUrl(runs.command('promote <run-id>')))
@@ -162,7 +162,7 @@ Use \`eigenpal runs feedback update\` first when you need to correct expected ou
   addJsonFlag(withBaseUrl(runs.command('watch <run-id>')))
     .description('Watch a run until it reaches a terminal status.')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .action(action(watchRunCommand));
 
   addJsonFlag(withBaseUrl(runs.command('cancel <run-id>')))
@@ -1345,12 +1345,9 @@ async function downloadExpectedFiles(
   return written.filter((name): name is string => Boolean(name));
 }
 
-// Intentional internal-only CLI surface: upload / copy-output / rename / delete
-// of expected artifacts mutate run-scoped ground truth and have no public
-// equivalent (the public surface offers `runs feedback` and `runs promote`, not
-// per-file expected mutation). These four keep the internal
-// `/api/v1/runs/:id/expected[/:name]` routes on purpose. FOLLOW-UP: if expected
-// editing becomes a supported public workflow, add public routes and migrate.
+// Public run feedback expected-artifact mutations. Keep these pointed at the
+// documented `/api/v1/runs/:id/feedback/expected*` routes so CLI expected-file
+// editing dogfoods the same surface as SDK users.
 async function uploadRunExpected(
   executionId: string,
   file: string,
@@ -1362,7 +1359,7 @@ async function uploadRunExpected(
   form.append('file', new Blob([data]), path.basename(file));
   if (opts.name) form.append('name', opts.name);
   const payload = await client.postFormData(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/expected`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected`,
     form
   );
   renderGeneric(payload, opts, `Uploaded expected file for ${executionId}`);
@@ -1374,10 +1371,13 @@ async function copyOutputToExpected(
   opts: BaseOpts & { name?: string }
 ) {
   const client = buildClient(opts);
-  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/expected`, {
-    outputFileName: outputFile,
-    ...(opts.name ? { expectedName: opts.name } : {}),
-  });
+  const payload = await client.post(
+    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected`,
+    {
+      outputFileName: outputFile,
+      ...(opts.name ? { expectedName: opts.name } : {}),
+    }
+  );
   renderGeneric(payload, opts, `Copied output file to expected for ${executionId}`);
 }
 
@@ -1389,7 +1389,7 @@ async function renameRunExpected(
 ) {
   const client = buildClient(opts);
   const payload = await client.patch(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(oldName)}`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected/${encodeURIComponent(oldName)}`,
     { name: newName }
   );
   renderGeneric(payload, opts, `Renamed expected file for ${executionId}`);
@@ -1405,7 +1405,7 @@ async function deleteRunExpected(
   }
   const client = buildClient(opts);
   await client.delete(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/expected/${encodeURIComponent(name)}`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected/${encodeURIComponent(name)}`
   );
   renderGeneric({ ok: true }, opts, `Deleted expected file ${name}`);
 }

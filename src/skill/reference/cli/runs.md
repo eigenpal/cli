@@ -199,7 +199,7 @@ Create a new run from a previous run's stored input snapshot.
 | `--source-ref <ref>`   | no       |         | Alias for --version                                                                                               |
 | `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                                    |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds                                                                                       |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2                                                                                     |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2                                                                                   |
 
 ### `eigenpal runs promote [options] <run-id>`
 
@@ -253,7 +253,7 @@ Watch a run until it reaches a terminal status.
 | `--base-url <url>`     | no       |         | Server base URL                        |
 | `--json`               | no       |         | Output the raw server response as JSON |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exiting 2          |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2        |
 
 ### `eigenpal runs cancel [options] <run-id>`
 

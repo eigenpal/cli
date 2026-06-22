@@ -157,136 +157,63 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
       continue;
     }
 
-    const argsPath = join(exampleFolder, 'input', 'arguments.json');
-    if (!existsSync(argsPath)) {
+    const inputJsonPath = join(exampleFolder, 'input.json');
+    const hasInputJson = existsSync(inputJsonPath);
+    if (!hasInputJson) {
       issues.push({
-        field: `examples/${exampleName}/input/arguments.json`,
-        message: 'Missing required arguments.json.',
+        field: `examples/${exampleName}/input.json`,
+        message: 'Missing required input.json.',
       });
       continue;
     }
 
     let args: Record<string, unknown>;
     try {
-      const parsed: unknown = JSON.parse(readFileSync(argsPath, 'utf-8'));
+      const parsed: unknown = JSON.parse(readFileSync(inputJsonPath, 'utf-8'));
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         issues.push({
-          field: `examples/${exampleName}/input/arguments.json`,
-          message: 'arguments.json must be a JSON object.',
+          field: `examples/${exampleName}/input.json`,
+          message: 'input.json must be a JSON object.',
         });
         continue;
       }
       args = parsed as Record<string, unknown>;
     } catch {
       issues.push({
-        field: `examples/${exampleName}/input/arguments.json`,
-        message: 'arguments.json is not valid JSON.',
+        field: `examples/${exampleName}/input.json`,
+        message: 'input.json is not valid JSON.',
       });
       continue;
     }
 
     const inputDir = join(exampleFolder, 'input');
-    for (const entry of readdirSync(inputDir)) {
-      if (entry === 'arguments.json') continue;
-      const sub = join(inputDir, entry);
-      const field = `examples/${exampleName}/input/${entry}`;
-      let isDir: boolean;
-      try {
-        isDir = statSync(sub).isDirectory();
-      } catch (err) {
-        issues.push({
-          field,
-          message: `unreadable filesystem entry: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        continue;
-      }
-      if (!isDir) {
-        issues.push({
-          field,
-          message: 'Entries under input/ must live inside an argument folder.',
-        });
-        continue;
-      }
-      if (!NAME_RE.test(entry)) {
-        issues.push({
-          field: `examples/${exampleName}/input/${entry}`,
-          message: 'Argument folder name must be lowercase kebab/snake-case.',
-        });
-      }
-      if (Object.prototype.hasOwnProperty.call(args, entry)) {
-        issues.push({
-          field: `examples/${exampleName}/input/${entry}`,
-          message: `Argument-name collision: "${entry}" appears in both arguments.json and as an input/ folder.`,
-        });
-      }
+    if (existsSync(join(inputDir, 'arguments.json'))) {
+      issues.push({
+        field: `examples/${exampleName}/input/arguments.json`,
+        message: 'Legacy input/arguments.json is no longer accepted. Use input.json instead.',
+      });
+    }
+    const fileRefs = collectDatasetFileRefs(args);
+    for (const issue of validateFileRefs({
+      refs: fileRefs,
+      filesRoot: inputDir,
+      root: 'input',
+      fieldPrefix: `examples/${exampleName}/input.json`,
+    })) {
+      issues.push(issue);
     }
 
     const expectedDir = join(exampleFolder, 'expected');
+    const expectedJsonPath = join(exampleFolder, 'expected.json');
     if (existsSync(expectedDir)) {
-      const expectedPath = join(expectedDir, 'output.json');
-      const expectedErrorPath = join(expectedDir, 'error.json');
-      const hasExpectedOutput = existsSync(expectedPath);
-      const hasExpectedError = existsSync(expectedErrorPath);
-      if (hasExpectedOutput && hasExpectedError) {
-        issues.push({
-          field: `examples/${exampleName}/expected`,
-          message:
-            'expected/output.json and expected/error.json are mutually exclusive (pick success-expected OR failure-expected).',
-        });
-      }
-      if (hasExpectedOutput) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(readFileSync(expectedPath, 'utf-8'));
-        } catch {
-          issues.push({
-            field: `examples/${exampleName}/expected/output.json`,
-            message: 'expected/output.json is not valid JSON.',
-          });
-          continue;
-        }
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-          issues.push({
-            field: `examples/${exampleName}/expected/output.json`,
-            message:
-              'expected/output.json must be a JSON object (mirrors the workflow `output:` shape).',
-          });
-        }
-      }
-      if (hasExpectedError) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(readFileSync(expectedErrorPath, 'utf-8'));
-        } catch {
-          issues.push({
-            field: `examples/${exampleName}/expected/error.json`,
-            message: 'expected/error.json is not valid JSON.',
-          });
-          continue;
-        }
-        // Delegate to the shared schema so the "at least one of code,
-        // messageContains, step" rule and any future constraints (range
-        // checks, length limits) live in exactly one place rather than
-        // drifting between the CLI and the server importer.
-        const result = ExpectedErrorSchema.safeParse(parsed);
-        if (!result.success) {
-          for (const err of result.error.issues) {
-            issues.push({
-              field: `examples/${exampleName}/expected/error.json${
-                err.path.length > 0 ? `:${err.path.join('.')}` : ''
-              }`,
-              message: err.message,
-            });
-          }
-        }
-      }
-
-      // expected/<docKey>/<file> — symmetric with input/<argName>/<file>.
-      // Each <docKey> folder becomes an `expectedDocuments` entry on import.
-      // `output.json` is the success-expected envelope; `error.json` is the
-      // failure-expected assertion (mutually exclusive with output.json).
       for (const entry of readdirSync(expectedDir)) {
-        if (entry === 'output.json' || entry === 'error.json') continue;
+        if (entry === 'output.json' || entry === 'error.json') {
+          issues.push({
+            field: `examples/${exampleName}/expected/${entry}`,
+            message: 'Legacy expected files are no longer accepted. Use expected.json instead.',
+          });
+          continue;
+        }
         const sub = join(expectedDir, entry);
         const field = `examples/${exampleName}/expected/${entry}`;
         let isDir: boolean;
@@ -303,7 +230,7 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
           issues.push({
             field,
             message:
-              'Entries under expected/ must be `output.json`, `error.json`, or a doc folder (`expected/<docKey>/<file>`).',
+              'Entries under expected/ must be file folders referenced from expected.json with { "$file": "expected/..." }.',
           });
           continue;
         }
@@ -312,6 +239,45 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
             field,
             message: 'Expected document folder name must be lowercase kebab/snake-case.',
           });
+        }
+      }
+    }
+    if (existsSync(expectedJsonPath)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(readFileSync(expectedJsonPath, 'utf-8'));
+      } catch {
+        issues.push({
+          field: `examples/${exampleName}/expected.json`,
+          message: 'expected.json is not valid JSON.',
+        });
+        continue;
+      }
+      if (isExpectedErrorRef(parsed)) {
+        const result = ExpectedErrorSchema.safeParse(parsed.$error);
+        if (!result.success) {
+          for (const err of result.error.issues) {
+            issues.push({
+              field: `examples/${exampleName}/expected.json:$error${
+                err.path.length > 0 ? `.${err.path.join('.')}` : ''
+              }`,
+              message: err.message,
+            });
+          }
+        }
+      } else if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        issues.push({
+          field: `examples/${exampleName}/expected.json`,
+          message: 'expected.json must be a JSON object.',
+        });
+      } else {
+        for (const issue of validateFileRefs({
+          refs: collectDatasetFileRefs(parsed),
+          filesRoot: join(exampleFolder, 'expected'),
+          root: 'expected',
+          fieldPrefix: `examples/${exampleName}/expected.json`,
+        })) {
+          issues.push(issue);
         }
       }
     }
@@ -334,6 +300,80 @@ export function printIssues(label: string, path: string, issues: ValidationIssue
   }
   console.error('');
   return false;
+}
+
+type DatasetFileRoot = 'input' | 'expected';
+
+interface DatasetFileRef {
+  path: string;
+  jsonPath: string;
+}
+
+function isFileRef(value: unknown): value is { $file: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof (value as { $file?: unknown }).$file === 'string'
+  );
+}
+
+function isExpectedErrorRef(value: unknown): value is { $error: unknown } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    Object.prototype.hasOwnProperty.call(value, '$error')
+  );
+}
+
+function collectDatasetFileRefs(value: unknown, jsonPath = '<root>'): DatasetFileRef[] {
+  if (isFileRef(value)) return [{ path: value.$file, jsonPath }];
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => collectDatasetFileRefs(item, `${jsonPath}.${index}`));
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) =>
+      collectDatasetFileRefs(item, jsonPath === '<root>' ? key : `${jsonPath}.${key}`)
+    );
+  }
+  return [];
+}
+
+function validateFileRefs(args: {
+  refs: DatasetFileRef[];
+  filesRoot: string;
+  root: DatasetFileRoot;
+  fieldPrefix: string;
+}): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const ref of args.refs) {
+    const relative = parseDatasetFileRef(ref.path, args.root);
+    if (!relative) {
+      issues.push({
+        field: `${args.fieldPrefix}:${ref.jsonPath}`,
+        message: `File reference must point inside ${args.root}/ and must not contain path traversal.`,
+      });
+      continue;
+    }
+    if (!existsSync(join(args.filesRoot, relative))) {
+      issues.push({
+        field: `${args.fieldPrefix}:${ref.jsonPath}`,
+        message: `Referenced file does not exist: ${ref.path}.`,
+      });
+    }
+  }
+  return issues;
+}
+
+function parseDatasetFileRef(path: string, root: DatasetFileRoot): string | null {
+  if (!path.startsWith(`${root}/`)) return null;
+  if (path.startsWith('/') || path.includes('\\') || path.includes('\u0000')) return null;
+  const relative = path.slice(root.length + 1);
+  const parts = relative.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) return null;
+  return parts.join('/');
 }
 
 // ---------- registration --------------------------------------------------

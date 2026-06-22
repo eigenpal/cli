@@ -363,7 +363,7 @@ function registerWorkflowCoreCommands(parent: Command): void {
           offset: String(opts.offset),
         };
         if (opts.search) params.search = opts.search;
-        const raw = await client.get('/api/v1/workflows', params);
+        const raw = await client.get('/api/workflows', params);
         renderListResult<WorkflowListRow>(
           raw,
           [
@@ -385,7 +385,7 @@ function registerWorkflowCoreCommands(parent: Command): void {
   withBaseUrl(pullCmd).action(
     action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
       const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-      const result = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
+      const result = (await client.get(`/api/workflows/${workflowId}`)) as {
         yamlContent?: string | null;
       };
       // No published version → no YAML to pull. Fail loudly rather than
@@ -494,7 +494,7 @@ flag would otherwise shadow it. Validation failures come back as
           // any API call so error messages, splice logic and PATCH URLs all
           // see the same value.
           const workflowId = await resolveWorkflowId(client, opts.workflowId);
-          // Update path: the server's POST /api/v1/workflows/:id/versions
+          // Update path: the server's POST /api/workflows/:id/versions
           // requires a `version` body param. Resolve it from one of three
           // mutually-exclusive sources:
           //   1) `--version X.Y.Z` — explicit override
@@ -513,7 +513,7 @@ flag would otherwise shadow it. Validation failures come back as
             nextVersion = opts.setVersion;
           } else if (opts.bump) {
             // Need the server's current version to compute the next one.
-            const wf = (await client.get(`/api/v1/workflows/${workflowId}`)) as {
+            const wf = (await client.get(`/api/workflows/${workflowId}`)) as {
               version?: string | null;
             };
             const current = wf?.version;
@@ -546,7 +546,7 @@ flag would otherwise shadow it. Validation failures come back as
             ? spliceWorkflowVersion(yamlOnDisk, nextVersion)
             : yamlOnDisk;
 
-          const result = (await client.post(`/api/v1/workflows/${workflowId}/versions`, {
+          const result = (await client.post(`/api/workflows/${workflowId}/versions`, {
             yaml: yamlToSend,
             version: nextVersion,
           })) as {
@@ -578,7 +578,7 @@ flag would otherwise shadow it. Validation failures come back as
           // Server returns { workflow, version, history } from createWorkflowWithVersion.
           // The earlier shape (result.id / result.version as a string) was never live
           // here — `[object Object]` slips through if you read result.version directly.
-          const result = (await client.post('/api/v1/workflows', {
+          const result = (await client.post('/api/workflows', {
             yaml: yamlToSend,
             ...(createVersion ? { version: createVersion } : {}),
           })) as {
@@ -622,7 +622,7 @@ flag would otherwise shadow it. Validation failures come back as
         }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const result = await client.patch(`/api/v1/workflows/${workflowId}`, {
+        const result = await client.patch(`/api/workflows/${workflowId}`, {
           folderPath: opts.folder,
         });
         if (opts.json) {
@@ -971,17 +971,11 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
                 `  ${ui.dim(`size cap: ${errPayload.limitMb} MB, archive: ${errPayload.actualMb} MB`)}\n`
               );
             }
-            const codes = new Set(issues.map((i) => i.code).filter(Boolean));
-            if (codes.has('invalid_expected_output')) {
+            if (issues.some((i) => i.code === 'invalid_expected_output')) {
               process.stderr.write(
-                `\n  ${ui.dim('hint:')} ${ui.bold('expected/output.json')} must be a JSON object mirroring your workflow ${ui.bold('output:')} shape.\n` +
-                  `         For expected file outputs, drop binaries under ${ui.bold('expected/<docKey>/<file>')}.\n` +
+                `\n  ${ui.dim('hint:')} ${ui.bold('expected.json')} must be a JSON object mirroring your automation output.\n` +
+                  `         For expected files, reference binaries from JSON with ${ui.bold('{ "$file": "expected/<path>" }')}.\n` +
                   `         See ${ui.bold('reference/dataset-format.md')} or run ${ui.bold('eigenpal workflow dataset validate ./dataset')}.\n\n`
-              );
-            }
-            if (codes.has('argument_name_collision')) {
-              process.stderr.write(
-                `\n  ${ui.dim('hint:')} an arg cannot live in both ${ui.bold('arguments.json')} AND ${ui.bold('input/<arg>/')}; pick one.\n\n`
               );
             }
           }
@@ -1012,7 +1006,7 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
           );
           if (created > 0 && expectedSet < created) {
             warn(
-              `${expectedSet}/${created} examples have expected/output.json — the rest will run un-graded.`
+              `${expectedSet}/${created} examples have expected.json — the rest will run un-graded.`
             );
           } else if (expectedSet > 0) {
             process.stderr.write(`  ${ui.dim(`${expectedSet} with expected output`)}\n`);
@@ -1136,8 +1130,8 @@ Examples:
   $ cat expected.json | eigenpal workflow dataset example create wf_abc123 --name piped --input-json '{}' --expected-file -
 
 \`--input-json\` and \`--input-file\` (same for \`--expected-*\`) are mutually
-exclusive. File-arg uploads still require a full \`dataset push\`; CRUD only
-handles scalar args + \`expected/output.json\`-style outputs.
+exclusive. File uploads still require a full \`dataset push\`; CRUD only
+handles JSON input + \`expected.json\`-style outputs.
 `
     );
   addJsonFlag(withBaseUrl(createCmd)).action(
@@ -1765,18 +1759,10 @@ Behavior:
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const params = new URLSearchParams({ format: opts.format });
-        if (batchId) params.set('batchId', batchId);
-        // Intentional internal-only CLI surface: the streamed CSV/JSON export
-        // (server-side filename stamping + exact column serialization, plus the
-        // whole-workflow form with no batchId) has no public equivalent. Faithful
-        // client-side reproduction would risk format drift and turn one streamed
-        // download into an N+1 fan-out. FOLLOW-UP: expose a public
-        // `GET /api/v1/automations/{id}/eval-results/export` and migrate here.
-        await downloadStreamToFile(
-          client,
-          `/api/v1/workflows/${workflowId}/eval-results/export?${params.toString()}`,
-          opts.out
-        );
+        const exportPath = batchId
+          ? `/api/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`
+          : `/api/v1/automations/${workflowId}/experiments/export?${params.toString()}`;
+        await downloadStreamToFile(client, exportPath, opts.out);
       }
     )
   );
@@ -1954,7 +1940,7 @@ Behavior:
           maxWait: opts.maxWait,
           onTerminal: async () => {
             if (!dest) return;
-            const params = new URLSearchParams({ format: opts.format, batchId });
+            const params = new URLSearchParams({ format: opts.format });
             try {
               // Intentional internal-only CLI surface (see `experiment results`
               // above): no public eval-results export route exists yet.
@@ -1962,7 +1948,7 @@ Behavior:
               // `GET /api/v1/automations/{id}/eval-results/export` once added.
               await downloadStreamToFile(
                 client,
-                `/api/v1/workflows/${workflowId}/eval-results/export?${params.toString()}`,
+                `/api/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`,
                 dest
               );
             } catch (err) {
@@ -2198,7 +2184,7 @@ function registerVersionsCommands(parent: Command): void {
         opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const raw = await client.get(`/api/v1/workflows/${workflowId}/versions`, {
+        const raw = await client.get(`/api/workflows/${workflowId}/versions`, {
           limit: String(opts.limit),
           offset: String(opts.offset),
         });
@@ -2228,7 +2214,7 @@ function registerVersionsCommands(parent: Command): void {
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/v1/workflows/${workflowId}/history/${versionId}/restore`,
+          `/api/workflows/${workflowId}/history/${versionId}/restore`,
           {}
         )) as { version?: string; id?: string; [k: string]: unknown };
         if (opts.json) {

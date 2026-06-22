@@ -67,9 +67,9 @@ describe('init scaffold', () => {
       expect(statSync(join(target, 'workflow.yaml')).isFile()).toBe(true);
       expect(statSync(join(target, 'evaluators.yaml')).isFile()).toBe(true);
       expect(statSync(join(target, 'README.md')).isFile()).toBe(true);
-      expect(
-        statSync(join(target, 'dataset', 'examples', 'sample', 'input', 'arguments.json')).isFile()
-      ).toBe(true);
+      expect(statSync(join(target, 'dataset', 'examples', 'sample', 'input.json')).isFile()).toBe(
+        true
+      );
 
       // __NAME__ placeholder is rewritten to the project name.
       const yaml = readFileSync(join(target, 'workflow.yaml'), 'utf-8');
@@ -95,14 +95,10 @@ describe('init scaffold', () => {
       });
       const target = join(root, 'extract');
       expect(
-        statSync(
-          join(target, 'dataset', 'examples', 'sample-invoice', 'input', 'arguments.json')
-        ).isFile()
+        statSync(join(target, 'dataset', 'examples', 'sample-invoice', 'input.json')).isFile()
       ).toBe(true);
       expect(
-        statSync(
-          join(target, 'dataset', 'examples', 'sample-invoice', 'expected', 'output.json')
-        ).isFile()
+        statSync(join(target, 'dataset', 'examples', 'sample-invoice', 'expected.json')).isFile()
       ).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -58,16 +58,18 @@ export async function status(opts: StatusOpts): Promise<void> {
 
   // The list endpoint returns { items, total }. We pass limit=1 because we
   // only need the count, not the rows — and the tenant might have thousands.
-  const workflows = await fetchOrNull<{ items?: unknown[]; total?: number }>(
+  const workflows = await fetchOrNull<{ data?: unknown[]; items?: unknown[]; total?: number }>(
     client,
-    '/api/v1/workflows?limit=1'
+    '/api/workflows?limit=1'
   );
   const workflowCount =
     typeof workflows?.total === 'number'
       ? workflows.total
-      : Array.isArray(workflows?.items)
-        ? workflows.items.length
-        : null;
+      : Array.isArray(workflows?.data)
+        ? workflows.data.length
+        : Array.isArray(workflows?.items)
+          ? workflows.items.length
+          : null;
 
   if (opts.json) {
     console.log(

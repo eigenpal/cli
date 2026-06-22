@@ -50,7 +50,7 @@ export function registerExperimentCommands(agent: Command): void {
     .description('Get experiment status.')
     .option('--watch', 'Poll until complete')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .option('--include <parts>', 'Reserved for future detailed parts')
     .action(action(experimentStatus));
 

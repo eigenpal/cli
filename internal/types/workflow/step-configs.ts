@@ -1139,7 +1139,7 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     category: 'transform',
     name: 'Fill Template',
     description:
-      'Fill a DOCX template with data. Use list_templates tool to get template IDs and their placeholder schemas.',
+      'Fill a DOCX template with data from previous steps. Select a template in the workflow builder or provide a template ID from your workspace.',
     configSchema: TransformTemplateConfigSchema,
     outputSchema: TransformTemplateOutputSchema,
     configInWith: true,

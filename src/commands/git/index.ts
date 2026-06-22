@@ -20,18 +20,10 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiClient } from '../../lib/client';
+import { ApiClient, ApiError } from '../../lib/client';
 import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
-import {
-  addJsonFlag,
-  formatDuration,
-  formatTimestamp,
-  success,
-  table,
-  warn,
-  withBaseUrl,
-} from '../../lib/ui';
+import { addJsonFlag, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
 import { registerSourceInitCommand } from './init';
 import { runGitPassthrough, type BaseOpts } from './passthrough';
 import { registerSourceSecretCommands } from './secrets';
@@ -88,17 +80,20 @@ type InstallLockfile = {
   inputHash: string;
   root: InstallLockPackage;
 };
-type ShowAgentPayload = {
-  agent: Record<string, unknown> & {
-    slug?: string;
-    name?: string;
-    description?: string | null;
-    status?: string;
-    sourceIntegrity?: string;
-    latestVersion?: string | null;
-    latestCommit?: string | null;
-    recentRuns?: Array<Record<string, unknown>>;
-    runs?: Array<Record<string, unknown>>;
+type AutomationDetailPayload = Record<string, unknown> & {
+  id?: string;
+  type?: string;
+  slug?: string;
+  name?: string | null;
+  description?: string | null;
+  status?: string;
+  version?: string | null;
+  implementationAvailable?: boolean;
+  triggers?: {
+    api?: boolean;
+    email?: boolean;
+    manual?: boolean;
+    cron?: boolean;
   };
 };
 
@@ -551,6 +546,67 @@ function resolveAgentPackagePath(target: string): SourcePackagePath {
   return SourcePackagePathSchema.parse(`agents/${target}`);
 }
 
+function publicAgentAutomationTarget(target: string): string {
+  if (target.includes('/')) {
+    return pathToDottedPackageName(SourcePackagePathSchema.parse(target));
+  }
+  if (target.startsWith('agents.')) return target;
+  if (/^[a-z]+_[a-zA-Z0-9]/.test(target) || target.includes(' ') || target.includes('.')) {
+    return target;
+  }
+  return `agents.${target}`;
+}
+
+function formatTriggerState(triggers: AutomationDetailPayload['triggers']): string {
+  if (!triggers) return '';
+  return (['api', 'email', 'manual', 'cron'] as const).filter((key) => triggers[key]).join(',');
+}
+
+async function findAgentAutomationBySearch(
+  client: ApiClient,
+  target: string
+): Promise<AutomationDetailPayload | null> {
+  const payload = (await client.get('/api/v1/automations', {
+    type: 'agent',
+    search: target,
+    limit: '100',
+  })) as { data?: AutomationDetailPayload[] };
+  const candidates = payload.data ?? [];
+  return (
+    candidates.find(
+      (automation) =>
+        automation.id === target || automation.slug === target || automation.name === target
+    ) ?? (candidates.length === 1 ? candidates[0] : null)
+  );
+}
+
+async function getPublicAgentAutomation(
+  client: ApiClient,
+  target: string
+): Promise<AutomationDetailPayload> {
+  const publicTarget = publicAgentAutomationTarget(target);
+  try {
+    const automation = (await client.get(
+      `/api/v1/automations/${encodeURIComponent(publicTarget)}`
+    )) as AutomationDetailPayload;
+    if (automation.type !== 'agent') {
+      throw new Error(`Automation ${target} is not an agent.`);
+    }
+    return automation;
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 404) throw err;
+  }
+
+  const resolved = await findAgentAutomationBySearch(client, target);
+  if (!resolved) {
+    throw new Error(`Agent automation not found: ${target}`);
+  }
+  if (resolved.type !== 'agent') {
+    throw new Error(`Automation ${target} is not an agent.`);
+  }
+  return resolved;
+}
+
 function isAutomationPackagePath(packagePath: SourcePackagePath): boolean {
   return packagePath.startsWith('agents/') || packagePath.startsWith('workflows/');
 }
@@ -593,7 +649,7 @@ async function syncLatestAutomation(
   packagePath: SourcePackagePath
 ): Promise<void> {
   const automation = pathToDottedPackageName(packagePath);
-  await client.post(`/api/automations/${encodeURIComponent(automation)}/sync`);
+  await client.post(`/api/v1/automations/${encodeURIComponent(automation)}/sync`);
   success(`Synced ${automation} to latest release.`);
 }
 
@@ -619,55 +675,40 @@ async function cloneSource(opts: {
 }
 
 async function show(target: string, opts: BaseOpts): Promise<void> {
-  const packagePath = resolveAgentPackagePath(target);
-  const slug = packagePath.replace(/^agents\//, '');
   const client = new ApiClient(resolveConfig(opts));
-  const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(slug)}`, {
-    include: 'files,dataset,runs',
-  })) as ShowAgentPayload;
-  if (opts.json) console.log(JSON.stringify(payload, null, 2));
+  const automation = await getPublicAgentAutomation(client, target);
+  if (opts.json) console.log(JSON.stringify(automation, null, 2));
   else {
-    const agent = payload.agent;
+    const slug = automation.slug ?? target;
     console.log(
       table(
         [
           {
             type: 'agent',
-            slug: agent.slug ?? slug,
-            path: packagePath,
-            name: agent.name ?? '',
-            status: agent.status ?? '',
-            source: agent.sourceIntegrity ?? '',
-            latest: agent.latestVersion ?? '',
-            commit: agent.latestCommit ?? '',
+            id: automation.id ?? '',
+            slug,
+            path: `agents/${slug}`,
+            name: automation.name ?? '',
+            status: automation.status ?? '',
+            version: automation.version ?? '',
+            triggers: formatTriggerState(automation.triggers),
+            implementation: automation.implementationAvailable === false ? 'missing' : 'available',
           },
         ],
         [
           { key: 'type', header: 'type' },
+          { key: 'id', header: 'id' },
           { key: 'slug', header: 'slug' },
           { key: 'path', header: 'path' },
           { key: 'name', header: 'name' },
           { key: 'status', header: 'status' },
-          { key: 'source', header: 'source' },
-          { key: 'latest', header: 'latest' },
-          { key: 'commit', header: 'commit', format: (value) => String(value || '-').slice(0, 12) },
+          { key: 'version', header: 'version' },
+          { key: 'triggers', header: 'triggers' },
+          { key: 'implementation', header: 'implementation' },
         ]
       )
     );
-    if (agent.description) console.log(`\ndescription: ${agent.description}`);
-    const runs = agent.recentRuns ?? agent.runs ?? [];
-    console.log('\nrecent runs');
-    console.log(
-      table(runs.slice(0, 5), [
-        { key: 'id', header: 'id' },
-        { key: 'createdAt', header: 'time', format: (value) => formatTimestamp(value) },
-        { key: 'durationMs', header: 'duration', format: (value) => formatDuration(Number(value)) },
-        { key: 'triggeredBy', header: 'triggered-by' },
-        { key: 'requestedVersion', header: 'requested' },
-        { key: 'resolvedVersion', header: 'resolved' },
-        { key: 'status', header: 'status' },
-      ])
-    );
+    if (automation.description) console.log(`\ndescription: ${automation.description}`);
   }
 }
 

@@ -70,7 +70,7 @@ function levenshtein(a: string, b: string, maxDistance: number): number {
  */
 async function findSimilarSlug(client: ApiClient, slug: string): Promise<string | null> {
   try {
-    const res = (await client.get('/api/v1/workflows', {
+    const res = (await client.get('/api/workflows', {
       search: slug,
       limit: '20',
     })) as WorkflowListEnvelope;
@@ -109,7 +109,7 @@ function notFound(idOrSlug: string, suggestion: string | null): Error {
 export async function resolveWorkflowId(client: ApiClient, idOrSlug: string): Promise<string> {
   if (looksLikeWorkflowId(idOrSlug)) {
     try {
-      const wf = (await client.get(`/api/v1/workflows/${idOrSlug}`)) as WorkflowSummary;
+      const wf = (await client.get(`/api/workflows/${idOrSlug}`)) as WorkflowSummary;
       return wf.id;
     } catch {
       // Don't fuzzy-search ids — `wf_` ids are opaque, no useful neighbors.
@@ -118,7 +118,7 @@ export async function resolveWorkflowId(client: ApiClient, idOrSlug: string): Pr
   }
   // Slug path: `?name=` is an exact match against `definition.name`. Empty
   // data array means no workflow has that slug.
-  const res = (await client.get('/api/v1/workflows', { name: idOrSlug })) as WorkflowListEnvelope;
+  const res = (await client.get('/api/workflows', { name: idOrSlug })) as WorkflowListEnvelope;
   const match = res.data?.[0];
   if (!match) {
     const suggestion = await findSimilarSlug(client, idOrSlug);

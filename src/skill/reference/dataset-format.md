@@ -1,240 +1,130 @@
 # Dataset folder format
 
-A dataset is a folder of named example folders. The folder structure
-itself is the manifest — there is no top-level `manifest.json`. The
-import endpoint **rejects** archives that contain one (legacy format).
+A dataset is a folder of named example folders. The folder structure itself is
+the manifest; there is no top-level `manifest.json`, and the import endpoint
+rejects archives that contain one.
 
-This is the format the CLI builds and ships to
-`eigenpal workflow dataset push <workflow-id> --file dataset/`. After it lands
-on the server, the canonical per-row surface is
-`eigenpal workflow dataset example {get,create,update,delete}` (and
-`dataset list` for a table view) — the local folder is a pre-push
-staging area, not a synced mirror.
-
-Dataset folders are unrelated to workflow organization folders. To place
-the workflow itself under dashboard folders, use `workflow move --folder`;
-dataset push/pull never changes folder placement.
+This is the archive format for automation datasets, shared by workflows and
+agents. `eigenpal workflow dataset push <workflow-id> --file dataset/` builds
+this archive locally and sends it to the server.
 
 ## Required layout
 
-```
+```text
 dataset/
 └── examples/
     ├── invoice-foo/
+    │   ├── input.json                      REQUIRED — full run input object
     │   ├── input/
-    │   │   ├── arguments.json              REQUIRED — { language: "en" }
-    │   │   └── contract/                   file-argument folder
-    │   │       ├── Contract_2026.pdf
-    │   │       └── Appendix.pdf
+    │   │   ├── Contract_2026.pdf           referenced by input.json
+    │   │   └── Appendix.pdf
+    │   ├── expected.json                   OPTIONAL — expected output or { "$error": ... }
     │   ├── expected/
-    │   │   ├── output.json                 OPTIONAL — raw ground truth JSON (success-expected)
-    │   │   └── generated_invoice/          OPTIONAL — expected file output
-    │   │       └── Invoice.docx
+    │   │   └── Invoice.docx                referenced by expected.json
     │   └── meta.json                       OPTIONAL — { rowOrder?, annotation?, overrides? }
     │
-    ├── invoice-bar/
-    │   └── input/
-    │       └── arguments.json              { amount: 42 }
-    │
     └── unsupported-format/
-        ├── input/
-        │   └── arguments.json
-        └── expected/
-            └── error.json                  OPTIONAL — failure-expected, mutually exclusive with output.json
+        ├── input.json
+        └── expected.json                   { "$error": { "code": 422 } }
 ```
 
-The `expected/` subfolder mirrors `input/` exactly. `output.json` is
-the scalar/object data ground truth, and any expected file outputs go
-in `expected/<docKey>/<file>` folders (one folder per output path).
-`error.json` is the failure-expected counterpart (see "Failure-expected
-examples" below) and cannot coexist with `output.json` for the same
-example.
+`input.json` is the source of truth for the full automation input. File values
+are explicit references:
 
-## Rules (every one is enforced server-side at import)
+```json
+{
+  "language": "en",
+  "contract": [
+    { "$file": "input/Contract_2026.pdf" },
+    { "$file": "input/Appendix.pdf" }
+  ]
+}
+```
 
-- **Folder names** (example names, argument names, expected document
-  keys) must match `[a-z0-9][a-z0-9-_]*`.
-- **`input/arguments.json`** is REQUIRED for every example, even if it is
-  `{}`. It must be a JSON object (not array, not literal).
-- **File-arguments** live in `input/<arg-name>/<filename>`. The
-  materialized shape on `triggerInput` is **driven by the workflow YAML's
-  `inputs[].type`**, not by the file count:
+`expected.json` mirrors the expected automation output. Expected files use the
+same reference shape with the `expected/` prefix.
 
-  | workflow.yaml input                        | dataset folder            | `triggerInput.<name>` |
-  | ------------------------------------------ | ------------------------- | --------------------- |
-  | `type: file`                               | `input/<name>/<one-file>` | `{ fileId }`          |
-  | `type: array`, `items: { type: file }`     | `input/<name>/<file>...`  | `[{ fileId }, ...]`   |
+## Rules
 
-  Reference single-file inputs as `{{ input.<name> }}` (resolves to the
-  `{ fileId }` object the worker reads). Reference array-of-file inputs
-  as `{{ input.<name>[0] }}` etc. Dropping multiple binaries into an
-  `input/<name>/` folder for an input declared `type: file` is rejected
-  at import with `code: single_file_input_overpopulated` — either trim
-  to one file or change the workflow input to the array form.
-- **Argument-name collisions are rejected.** If `arguments.json` has
-  `{"contract": "..."}` AND `input/contract/file.pdf` exists, import
-  fails with `code: argument_name_collision`.
-- **`expected/output.json`** is OPTIONAL. When present, it must be a
-  JSON object that mirrors your workflow's `output:` shape 1:1, no
-  envelope, no wrapper. A scalar/array at the top level is rejected
-  with `code: invalid_expected_output`. Mutually exclusive with
-  `expected/error.json` (see below).
-- **`expected/error.json`** is OPTIONAL and marks the example as
-  failure-expected (the workflow is supposed to terminate via
-  `control.fail`). Must be a JSON object with at least one of
-  `{ code, messageContains, step }`; an empty object is rejected (it
-  would match any failure). When set, the scorer matches the example's
-  terminal `executions.error` envelope against the fields you specify
-  and ignores `expected/output.json` entirely. `code` is the HTTP-style
-  status code from `control.fail`'s `statusCode`; `messageContains` is a
-  case-sensitive substring of the failure message; `step` is the name
-  of the `control.fail` step expected to fire.
+- Example folder names must match `[a-z0-9][a-z0-9-_]*`.
+- Every example needs `input.json`, even if it is `{}`. It must be a JSON object.
+- Files under `input/` must be referenced from `input.json` as
+  `{ "$file": "input/<path>" }`.
+- Files under `expected/` must be referenced from `expected.json` as
+  `{ "$file": "expected/<path>" }`.
+- File references cannot use `..`, absolute paths, backslashes, or null bytes.
+- `expected.json` is optional. When present, it must be a JSON object.
+- Failure-expected examples use `expected.json` with a single `$error` key:
 
-  ```json
-  // expected/error.json
-  {
+```json
+{
+  "$error": {
     "code": 422,
     "messageContains": "unsupported document type",
     "step": "reject-unsupported"
   }
-  ```
+}
+```
 
-  > **Note:** the importer is idempotent and accepts both bare objects and
-  > pre-wrapped `{ data: { ... } }` forms; bare is preferred.
+The `$error` object must contain at least one of `code`, `messageContains`, or
+`step`. It asserts that the automation should fail with a matching typed
+`control.fail` envelope.
 
-  ```json
-  // workflow.yaml
-  // output:
-  //   invoiceNumber: '{{ steps.extract.output.invoiceNumber }}'
-  //   totalAmount:   '{{ steps.extract.output.totalAmount }}'
-  //
-  // → expected/output.json
-  {
-    "invoiceNumber": "INV-001",
-    "totalAmount": 1234.56
-  }
-  ```
-- **Expected file outputs** live in `expected/<docKey>/<filename>` —
-  symmetric with `input/<argName>/<file>`. Each `<docKey>` folder is
-  uploaded and becomes an `expectedDocuments[docKey]` entry server-side
-  (single file ⇒ `{fileId}`, multiple ⇒ `[{fileId}, …]`). The judge
-  compares by file presence + content, not byte-equal.
-- **`meta.json`** is OPTIONAL. Schema:
-  ```json
-  {
-    "rowOrder": 0,
-    "annotation": "free-form notes about this example",
-    "overrides": {
-      "steps": {
-        "<stepName>": { ...stepOutputObject }
-      }
-    }
-  }
-  ```
-  - `rowOrder` — sort order in the dashboard
-  - `annotation` — surfaced in the UI; useful for "why this case is
-    interesting" notes
-  - `overrides.steps.<stepName>` — short-circuits the named step,
-    returns the override as the step's output. Use for steps that
-    depend on external state (third-party APIs, private connectors) so the rest
-    of the example can still run.
-- **Path-traversal patterns** (`..`, leading `/`, backslashes, null
-  bytes) reject the whole archive.
-
-## How the row materializes
+## How a row materializes
 
 For an example with:
 
-- `arguments.json`: `{"language": "en"}`
-- `input/contract/Contract_2026.pdf`
-- `input/contract/Appendix.pdf`
-- `expected/output.json`: `{"invoiceNumber": "INV-001"}`
-- `expected/generated_invoice/Invoice.docx`
+- `input.json`: `{"language":"en","contract":[{"$file":"input/Contract_2026.pdf"},{"$file":"input/Appendix.pdf"}]}`
+- `input/Contract_2026.pdf`
+- `input/Appendix.pdf`
+- `expected.json`: `{"invoiceNumber":"INV-001","generatedInvoice":{"$file":"expected/Invoice.docx"}}`
+- `expected/Invoice.docx`
 
-The server materializes:
+The stored row keeps the same input shape. When the example runs, each `$file`
+reference is resolved into the S3 file descriptor the worker consumes.
 
 ```json
-// eval_examples.triggerInput
 {
   "language": "en",
   "contract": [
-    { "fileId": "file_abc..." },
-    { "fileId": "file_def..." }
+    { "kind": "s3", "ref": ".../input/Contract_2026.pdf", "filename": "Contract_2026.pdf" },
+    { "kind": "s3", "ref": ".../input/Appendix.pdf", "filename": "Appendix.pdf" }
   ]
 }
-
-// eval_examples.expectedOutput
-{
-  "data": { "invoiceNumber": "INV-001" },
-  "expectedDocuments": {
-    "generated_invoice": { "fileId": "file_ghi..." }
-  }
-}
 ```
 
-Each file is uploaded to S3 with a fresh `fileId`; the original
-filename is preserved on the `files` row and shows up in the dashboard.
-The `expectedOutput` envelope (`{ data?, expectedDocuments?, error? }`) is
-internal storage shape — your dataset folder stays clean (raw
-`output.json` or `error.json`, plus per-docKey folders).
-
-## Failure-expected examples
-
-When a workflow uses `control.fail` to reject bad inputs, you usually
-want to test both paths: happy-path examples carry `expected/output.json`
-and assert the workflow completed; rejection examples carry
-`expected/error.json` and assert the workflow failed with the right
-status code.
-
-```
-examples/
-├── valid-invoice/
-│   ├── input/...
-│   └── expected/output.json          # success-expected
-└── unsupported-format/
-    ├── input/...
-    └── expected/error.json           # failure-expected
-                                      # { "code": 422, "step": "reject-unsupported" }
-```
-
-The two files are mutually exclusive for the same example (an example
-is either a success-case or a failure-case, never both). The `exact-diff`
-evaluator branches on the envelope shape and reports a clean
-`expectedFailureButSucceeded` or `actualWasUntypedError` reason when
-the actual run does not match the expectation.
+Each file is uploaded to S3 and the original filename is preserved.
 
 ## Validate before pushing
 
 ```bash
-eigenpal workflow validate dataset ./dataset
+eigenpal workflow dataset validate ./dataset
 ```
 
-Reports per-example issues:
+Example output:
 
-```
+```text
 ✗ dataset (./dataset) — 2 issues
-  examples/Invoice-Foo                   Folder name must be lowercase kebab/snake-case.
-  examples/foo/input/contract            Argument-name collision: "contract" appears in both arguments.json and as an input/ folder.
+  examples/Invoice-Foo              Folder name must be lowercase kebab/snake-case.
+  examples/foo/input.json:contract  Referenced file does not exist: input/contract.pdf.
 ```
 
 ## Push
 
 ```bash
-# Replace = wipes existing examples for the workflow, uploads the folder fresh.
+# Replace wipes existing examples for the automation, uploads the folder fresh.
 eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
 
-# Append = adds to whatever's already on the server.
+# Append adds to whatever is already on the server.
 eigenpal workflow dataset push <workflow-id> --file ./dataset --mode append
 ```
 
-The endpoint streams progress as NDJSON. The terminal `done` event
-includes `{ created, expectedSet, … }`:
+The endpoint streams progress as NDJSON. The terminal `done` event includes
+`{ created, expectedSet, … }`:
 
-- `created` — examples successfully persisted
-- `expectedSet` — how many of those carried an `expected/output.json`.
-  If `expectedSet < created`, your zip didn't include the `expected/`
-  folders — the dashboard's "Expected" tab will be blank and evals
-  will only run un-graded.
+- `created` — examples successfully persisted.
+- `expectedSet` — how many of those carried an `expected.json`. If
+  `expectedSet < created`, the rest run un-graded.
 
 ## Editing a dataset on the server
 
@@ -243,67 +133,10 @@ To inspect or round-trip what is currently on the server:
 ```bash
 eigenpal workflow dataset list <workflow-id>
 eigenpal workflow dataset pull <workflow-id> --out current.zip
-# (or omit --out to stream the zip to stdout for piping)
 ```
 
-For bulk changes — many examples at once, schema-level rework, file
-swaps — edit the local folder and re-push with
-`dataset push --mode replace`.
-
-For one-row tweaks — capturing a corrected output as the new GT,
-deleting one bad example, adding one example to a known dataset — use
-the per-example CRUD commands instead. They avoid the round-trip of
-re-zipping and re-uploading the whole folder.
-
-### Inspect one example end-to-end
-
-```bash
-eigenpal workflow dataset example get <workflow-id> <example-id>
-eigenpal workflow dataset example get <workflow-id> <example-id> --json | jq '.expectedOutput'
-```
-
-Pretty mode prints labelled `Inputs` / `Expected` / `Metadata` sections;
-`--json` returns the full row (`triggerInput`, `expectedOutput`,
-`annotation`, `rowOrder`, timestamps) for piping.
-
-### Capture a corrected output as the new ground truth
-
-```bash
-# 1. Look at what the workflow actually returned for the example
-eigenpal runs get exec_… --json | jq '.output.data' > /tmp/correct.json
-
-# 2. Patch the example's expected output in place. PATCH semantics:
-#    every flag you omit is left alone.
-eigenpal workflow dataset example update <workflow-id> <example-id> \
-  --expected-file /tmp/correct.json
-```
-
-`--expected-file -` reads JSON from stdin if you would rather pipe. Pass
-empty string to clear an annotation: `--annotation ""`.
-
-### Add one new example
-
-```bash
-eigenpal workflow dataset example create <workflow-id> \
-  --name missing-required-field \
-  --input-json '{"language":"en"}' \
-  --expected-file /tmp/expected.json \
-  --annotation "edge case: required field absent from input"
-```
-
-`--input-json` / `--expected-json` accept inline JSON literals; the
-`-file` variants read from disk (or `-` for stdin). They are mutually
-exclusive — pass one or the other, not both.
-
-File-arg uploads still go through `dataset push`; CRUD only handles
-scalar args + `expected/output.json`-style outputs.
-
-### Delete one bad example
-
-```bash
-eigenpal workflow dataset example delete <workflow-id> <example-id> --yes
-```
-
-`--yes` is required for non-TTY shells (CI). Interactive shells may
-omit it; single-row deletes have a small blast radius compared to
-`dataset push --mode replace`, so no confirmation prompt fires.
+For bulk changes, edit the local folder and re-push with
+`dataset push --mode replace`. For one-row tweaks, use
+`eigenpal workflow dataset example {get,create,update,delete}`. File uploads
+still go through `dataset push`; CRUD only handles JSON input and
+`expected.json`-style outputs.

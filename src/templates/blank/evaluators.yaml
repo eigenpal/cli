@@ -1,5 +1,5 @@
 # Evaluators run after every workflow execution that's part of an eval batch.
-# Comment them in once you have an `expected/output.json` to compare against.
+# Comment them in once you have an `expected.json` output object to compare against.
 #
 # evaluators:
 #   - name: exact-match

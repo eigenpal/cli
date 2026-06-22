@@ -12,8 +12,9 @@ eigenpal run workflows.__NAME__ --example sample
 ```
 
 Add more examples under `dataset/examples/<name>/`. Each example needs an
-`input/arguments.json`; `expected/output.json` and `meta.json` are optional.
-File arguments live in `input/<arg-name>/<filename>`.
+`input.json`; `expected.json` and `meta.json` are optional. File arguments live
+under `input/` and are referenced from `input.json` with
+`{ "$file": "input/<filename>" }`.
 
 When you are ready to push this workflow to the server:
 

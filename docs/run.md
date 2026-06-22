@@ -20,4 +20,4 @@ Start a workflow or agent run, e.g. workflows.extract-invoice.
 | `--dir <dir>`               | no       |         | Local eigenpal directory for workflow examples                                                       |
 | `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                         |
 | `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
-| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exiting 2                                                                        |
+| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exit code 2                                                                      |

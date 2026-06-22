@@ -60,7 +60,8 @@ export const LEGACY_RUN_EXPAND_MIGRATION: Readonly<Record<string, string>> = {
   observability: 'use `expand=debug`',
   feedback: 'use `expand=execution` — feedback lives at `execution.feedback` (agent runs)',
   steps: 'use `expand=execution` — steps live at `execution.steps` (workflow runs)',
-  definition: 'use `GET /api/v1/runs/{id}/definition`',
+  definition:
+    'use `expand=execution` — definitionSnapshot lives at `execution.definitionSnapshot` (workflow runs)',
   files:
     'downloadable output refs live at top-level `files` on completed detail responses; `expand=execution` adds `execution.files.output` metadata for agent runs',
   expected: 'use `expand=execution` — expected output lives at `execution.expected`',

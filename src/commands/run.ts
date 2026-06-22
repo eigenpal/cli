@@ -33,7 +33,7 @@ export function registerRunCommands(program: Command): void {
     .option('--dir <dir>', 'Local eigenpal directory for workflow examples', undefined)
     .option('--wait', 'Poll until the run reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .action(action(runTarget));
 
   addJsonFlag(withBaseUrl(program.command('rerun <run-id>')))
@@ -45,7 +45,7 @@ export function registerRunCommands(program: Command): void {
     )
     .option('--wait', 'Poll until the rerun reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
-    .option('--max-wait <seconds>', 'Maximum wait before exiting 2', intArg, 1800)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .action(action(rerunTarget));
 }
 

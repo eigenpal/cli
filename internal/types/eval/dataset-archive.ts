@@ -16,11 +16,12 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 /**
- * Layout (per `workflow-export-import` spec):
+ * Canonical automation dataset archive layout:
  *
- *   examples/<name>/input/arguments.json      REQUIRED, scalar/object args
- *   examples/<name>/input/<arg-name>/<file>   one folder per file argument
- *   examples/<name>/expected/output.json      OPTIONAL, ground-truth output
+ *   examples/<name>/input.json                REQUIRED, full run input object
+ *   examples/<name>/input/<file>              OPTIONAL, files referenced from input.json
+ *   examples/<name>/expected.json             OPTIONAL, expected output object
+ *   examples/<name>/expected/<file>           OPTIONAL, files referenced from expected.json
  *   examples/<name>/meta.json                 OPTIONAL, see DatasetMetaSchema
  *
  * The folder structure itself is the manifest. Importers reject any archive
@@ -59,7 +60,7 @@ export const DatasetImportModeSchema = z.enum(['append', 'replace']);
 export type DatasetImportMode = z.infer<typeof DatasetImportModeSchema>;
 
 /**
- * Body of `POST /api/v1/workflows/:id/dataset/import` (the multipart form's
+ * Body of `POST /api/v1/automations/:id/dataset/import` (the multipart form's
  * `mode` field). The ZIP itself rides on the multipart `file` part — only
  * `mode` lives in the JSON body.
  */
@@ -73,7 +74,7 @@ export type DatasetImportRequest = z.infer<typeof DatasetImportRequestSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Body of `POST /api/v1/workflows/:id/evaluators/import`. The YAML string
+ * Body of `PUT /api/v1/automations/:id/evaluators`. The YAML string
  * is parsed server-side with `js-yaml CORE_SCHEMA` (no `!!js/function`)
  * and validated against `EvalConfigYamlSchema` from `./evaluator-config`.
  */
@@ -90,27 +91,18 @@ export const EvalResultsExportFormatSchema = z.enum(['csv', 'json']);
 export type EvalResultsExportFormat = z.infer<typeof EvalResultsExportFormatSchema>;
 
 /**
- * Query string for `GET /api/v1/workflows/:id/eval-results/export`.
- * `batchId` narrows results to a single experiment; absent → all
- * `eval_results` for the workflow.
+ * Query string for experiment result exports:
+ * `GET /api/v1/automations/:id/experiments/export` and
+ * `GET /api/v1/automations/:id/experiments/:experimentId/export`.
  */
-export const EvalResultsExportQuerySchema = z.object({
+export const ExperimentExportQuerySchema = z.object({
   format: EvalResultsExportFormatSchema,
-  batchId: z.string().min(1).optional(),
 });
-export type EvalResultsExportQuery = z.infer<typeof EvalResultsExportQuerySchema>;
+export type ExperimentExportQuery = z.infer<typeof ExperimentExportQuerySchema>;
 
-/**
- * Query string for the workflow-agnostic `GET /api/v1/eval-results/export`.
- * `batchId` is required — the server resolves the owning workflow from the
- * `eval_results` table so callers don't have to re-type a workflow id they
- * already implied by the batch.
- */
-export const EvalResultsExportByBatchQuerySchema = z.object({
-  format: EvalResultsExportFormatSchema,
-  batchId: z.string().min(1),
-});
-export type EvalResultsExportByBatchQuery = z.infer<typeof EvalResultsExportByBatchQuerySchema>;
+/** @deprecated Use {@link ExperimentExportQuerySchema} — batch scoping is a path param now. */
+export const EvalResultsExportQuerySchema = ExperimentExportQuerySchema;
+export type EvalResultsExportQuery = ExperimentExportQuery;
 
 /**
  * One row of the exported results — same shape for CSV (column order
@@ -179,7 +171,7 @@ export const ERROR_HINTS: Readonly<Record<ErrorHintKey, string>> = {
     'Wait for the in-flight execution to complete, or cancel it from the Experiments tab.',
   'download-token-expired': 'Re-request the resource to mint a new URL.',
   'legacy-dataset-format':
-    'Re-export the dataset using the new folder convention (examples/<name>/input/arguments.json + input/<arg>/<file> + expected/output.json).',
+    'Re-export the dataset using the canonical automation convention (examples/<name>/input.json + input/<file> refs + expected.json).',
 };
 
 export function errorHintFor(key: ErrorHintKey): string {

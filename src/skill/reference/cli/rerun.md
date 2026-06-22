@@ -17,4 +17,4 @@ Create a new run from a previous run's stored input snapshot.
 | `--version <version>`  | no       | `"latest"` | Version/source ref for the new run: latest, original, or an explicit ref |
 | `--wait`               | no       |            | Poll until the rerun reaches a terminal status                           |
 | `--interval <seconds>` | no       | `2`        | Polling interval in seconds                                              |
-| `--max-wait <seconds>` | no       | `1800`     | Maximum wait before exiting 2                                            |
+| `--max-wait <seconds>` | no       | `1800`     | Maximum wait before exit code 2                                          |

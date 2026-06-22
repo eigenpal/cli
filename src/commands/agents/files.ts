@@ -5,9 +5,20 @@ import path from 'node:path';
 import { ApiError } from '../../lib/client';
 import { action } from '../../lib/format-error';
 import { addJsonFlag, error, success, table, ui, withBaseUrl } from '../../lib/ui';
-import { BaseOpts, buildClient, printJson, writeBase64File } from './shared';
+import { BaseOpts, agentAutomationId, buildClient, printJson, writeBase64File } from './shared';
 
 type FileDiffStatus = 'match' | 'different' | 'remote-missing';
+type AgentAutomationDetail = { type?: string; slug?: string };
+type SourceRawPayload = {
+  path: string;
+  content: string;
+  contentType?: string;
+};
+type AgentFilePayload = {
+  path: string;
+  contentBase64: string;
+  contentType?: string;
+};
 
 export function registerAgentFileCommands(agent: Command): void {
   const file = agent
@@ -37,8 +48,10 @@ export function registerAgentFileCommands(agent: Command): void {
 
 async function listAgentFiles(agentId: string, opts: BaseOpts & { path?: string }): Promise<void> {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(agentId)}/files`, {
-    ...(opts.path ? { prefix: opts.path } : {}),
+  const packagePath = await resolveAgentPackagePath(client, agentId);
+  const payload = (await client.get('/api/v1/source/tree', {
+    packagePath,
+    ...(opts.path ? { prefix: normalizeAgentFilePath(opts.path, { allowEmpty: true }) } : {}),
   })) as { files?: string[] };
   if (opts.json) return printJson(payload);
   console.log(
@@ -55,9 +68,7 @@ async function getAgentFile(
   opts: BaseOpts & { out?: string }
 ): Promise<void> {
   const client = buildClient(opts);
-  const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(agentId)}/files`, {
-    path: remotePath,
-  })) as { path: string; contentBase64: string };
+  const payload = await readAgentFile(client, agentId, remotePath);
   if (opts.json) return printJson(payload);
   const out = path.resolve(opts.out ?? payload.path);
   await writeBase64File(out, payload.contentBase64);
@@ -84,11 +95,9 @@ async function buildAgentFileDiff(
   const client = buildClient(opts);
   const local = await fs.readFile(localPath);
   let remote: Buffer | null = null;
-  let serverPath = remotePath;
+  let serverPath = normalizeAgentFilePath(remotePath);
   try {
-    const payload = (await client.get(`/api/v1/agents/${encodeURIComponent(agentId)}/files`, {
-      path: remotePath,
-    })) as { path?: string; contentBase64?: string };
+    const payload = await readAgentFile(client, agentId, remotePath);
     serverPath = String(payload.path ?? remotePath);
     remote = Buffer.from(String(payload.contentBase64 ?? ''), 'base64');
   } catch (err) {
@@ -115,6 +124,53 @@ async function buildAgentFileDiff(
         ? buildTextDiffPreview(remote.toString('utf-8'), local.toString('utf-8'))
         : null,
   };
+}
+
+async function resolveAgentPackagePath(
+  client: ReturnType<typeof buildClient>,
+  agentId: string
+): Promise<string> {
+  const automation = (await client.get(
+    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}`
+  )) as AgentAutomationDetail;
+  if (automation.type !== 'agent' || !automation.slug) {
+    throw new Error(`Agent not found: ${agentId}`);
+  }
+  return `agents/${automation.slug}`;
+}
+
+async function readAgentFile(
+  client: ReturnType<typeof buildClient>,
+  agentId: string,
+  remotePath: string
+): Promise<AgentFilePayload> {
+  const packagePath = await resolveAgentPackagePath(client, agentId);
+  const relativePath = normalizeAgentFilePath(remotePath);
+  const sourcePath = `${packagePath}/${relativePath}`;
+  const payload = (await client.get('/api/v1/source/raw', {
+    path: sourcePath,
+  })) as SourceRawPayload;
+  return {
+    path: relativePath,
+    contentBase64: Buffer.from(payload.content).toString('base64'),
+    contentType: payload.contentType,
+  };
+}
+
+function normalizeAgentFilePath(filePath: string, options: { allowEmpty?: boolean } = {}): string {
+  const raw = filePath.trim();
+  const trimmed = raw.replace(/^agent\/+/, '').replace(/^\/+|\/+$/g, '');
+  if (
+    (!trimmed && !options.allowEmpty) ||
+    raw !== filePath ||
+    trimmed.includes('\0') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('..') ||
+    (trimmed !== '' && trimmed.split('/').some((part) => part === ''))
+  ) {
+    throw new Error('Invalid agent file path');
+  }
+  return trimmed;
 }
 
 function renderAgentFileDiff(report: Awaited<ReturnType<typeof buildAgentFileDiff>>) {

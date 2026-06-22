@@ -17,12 +17,11 @@ function makeClient(handler: (url: string) => Response): ApiClient {
 }
 
 describe('resolveWorkflowId', () => {
-  test('id form (wf_…) hits GET /api/v1/workflows/<id> and returns the id', async () => {
+  test('id form (wf_…) hits GET /api/workflows/<id> and returns the id', async () => {
     const seenUrls: string[] = [];
     const client = makeClient((url) => {
       seenUrls.push(url);
-      // v1 detail shape: flat name/version/yamlContent. Mirrors what
-      // pickPublicWorkflowDetail emits on the server.
+      // Root authoring detail shape: flat name/version/yamlContent.
       return jsonResponse({
         id: 'wf_abc',
         name: 'foo',
@@ -33,7 +32,7 @@ describe('resolveWorkflowId', () => {
     try {
       const out = await resolveWorkflowId(client, 'wf_abc');
       expect(out).toBe('wf_abc');
-      expect(seenUrls).toEqual(['http://localhost:9999/api/v1/workflows/wf_abc']);
+      expect(seenUrls).toEqual(['http://localhost:9999/api/workflows/wf_abc']);
     } finally {
       global.fetch = fetch;
     }
@@ -43,7 +42,7 @@ describe('resolveWorkflowId', () => {
     const seenUrls: string[] = [];
     const client = makeClient((url) => {
       seenUrls.push(url);
-      // v1 list shape: flat name (no nested currentVersion).
+      // Root authoring list shape: flat name (no nested currentVersion).
       return jsonResponse({
         data: [{ id: 'wf_xyz', name: 'my-extraction', version: '1.0.0' }],
         total: 1,
@@ -52,7 +51,7 @@ describe('resolveWorkflowId', () => {
     try {
       const out = await resolveWorkflowId(client, 'my-extraction');
       expect(out).toBe('wf_xyz');
-      expect(seenUrls).toEqual(['http://localhost:9999/api/v1/workflows?name=my-extraction']);
+      expect(seenUrls).toEqual(['http://localhost:9999/api/workflows?name=my-extraction']);
     } finally {
       global.fetch = fetch;
     }

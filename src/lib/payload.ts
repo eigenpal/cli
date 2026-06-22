@@ -4,9 +4,9 @@
  * `eigenpal init workflow` scaffolds and `dataset push --mode replace`
  * round-trips:
  *
- *   ./dataset/examples/<name>/input/arguments.json    REQUIRED — scalar args
- *   ./dataset/examples/<name>/input/<arg-name>/<file> file-arg folders (uploaded via multipart)
- *   ./dataset/examples/<name>/expected/output.json    OPTIONAL — for evals
+ *   ./dataset/examples/<name>/input.json              REQUIRED — full run input
+ *   ./dataset/examples/<name>/input/<file>            files referenced via { "$file": "input/<file>" }
+ *   ./dataset/examples/<name>/expected.json           OPTIONAL — for evals
  *   ./dataset/examples/<name>/meta.json               OPTIONAL { rowOrder, annotation, overrides }
  */
 
@@ -20,7 +20,7 @@ import { guessMimeType } from './fs-helpers';
  * fields (`-F` style) when invoking the run endpoint — no base64.
  */
 export interface ExampleFile {
-  /** Argument name (the folder under `<example>/input/`). */
+  /** Multipart field name. For canonical datasets this is the top-level input key containing `$file`. */
   argument: string;
   filename: string;
   content: Buffer;
@@ -28,7 +28,7 @@ export interface ExampleFile {
 }
 
 export interface ExamplePayload {
-  /** Scalar args from `arguments.json`. File-args are NOT included here. */
+  /** Input JSON with top-level file refs removed. Multipart files are sent separately. */
   scalars: Record<string, unknown>;
   /** File uploads, in stable per-argument order. */
   files: ExampleFile[];
@@ -63,36 +63,80 @@ export function getExampleNames(dir: string, exampleNamesFilter?: string[]): str
   const all = readdirSync(baseDir)
     .filter(
       (name) =>
-        statSync(join(baseDir, name)).isDirectory() &&
-        existsSync(join(baseDir, name, 'input', 'arguments.json'))
+        statSync(join(baseDir, name)).isDirectory() && existsSync(join(baseDir, name, 'input.json'))
     )
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (!exampleNamesFilter?.length) return all;
   return all.filter((n) => exampleNamesFilter.includes(n));
 }
 
-/** Read scalar args from `arguments.json` and gather file-arg folders. */
+/** Read input JSON and gather file refs for multipart upload. */
 function readInput(exampleDir: string): { scalars: Record<string, unknown>; files: ExampleFile[] } {
-  const argsPath = join(exampleDir, 'input', 'arguments.json');
-  const inputDir = join(exampleDir, 'input');
-  const scalars: Record<string, unknown> = JSON.parse(readFileSync(argsPath, 'utf-8'));
+  const canonicalPath = join(exampleDir, 'input.json');
+  return readCanonicalInput(exampleDir, canonicalPath);
+}
+
+function readCanonicalInput(
+  exampleDir: string,
+  inputPath: string
+): { scalars: Record<string, unknown>; files: ExampleFile[] } {
+  const raw = JSON.parse(readFileSync(inputPath, 'utf-8'));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`${inputPath} must contain a JSON object.`);
+  }
+  const scalars: Record<string, unknown> = {};
   const files: ExampleFile[] = [];
-  for (const entry of readdirSync(inputDir)) {
-    const full = join(inputDir, entry);
-    if (!statSync(full).isDirectory()) continue;
-    const filenames = readdirSync(full)
-      .filter((f) => statSync(join(full, f)).isFile())
-      .sort();
-    for (const filename of filenames) {
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const refs = topLevelFileRefs(value);
+    if (refs.length === 0) {
+      scalars[key] = value;
+      continue;
+    }
+    for (const ref of refs) {
+      const relative = parseDatasetInputFileRef(ref);
+      if (!relative) {
+        throw new Error(
+          `${inputPath}: ${key} must reference files under input/ without path traversal.`
+        );
+      }
+      const filePath = join(exampleDir, 'input', relative);
+      const filename = relative.split('/').at(-1) ?? relative;
       files.push({
-        argument: entry,
+        argument: key,
         filename,
-        content: readFileSync(join(full, filename)),
+        content: readFileSync(filePath),
         mimeType: guessMimeType(filename),
       });
     }
   }
   return { scalars, files };
+}
+
+function topLevelFileRefs(value: unknown): string[] {
+  if (isFileRef(value)) return [value.$file];
+  if (Array.isArray(value) && value.every(isFileRef)) return value.map((item) => item.$file);
+  if (Array.isArray(value) && value.some(isFileRef)) {
+    throw new Error('file arrays must contain only { "$file": "input/..." } entries.');
+  }
+  return [];
+}
+
+function isFileRef(value: unknown): value is { $file: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof (value as { $file?: unknown }).$file === 'string'
+  );
+}
+
+function parseDatasetInputFileRef(path: string): string | null {
+  if (!path.startsWith('input/')) return null;
+  if (path.startsWith('/') || path.includes('\\') || path.includes('\u0000')) return null;
+  const relative = path.slice('input/'.length);
+  const parts = relative.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..')) return null;
+  return parts.join('/');
 }
 
 /** Read `meta.json`'s `overrides.steps` if present, else null. */

@@ -12,10 +12,8 @@ import { z } from 'zod';
  *     error?: ExpectedError,        // failure-expected (mutually exclusive with data)
  *   }
  *
- * Dataset archives store it as `examples/<name>/expected/error.json`,
- * sibling of `expected/output.json`. Importers reject archives that include
- * both for the same example — a single example is either a success-case or
- * a failure-case, never both.
+ * Dataset archives store it as `examples/<name>/expected.json` with a single
+ * `$error` key.
  *
  * The scorer reads the typed envelope persisted to `executions.error` by the
  * worker's `control.fail` handler (`{ code, message, step }`) and matches
@@ -41,7 +39,7 @@ export const ExpectedErrorSchema = z
   })
   .refine((v) => v.code != null || v.messageContains != null || v.step != null, {
     message:
-      'expected/error.json must specify at least one of: code, messageContains, step (otherwise any failure would match)',
+      'expected.json $error must specify at least one of: code, messageContains, step (otherwise any failure would match)',
   });
 
 export type ExpectedError = z.infer<typeof ExpectedErrorSchema>;
