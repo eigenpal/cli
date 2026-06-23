@@ -193,7 +193,7 @@ describe('root run commands', () => {
     );
   });
 
-  test('runs feedback update uses the canonical PUT endpoint', async () => {
+  test('runs reviews update uses the canonical PUT endpoint', async () => {
     const calls: Array<{ method: string; pathname: string; body?: unknown }> = [];
     await withRunServer(
       async (request) => {
@@ -202,16 +202,18 @@ describe('root run commands', () => {
         if (request.method === 'GET' && url.pathname === '/api/v1/runs/aex_1') {
           return json({ id: 'aex_1', type: 'agent', finished: true });
         }
-        if (request.method === 'PUT' && url.pathname === '/api/v1/runs/aex_1/feedback') {
+        if (request.method === 'PUT' && url.pathname === '/api/v1/runs/aex_1/reviews') {
           calls[calls.length - 1] = {
             method: request.method,
             pathname: url.pathname,
             body: await request.json(),
           };
           return json({
-            feedback: { status: 'open', rating: 'fail', message: 'needs review' },
-            expected: null,
-            expectedFiles: [],
+            review: {
+              status: 'open',
+              verdict: 'incorrect',
+              note: 'needs review',
+            },
           });
         }
         return new Response('not found', { status: 404 });
@@ -220,12 +222,12 @@ describe('root run commands', () => {
         const result = await runCli(
           [
             'runs',
-            'feedback',
+            'reviews',
             'update',
             'aex_1',
-            '--rating',
-            'fail',
-            '--message',
+            '--verdict',
+            'incorrect',
+            '--note',
             'needs review',
             '--json',
             '--base-url',
@@ -236,14 +238,13 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(calls).toEqual([
-          { method: 'GET', pathname: '/api/v1/runs/aex_1' },
           {
             method: 'PUT',
-            pathname: '/api/v1/runs/aex_1/feedback',
-            body: { rating: 'fail', body: 'needs review' },
+            pathname: '/api/v1/runs/aex_1/reviews',
+            body: { verdict: 'incorrect', note: 'needs review' },
           },
         ]);
-        expect(JSON.parse(result.stdout)).toMatchObject({ feedback: { rating: 'fail' } });
+        expect(JSON.parse(result.stdout)).toMatchObject({ review: { verdict: 'incorrect' } });
       }
     );
   });

@@ -32,6 +32,8 @@ export const ID_PREFIXES = {
   EVAL_EXAMPLE: 'evx',
   EVAL_RESULT: 'evr',
   EVAL_BATCH: 'evb',
+  RUN_REVIEW: 'rev',
+  RUN_REVIEW_CORRECTION: 'rvc',
   // Table view (legacy — eval examples used to live in workflow_table_rows)
   TABLE_ROW: 'row',
   // Folders

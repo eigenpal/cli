@@ -28,7 +28,7 @@
   - Top-level workflow resources, e.g. `client.workflows.*`, including
     `client.workflows.executions.runAndWait(...)` and the rest of the
     `client.workflows.executions.*` tree.
-  - Top-level agent resources, e.g. `client.agents.*` (runs, feedback, traces,
+  - Top-level agent resources, e.g. `client.agents.*` (runs, reviews, traces,
     files, expected artifacts).
   - Top-level source/git resources, e.g. `client.sources.*`.
 
@@ -44,7 +44,7 @@
   - **Inspect & control runs:** `client.runs.list()`, `client.runs.get(id)`,
     `client.runs.cancel(id)`, `client.runs.rerun(id)`, `client.runs.promote(id)`,
     `client.runs.usage(id)`, `client.runs.steps(id)`, `client.runs.events(id)`,
-    and `client.runs.artifacts|eval_results|feedback|trace.*`.
+    and `client.runs.artifacts|eval_results|reviews|trace.*`.
   - **Manage reusable files:** `client.files.upload(...)`, `client.files.get(id)`,
     `client.files.download(id)`, `client.files.delete(id)`.
 
@@ -63,8 +63,8 @@
     `client.workflows.executions.*` / `client.agents.runs.*` →
     `client.runs.*` (e.g. `client.runs.list()`, `client.runs.get(id)`).
   - `eigenpal runs promote` now accepts only `--name` (optional). Use
-    `eigenpal runs feedback update` to set expected JSON before promoting.
-    Feedback and expected commands work for both workflow and agent runs.
+    `eigenpal runs reviews update` to set corrected JSON before promoting.
+    Review and corrected-file commands work for both workflow and agent runs.
 
   #### DX fixes
   - `client.runs.*` read methods are now typed against the generated OpenAPI

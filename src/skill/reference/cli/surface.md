@@ -113,9 +113,9 @@ eigenpal
 │   │   ├── list|ls <run-id>
 │   │   └── fetch <run-id>
 │   ├── trace <run-id>
-│   ├── feedback|fb
+│   ├── reviews|rv
 │   │   ├── update <run-id>
-│   │   ├── resolve <run-id>
+│   │   ├── close <run-id>
 │   │   └── clear <run-id>
 │   ├── expected
 │   │   ├── list|ls <run-id>

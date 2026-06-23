@@ -8,7 +8,7 @@ Inspect, watch, and manage workflow, agent, and eval runs.
 - [Commands](#commands)
   - [Core](#core)
   - [Artifacts](#artifacts)
-  - [Feedback](#feedback)
+  - [Reviews](#reviews)
   - [Expected](#expected)
 - [Details](#details)
   - [`eigenpal runs list|ls [options] [source]`](#eigenpal-runs-listls-options-source)
@@ -21,9 +21,9 @@ Inspect, watch, and manage workflow, agent, and eval runs.
   - [`eigenpal runs cancel [options] <run-id>`](#eigenpal-runs-cancel-options-run-id)
   - [`eigenpal runs artifacts|artifact list|ls [options] <run-id>`](#eigenpal-runs-artifactsartifact-listls-options-run-id)
   - [`eigenpal runs artifacts|artifact fetch [options] <run-id>`](#eigenpal-runs-artifactsartifact-fetch-options-run-id)
-  - [`eigenpal runs feedback|fb update [options] <run-id>`](#eigenpal-runs-feedbackfb-update-options-run-id)
-  - [`eigenpal runs feedback|fb resolve [options] <run-id>`](#eigenpal-runs-feedbackfb-resolve-options-run-id)
-  - [`eigenpal runs feedback|fb clear [options] <run-id>`](#eigenpal-runs-feedbackfb-clear-options-run-id)
+  - [`eigenpal runs reviews|rv update [options] <run-id>`](#eigenpal-runs-reviewsrv-update-options-run-id)
+  - [`eigenpal runs reviews|rv close [options] <run-id>`](#eigenpal-runs-reviewsrv-close-options-run-id)
+  - [`eigenpal runs reviews|rv clear [options] <run-id>`](#eigenpal-runs-reviewsrv-clear-options-run-id)
   - [`eigenpal runs expected list|ls [options] <run-id>`](#eigenpal-runs-expected-listls-options-run-id)
   - [`eigenpal runs expected pull [options] <run-id>`](#eigenpal-runs-expected-pull-options-run-id)
   - [`eigenpal runs expected upload [options] <run-id> <file>`](#eigenpal-runs-expected-upload-options-run-id-file)
@@ -44,9 +44,9 @@ runs
 │   ├── list|ls <run-id>
 │   └── fetch <run-id>
 ├── trace <run-id>
-├── feedback|fb
+├── reviews|rv
 │   ├── update <run-id>
-│   ├── resolve <run-id>
+│   ├── close <run-id>
 │   └── clear <run-id>
 ├── expected
 │   ├── list|ls <run-id>
@@ -81,13 +81,13 @@ runs
 | `eigenpal runs artifacts\|artifact list\|ls [options] <run-id>` | List available run artifacts without downloading them. |
 | `eigenpal runs artifacts\|artifact fetch [options] <run-id>`    | Download run artifacts by canonical artifact path.     |
 
-### Feedback
+### Reviews
 
-| Command                                                 | Description                                                       |
-| ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `eigenpal runs feedback\|fb update [options] <run-id>`  | Edit feedback state, rating, message, or expected JSON for a run. |
-| `eigenpal runs feedback\|fb resolve [options] <run-id>` | Mark run feedback as resolved.                                    |
-| `eigenpal runs feedback\|fb clear [options] <run-id>`   | Delete feedback, expected.json, and expected files for a run.     |
+| Command                                               | Description                                                            |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| `eigenpal runs reviews\|rv update [options] <run-id>` | Edit review verdict, status, note, or corrected JSON for a run.        |
+| `eigenpal runs reviews\|rv close [options] <run-id>`  | Mark a run review as closed.                                           |
+| `eigenpal runs reviews\|rv clear [options] <run-id>`  | Delete review metadata, corrected JSON, and corrected files for a run. |
 
 ### Expected
 
@@ -148,13 +148,13 @@ Get one run.
 
 ### Options
 
-| Flag                  | Required | Default      | Description                                                                                                                                                                                 |
-| --------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--base-url <url>`    | no       |              | Server base URL                                                                                                                                                                             |
-| `--json`              | no       |              | Output the raw server response as JSON                                                                                                                                                      |
-| `--step <name>`       | no       |              | For workflow runs, show only this step (or comma-separated list)                                                                                                                            |
-| `--expand <sections>` | no       |              | Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error. |
-| `--include <parts>`   | no       | `"feedback"` | Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.                       |
+| Flag                  | Required | Default    | Description                                                                                                                                                                                 |
+| --------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`    | no       |            | Server base URL                                                                                                                                                                             |
+| `--json`              | no       |            | Output the raw server response as JSON                                                                                                                                                      |
+| `--step <name>`       | no       |            | For workflow runs, show only this step (or comma-separated list)                                                                                                                            |
+| `--expand <sections>` | no       |            | Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error. |
+| `--include <parts>`   | no       | `"review"` | Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.                       |
 
 ### `eigenpal runs compare|diff [options] <reference-run-id> <run-id>`
 
@@ -310,35 +310,9 @@ Download run artifacts by canonical artifact path.
 | `--path <path>`     | no       | `[]`    | Fetch one exact artifact path from `artifacts list`; repeatable                 |
 | `--json`            | no       |         | Output a JSON summary of written artifacts                                      |
 
-### `eigenpal runs feedback|fb update [options] <run-id>`
+### `eigenpal runs reviews|rv update [options] <run-id>`
 
-Edit feedback state, rating, message, or expected JSON for a run.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `run-id` | yes      | no       |             |
-
-### Options
-
-| Flag                                   | Required | Default | Description                               |
-| -------------------------------------- | -------- | ------- | ----------------------------------------- |
-| `--base-url <url>`                     | no       |         | Server base URL                           |
-| `--json`                               | no       |         | Output the raw server response as JSON    |
-| `--status <open\|resolved\|ignored>`   | no       |         | Set feedback status                       |
-| `--rating <pass\|fail\|partial\|none>` | no       |         | Set feedback rating                       |
-| `--message <text>`                     | no       |         | Set feedback message body                 |
-| `--message-file <path>`                | no       |         | Read feedback message body from a file    |
-| `--expected-json <json>`               | no       |         | Set structured expected JSON              |
-| `--expected-json-file <path>`          | no       |         | Read structured expected JSON from a file |
-| `--clear-message`                      | no       |         | Clear the feedback message body           |
-| `--clear-rating`                       | no       |         | Clear feedback rating                     |
-| `--clear-expected-json`                | no       |         | Delete structured expected JSON           |
-
-### `eigenpal runs feedback|fb resolve [options] <run-id>`
-
-Mark run feedback as resolved.
+Edit review verdict, status, note, or corrected JSON for a run.
 
 ### Arguments
 
@@ -348,16 +322,41 @@ Mark run feedback as resolved.
 
 ### Options
 
-| Flag                    | Required | Default | Description                            |
-| ----------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`      | no       |         | Server base URL                        |
-| `--json`                | no       |         | Output the raw server response as JSON |
-| `--message <text>`      | no       |         | Set feedback message body              |
-| `--message-file <path>` | no       |         | Read feedback message body from a file |
+| Flag                                | Required | Default | Description                            |
+| ----------------------------------- | -------- | ------- | -------------------------------------- |
+| `--base-url <url>`                  | no       |         | Server base URL                        |
+| `--json`                            | no       |         | Output the raw server response as JSON |
+| `--status <open\|closed\|wont_fix>` | no       |         | Set review lifecycle status            |
+| `--verdict <correct\|incorrect>`    | no       |         | Set reviewer verdict                   |
+| `--note <text>`                     | no       |         | Set review note                        |
+| `--note-file <path>`                | no       |         | Read review note from a file           |
+| `--corrected-json <json>`           | no       |         | Set corrected JSON output              |
+| `--corrected-json-file <path>`      | no       |         | Read corrected JSON output from a file |
+| `--clear-note`                      | no       |         | Clear the review note                  |
+| `--clear-corrected-json`            | no       |         | Delete corrected JSON output           |
 
-### `eigenpal runs feedback|fb clear [options] <run-id>`
+### `eigenpal runs reviews|rv close [options] <run-id>`
 
-Delete feedback, expected.json, and expected files for a run.
+Mark a run review as closed.
+
+### Arguments
+
+| Name     | Required | Variadic | Description |
+| -------- | -------- | -------- | ----------- |
+| `run-id` | yes      | no       |             |
+
+### Options
+
+| Flag                 | Required | Default | Description                            |
+| -------------------- | -------- | ------- | -------------------------------------- |
+| `--base-url <url>`   | no       |         | Server base URL                        |
+| `--json`             | no       |         | Output the raw server response as JSON |
+| `--note <text>`      | no       |         | Set developer close note               |
+| `--note-file <path>` | no       |         | Read developer close note from a file  |
+
+### `eigenpal runs reviews|rv clear [options] <run-id>`
+
+Delete review metadata, corrected JSON, and corrected files for a run.
 
 ### Arguments
 

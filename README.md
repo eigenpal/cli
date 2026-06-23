@@ -23,7 +23,7 @@ eigenpal skill install         # install skill for your agent
 | [`eigenpal init`](./docs/init.md)                                   | Scaffold a workflow project.                          |
 | [`eigenpal auth`](./docs/auth.md)                                   | Profile management.                                   |
 | [`eigenpal workflow`](./docs/workflow.md)                           | Workflow, evaluators, dataset, experiment.            |
-| [`eigenpal run`](./docs/run.md) / [`eigenpal runs`](./docs/runs.md) | Start runs and inspect artifacts, traces, feedback.   |
+| [`eigenpal run`](./docs/run.md) / [`eigenpal runs`](./docs/runs.md) | Start runs and inspect artifacts, traces, reviews.    |
 | [`eigenpal agents`](./docs/agents.md)                               | Agent source, runs, datasets, triggers, and sessions. |
 | [`eigenpal skill`](./docs/skill.md)                                 | Install the agent skill across AI tools.              |
 

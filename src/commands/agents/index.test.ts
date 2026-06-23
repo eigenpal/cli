@@ -107,12 +107,12 @@ describe('agent command tree', () => {
     expect(result.stdout).toContain('diff');
   });
 
-  test('runs feedback subcommands are available', () => {
-    const feedback = spawnSync('bun', [CLI, 'runs', 'feedback', '--help'], {
+  test('runs reviews subcommands are available', () => {
+    const reviews = spawnSync('bun', [CLI, 'runs', 'reviews', '--help'], {
       encoding: 'utf8',
     });
-    expect(feedback.status).toBe(0);
-    expect(feedback.stdout).toContain('resolve');
+    expect(reviews.status).toBe(0);
+    expect(reviews.stdout).toContain('close');
   });
 
   test('replace dataset requires confirmation in non-interactive mode before network access', () => {

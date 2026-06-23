@@ -5,7 +5,7 @@
  * The contract: each token adds exactly one top-level nested object named
  * after the token. All four tokens are valid for both run types; the
  * *contents* of `execution` differ by run type (workflow: steps/expected;
- * agent: files/feedback/expected). Batch, retry, and annotation live under
+ * agent: files/review/expected). Batch, retry, and annotation live under
  * `execution` (`expand=execution`). Unknown tokens are a 400.
  *
  * `output`, `files`, and `error` are NOT behind expand. They appear at the top
@@ -58,7 +58,7 @@ export const LEGACY_RUN_EXPAND_MIGRATION: Readonly<Record<string, string>> = {
   input: 'still `expand=input` — args now live at `input.args`',
   metadata: 'use `expand=input` — metadata now lives at `input.metadata`',
   observability: 'use `expand=debug`',
-  feedback: 'use `expand=execution` — feedback lives at `execution.feedback` (agent runs)',
+  review: 'use `expand=execution` — reviews live at `execution.review`',
   steps: 'use `expand=execution` — steps live at `execution.steps` (workflow runs)',
   definition:
     'use `expand=execution` — definitionSnapshot lives at `execution.definitionSnapshot` (workflow runs)',

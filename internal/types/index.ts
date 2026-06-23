@@ -294,6 +294,8 @@ export * from './automation/triggers';
 // API path display helpers (`:id` in docs/UI vs `{id}` in OpenAPI)
 export * from './api/display-path';
 
+export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/sample-rank';
+
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';
 

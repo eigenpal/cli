@@ -77,7 +77,7 @@ export function registerRunsCommands(program: Command): void {
     .option(
       '--include <parts>',
       'Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.',
-      'feedback'
+      'review'
     )
     .action(action(getRun));
 
@@ -114,8 +114,8 @@ Examples
   $ eigenpal runs promote run_abc123 --name golden-invoice
   $ eigenpal runs promote run_abc123 --json | jq '.exampleId'
 
-Copies the run input, output, feedback, and expected artifacts into a dataset example.
-Use \`eigenpal runs feedback update\` first when you need to correct expected output.
+Copies the run input and review corrections into a dataset example.
+Use \`eigenpal runs reviews update\` first when you need to correct output.
 `
     )
     .action(action(promoteRun));
@@ -156,7 +156,7 @@ Use \`eigenpal runs feedback update\` first when you need to correct expected ou
     .option('--out <file>', 'Output file path')
     .action(action(traceRun));
 
-  registerRunFeedbackCommands(runs);
+  registerRunReviewCommands(runs);
   registerRunExpectedCommands(runs);
 
   addJsonFlag(withBaseUrl(runs.command('watch <run-id>')))
@@ -171,44 +171,43 @@ Use \`eigenpal runs feedback update\` first when you need to correct expected ou
     .action(action(cancelRun));
 }
 
-function registerRunFeedbackCommands(runs: Command): void {
-  const feedback = runs
-    .command('feedback')
-    .description('Update or clear feedback attached to a run.')
+function registerRunReviewCommands(runs: Command): void {
+  const reviews = runs
+    .command('reviews')
+    .description('Update or clear reviews attached to a run.')
     .action(() => {
       process.stderr.write(
-        '`eigenpal runs feedback` requires a subcommand. Run `eigenpal runs feedback --help`.\n'
+        '`eigenpal runs reviews` requires a subcommand. Run `eigenpal runs reviews --help`.\n'
       );
       process.exit(2);
     });
 
-  addJsonFlag(withBaseUrl(feedback.command('update <run-id>')))
-    .description('Edit feedback state, rating, message, or expected JSON for a run.')
-    .option('--status <open|resolved|ignored>', 'Set feedback status')
-    .option('--rating <pass|fail|partial|none>', 'Set feedback rating')
-    .option('--message <text>', 'Set feedback message body')
-    .option('--message-file <path>', 'Read feedback message body from a file')
-    .option('--expected-json <json>', 'Set structured expected JSON')
-    .option('--expected-json-file <path>', 'Read structured expected JSON from a file')
-    .option('--clear-message', 'Clear the feedback message body')
-    .option('--clear-rating', 'Clear feedback rating')
-    .option('--clear-expected-json', 'Delete structured expected JSON')
-    .action(action(updateRunFeedback));
+  addJsonFlag(withBaseUrl(reviews.command('update <run-id>')))
+    .description('Edit review verdict, status, note, or corrected JSON for a run.')
+    .option('--status <open|closed|wont_fix>', 'Set review lifecycle status')
+    .option('--verdict <correct|incorrect>', 'Set reviewer verdict')
+    .option('--note <text>', 'Set review note')
+    .option('--note-file <path>', 'Read review note from a file')
+    .option('--corrected-json <json>', 'Set corrected JSON output')
+    .option('--corrected-json-file <path>', 'Read corrected JSON output from a file')
+    .option('--clear-note', 'Clear the review note')
+    .option('--clear-corrected-json', 'Delete corrected JSON output')
+    .action(action(updateRunReview));
 
-  addJsonFlag(withBaseUrl(feedback.command('resolve <run-id>')))
-    .description('Mark run feedback as resolved.')
-    .option('--message <text>', 'Set feedback message body')
-    .option('--message-file <path>', 'Read feedback message body from a file')
+  addJsonFlag(withBaseUrl(reviews.command('close <run-id>')))
+    .description('Mark a run review as closed.')
+    .option('--note <text>', 'Set developer close note')
+    .option('--note-file <path>', 'Read developer close note from a file')
     .action(
-      action((runId: string, opts: BaseOpts & { message?: string; messageFile?: string }) =>
-        updateRunFeedback(runId, { ...opts, status: 'resolved' })
+      action((runId: string, opts: BaseOpts & { note?: string; noteFile?: string }) =>
+        closeRunReview(runId, { ...opts, status: 'closed' })
       )
     );
 
-  addJsonFlag(withBaseUrl(feedback.command('clear <run-id>')))
-    .description('Delete feedback, expected.json, and expected files for a run.')
+  addJsonFlag(withBaseUrl(reviews.command('clear <run-id>')))
+    .description('Delete review metadata, corrected JSON, and corrected files for a run.')
     .option('--yes', 'Required in non-interactive environments')
-    .action(action(clearRunFeedback));
+    .action(action(clearRunReview));
 }
 
 function registerRunExpectedCommands(runs: Command): void {
@@ -298,7 +297,7 @@ const LEGACY_INCLUDE_EXPAND_MAP: Record<string, RunExpandSection | null> = {
   cost: 'usage',
   steps: 'execution',
   files: 'execution',
-  feedback: 'execution',
+  review: 'execution',
   expected: 'execution',
   input: 'input',
   metadata: 'input',
@@ -354,7 +353,7 @@ function serverExpandParam(args: { expand?: string; include?: string }): string 
 
   // Detail output is default now; keep the old useful default extras via grouped expands.
   const sections = new Set<RunExpandSection>(['usage', 'execution']);
-  for (const part of collectIncludeExpandTokens(args.include ?? 'feedback')) sections.add(part);
+  for (const part of collectIncludeExpandTokens(args.include ?? 'review')) sections.add(part);
   return [...sections].join(',');
 }
 
@@ -503,7 +502,7 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
     stepExecutions: execution?.steps,
     nextRetryId: nextRun?.id ?? objectOrNull(execution?.nextRetry)?.id,
     nextRetryStatus: nextRun?.status ?? objectOrNull(execution?.nextRetry)?.status,
-    feedback: execution?.feedback,
+    review: execution?.review,
     expected: executionExpected?.output,
     expectedFiles: executionExpected?.files,
     observability: debug?.observability,
@@ -1158,16 +1157,8 @@ async function listRuns(
   const viewRuns = payload.runs.map(toLegacyRunView);
   const rows = opts.compact ? viewRuns.map(compactRunRow) : viewRuns;
   if (opts.json) return printJson({ ...payload, runs: rows });
-  if (payload.scanLimited) {
-    warn(
-      'Feedback/expected filters scanned only the first matching window. Increase --scan-limit or narrow DB filters for a fuller result.'
-    );
-  }
-  if (payload.noResolvedAnchor) {
-    warn(
-      'No resolved feedback anchor was found in the scan window; --since-last-resolved returned no rows.'
-    );
-  }
+  if (payload.scanLimited) warn('Filtered run list scanned only the first matching window.');
+  if (payload.noResolvedAnchor) warn('No closed review anchor was found in the scan window.');
   console.log(
     table(rows, [
       { key: 'id', header: 'ID' },
@@ -1180,11 +1171,11 @@ async function listRuns(
       },
       { key: 'exampleId', header: 'EXAMPLE' },
       {
-        key: 'feedback',
-        header: 'FEEDBACK',
+        key: 'review',
+        header: 'REVIEW',
         format: (value) =>
           value && typeof value === 'object'
-            ? `${String((value as { rating?: unknown }).rating ?? '')}/${String((value as { status?: unknown }).status ?? '')}`
+            ? `${String((value as { verdict?: unknown }).verdict ?? '')}/${String((value as { status?: unknown }).status ?? '')}`
             : '',
       },
       { key: 'createdAt', header: 'CREATED', format: formatTimestamp },
@@ -1220,53 +1211,61 @@ export function buildRunListParams<T extends object>(
   });
 }
 
-async function updateRunFeedback(
+async function updateRunReview(
   executionId: string,
   opts: BaseOpts & {
     status?: string;
-    rating?: string;
-    message?: string;
-    messageFile?: string;
-    expectedJson?: string;
-    expectedJsonFile?: string;
-    clearMessage?: boolean;
-    clearRating?: boolean;
-    clearExpectedJson?: boolean;
+    verdict?: string;
+    note?: string;
+    noteFile?: string;
+    correctedJson?: string;
+    correctedJsonFile?: string;
+    clearNote?: boolean;
+    clearCorrectedJson?: boolean;
   }
 ) {
   const client = buildClient(opts);
   const body: Record<string, unknown> = {};
   if (opts.status) body.status = opts.status;
-  if (opts.rating) body.rating = opts.rating === 'none' ? null : opts.rating;
-  if (opts.clearRating) body.rating = null;
-  if (opts.messageFile) body.body = await fs.readFile(opts.messageFile, 'utf-8');
-  if (opts.message !== undefined) body.body = opts.message;
-  if (opts.clearMessage) body.body = '';
-  if (opts.expectedJsonFile)
-    body.expected = JSON.parse(await fs.readFile(opts.expectedJsonFile, 'utf-8'));
-  if (opts.expectedJson !== undefined) body.expected = JSON.parse(opts.expectedJson);
-  if (opts.clearExpectedJson) body.expected = null;
-  const payload = await client.put(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback`,
+  if (opts.verdict !== undefined) body.verdict = opts.verdict;
+  if (opts.noteFile) body.note = await fs.readFile(opts.noteFile, 'utf-8');
+  if (opts.note !== undefined) body.note = opts.note;
+  if (opts.clearNote) body.note = '';
+  if (opts.correctedJsonFile)
+    body.correctedOutput = JSON.parse(await fs.readFile(opts.correctedJsonFile, 'utf-8'));
+  if (opts.correctedJson !== undefined) body.correctedOutput = JSON.parse(opts.correctedJson);
+  if (opts.clearCorrectedJson) body.correctedOutput = null;
+  const payload = await client.put(`/api/v1/runs/${encodeURIComponent(executionId)}/reviews`, body);
+  renderGeneric(payload, opts, `Updated review for ${executionId}`);
+}
+
+async function closeRunReview(
+  executionId: string,
+  opts: BaseOpts & { status?: 'closed' | 'wont_fix'; note?: string; noteFile?: string }
+) {
+  const client = buildClient(opts);
+  const body: Record<string, unknown> = { status: opts.status ?? 'closed' };
+  if (opts.noteFile) body.note = await fs.readFile(opts.noteFile, 'utf-8');
+  if (opts.note !== undefined) body.note = opts.note;
+  const payload = await client.patch(
+    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews`,
     body
   );
-  renderGeneric(payload, opts, `Updated feedback for ${executionId}`);
+  renderGeneric(payload, opts, `Closed review for ${executionId}`);
 }
 
 function compactRunRow(run: Record<string, unknown>) {
-  const feedback =
-    run.feedback && typeof run.feedback === 'object'
-      ? (run.feedback as Record<string, unknown>)
-      : null;
+  const review =
+    run.review && typeof run.review === 'object' ? (run.review as Record<string, unknown>) : null;
   return {
     id: run.id,
     status: run.status,
     exampleId: run.exampleId,
-    feedback: feedback
+    review: review
       ? {
-          rating: feedback.rating ?? null,
-          status: feedback.status ?? null,
-          updatedAt: feedback.updatedAt ?? null,
+          verdict: review.verdict ?? null,
+          status: review.status ?? null,
+          updatedAt: review.updatedAt ?? null,
         }
       : null,
     hasExpectedJson: run.expected != null,
@@ -1276,13 +1275,13 @@ function compactRunRow(run: Record<string, unknown>) {
   };
 }
 
-async function clearRunFeedback(executionId: string, opts: BaseOpts & { yes?: boolean }) {
-  if (!(opts.yes || (await confirmTyped(executionId, 'clear feedback artifacts')))) {
+async function clearRunReview(executionId: string, opts: BaseOpts & { yes?: boolean }) {
+  if (!(opts.yes || (await confirmTyped(executionId, 'clear review artifacts')))) {
     throw new Error('Clear cancelled');
   }
   const client = buildClient(opts);
-  const payload = await client.delete(`/api/v1/runs/${encodeURIComponent(executionId)}/feedback`);
-  renderGeneric(payload, opts, `Cleared feedback for ${executionId}`);
+  const payload = await client.delete(`/api/v1/runs/${encodeURIComponent(executionId)}/reviews`);
+  renderGeneric(payload, opts, `Cleared review for ${executionId}`);
 }
 
 // Reads of expected artifacts come from the public run detail (`expand=execution`
@@ -1345,8 +1344,8 @@ async function downloadExpectedFiles(
   return written.filter((name): name is string => Boolean(name));
 }
 
-// Public run feedback expected-artifact mutations. Keep these pointed at the
-// documented `/api/v1/runs/:id/feedback/expected*` routes so CLI expected-file
+// Public run review expected-artifact mutations. Keep these pointed at the
+// documented `/api/v1/runs/:id/reviews/expected*` routes so CLI expected-file
 // editing dogfoods the same surface as SDK users.
 async function uploadRunExpected(
   executionId: string,
@@ -1359,7 +1358,7 @@ async function uploadRunExpected(
   form.append('file', new Blob([data]), path.basename(file));
   if (opts.name) form.append('name', opts.name);
   const payload = await client.postFormData(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
     form
   );
   renderGeneric(payload, opts, `Uploaded expected file for ${executionId}`);
@@ -1372,7 +1371,7 @@ async function copyOutputToExpected(
 ) {
   const client = buildClient(opts);
   const payload = await client.post(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
     {
       outputFileName: outputFile,
       ...(opts.name ? { expectedName: opts.name } : {}),
@@ -1389,7 +1388,7 @@ async function renameRunExpected(
 ) {
   const client = buildClient(opts);
   const payload = await client.patch(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected/${encodeURIComponent(oldName)}`,
+    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(oldName)}`,
     { name: newName }
   );
   renderGeneric(payload, opts, `Renamed expected file for ${executionId}`);
@@ -1405,7 +1404,7 @@ async function deleteRunExpected(
   }
   const client = buildClient(opts);
   await client.delete(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/feedback/expected/${encodeURIComponent(name)}`
+    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(name)}`
   );
   renderGeneric({ ok: true }, opts, `Deleted expected file ${name}`);
 }

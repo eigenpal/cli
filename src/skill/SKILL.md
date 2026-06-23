@@ -195,21 +195,21 @@ eigenpal runs compare <source-execution-id> <new-execution-id> --baseline --norm
 `runs rerun` reuses the previous input snapshot with latest source by default.
 Use `--version original` only to reproduce the previous resolved version.
 
-## Feedback And Expected Artifacts
+## Reviews And Expected Artifacts
 
 ```bash
-eigenpal runs feedback update <agent-execution-id> \
+eigenpal runs reviews update <agent-execution-id> \
   --status open \
-  --rating fail \
-  --message "Expected the filing date to be extracted."
-eigenpal runs feedback resolve <agent-execution-id> \
-  --message "Fixed and verified."
-eigenpal runs feedback clear <agent-execution-id> --yes
+  --verdict needs_changes \
+  --note "Expected the filing date to be extracted."
+eigenpal runs reviews close <agent-execution-id> \
+  --note "Fixed and verified."
+eigenpal runs reviews clear <agent-execution-id> --yes
 
-eigenpal runs expected list <agent-execution-id>
-eigenpal runs expected upload <agent-execution-id> expected.json --name expected.json
-eigenpal runs expected copy-output <agent-execution-id> result.json --name expected.json
-eigenpal runs expected pull <agent-execution-id> --out expected/
+eigenpal runs reviews expected list <agent-execution-id>
+eigenpal runs reviews expected upload <agent-execution-id> expected.json --name expected.json
+eigenpal runs reviews expected copy-output <agent-execution-id> result.json --name expected.json
+eigenpal runs reviews expected pull <agent-execution-id> --out expected/
 ```
 
 ## Output

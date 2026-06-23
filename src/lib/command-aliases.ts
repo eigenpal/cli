@@ -4,7 +4,7 @@ const CONVENTION_ALIASES = new Map([
   ['artifacts', 'artifact'],
   ['execution', 'exec'],
   ['experiment', 'exp'],
-  ['feedback', 'fb'],
+  ['reviews', 'rv'],
   ['list', 'ls'],
   ['compare', 'diff'],
 ]);
