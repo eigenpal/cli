@@ -490,4 +490,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `default` | unknown | no |  |  |
 | `values` | array<string> | no |  |  |
 | `items` | object | no |  |  |
+| `source` | string | no |  |  |
+| `mimeType` | string | no |  |  |
+| `extension` | string | no |  |  |
 <!-- GENERATED:WORKFLOW_REFERENCE END -->

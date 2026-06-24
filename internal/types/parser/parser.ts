@@ -396,6 +396,34 @@ export function resolveEffectiveMimeType(filename: string, declaredMimeType: str
 }
 
 /**
+ * Map a bare file extension (without the dot, case-insensitive) to its MIME
+ * type, or `undefined` when the extension is unknown. The inverse direction of
+ * {@link resolveEffectiveMimeType}'s extension table.
+ */
+export function mimeTypeForExtension(extension: string): string | undefined {
+  return EXTENSION_TO_MIME[extension.replace(/^\./, '').toLowerCase()];
+}
+
+const MIME_TO_EXTENSION: Record<string, string> = Object.entries(EXTENSION_TO_MIME).reduce(
+  (acc, [ext, mime]) => {
+    // First extension wins (e.g. image/jpeg → jpg, not jpeg).
+    if (!(mime in acc)) acc[mime] = ext;
+    return acc;
+  },
+  {} as Record<string, string>
+);
+
+/**
+ * Best-effort canonical file extension (without the dot) for a MIME type, or
+ * `undefined` when unknown. The MIME type is matched case-insensitively and any
+ * `; charset=...` suffix is ignored.
+ */
+export function extensionForMimeType(mimeType: string): string | undefined {
+  const base = mimeType.split(';')[0]?.trim().toLowerCase();
+  return base ? MIME_TO_EXTENSION[base] : undefined;
+}
+
+/**
  * Determine which parser category a MIME type belongs to
  */
 export function getParserCategory(mimeType: string): 'plaintext' | 'office' | 'document' | null {

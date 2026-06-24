@@ -50,6 +50,8 @@ export const ID_PREFIXES = {
   AGENT_EMAIL_INVOCATION: 'aei',
   // Automation trigger projection (runtime gate)
   AUTOMATION_TRIGGER: 'atr',
+  // External file-source resolver instance config (single-tenant)
+  FILE_SOURCE_CONFIG: 'fsc',
   // Token prefixes (not IDs, but follow the same registry)
   SANDBOX_WS_TOKEN: 'sws',
 } as const;

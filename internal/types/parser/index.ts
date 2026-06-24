@@ -22,9 +22,11 @@ export {
   PointSchema,
   PositionedTextSchema,
   TableCellSchema,
+  extensionForMimeType,
   getAllSupportedMimeTypes,
   getParserCategory,
   getSupportedFormatsLabel,
+  mimeTypeForExtension,
   requiresSpecializedParser,
   resolveEffectiveMimeType,
   // Types

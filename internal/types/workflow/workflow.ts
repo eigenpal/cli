@@ -56,33 +56,98 @@ export const TriggerTypeValue = ProcessorTriggerTypeValue;
 /**
  * Input definition for workflow inputs
  */
-export const WorkflowInputDefSchema = z.object({
-  /** Input variable name */
-  name: z.string().min(1),
-  /** JSON Schema type */
-  type: z.string(),
-  /** Human-readable description */
-  description: z.string().optional(),
-  /** Whether this input is required */
-  required: z.boolean().default(true),
-  /** Default value if not provided */
-  default: z.unknown().optional(),
-  /**
-   * Closed set of allowed values for `type: 'enum'`. Renders as a `<Select>`
-   * in the run form and is enforced by the input validator on the /run path.
-   * Internally converted to the JSON Schema `{ type: 'string', enum: [...] }`
-   * shape, but workflow YAML uses the more natural `type: enum, values: [...]`.
-   */
-  values: z.array(z.string()).optional(),
-  /** For array types: describes the element type (e.g. { type: 'file' }) */
-  items: z
-    .object({
-      type: z.string(),
-      /** Closed set of allowed values for `items.type: 'enum'` (array of enum). */
-      values: z.array(z.string()).optional(),
-    })
-    .optional(),
-});
+export const WorkflowInputDefSchema = z
+  .object({
+    /** Input variable name */
+    name: z.string().min(1),
+    /** JSON Schema type */
+    type: z.string(),
+    /** Human-readable description */
+    description: z.string().optional(),
+    /** Whether this input is required */
+    required: z.boolean().default(true),
+    /** Default value if not provided */
+    default: z.unknown().optional(),
+    /**
+     * Closed set of allowed values for `type: 'enum'`. Renders as a `<Select>`
+     * in the run form and is enforced by the input validator on the /run path.
+     * Internally converted to the JSON Schema `{ type: 'string', enum: [...] }`
+     * shape, but workflow YAML uses the more natural `type: enum, values: [...]`.
+     */
+    values: z.array(z.string()).optional(),
+    /** For array types: describes the element type (e.g. { type: 'file' }) */
+    items: z
+      .object({
+        type: z.string(),
+        /** Closed set of allowed values for `items.type: 'enum'` (array of enum). */
+        values: z.array(z.string()).optional(),
+      })
+      .optional(),
+    /**
+     * External file source (single-tenant only). When set on a `type: 'file'`
+     * input, the run is started with a plain string **id** for this field and the
+     * worker resolves that id to a file artifact via the named `FileSourceResolver`
+     * before the workflow executes. The name must match a registered resolver
+     * (e.g. `'gpfs'`). See `@eigenpal/types/file-source`.
+     */
+    source: z.string().min(1).optional(),
+    /**
+     * Optional author hint for the resolved file's type when `source` is set.
+     * The resolver response Content-Type and magic-byte detection are used as
+     * fallbacks; this hint wins when present. Provide either an extension
+     * (`'pdf'`, `'jpg'`) or a full MIME type.
+     */
+    mimeType: z.string().min(1).optional(),
+    extension: z.string().min(1).optional(),
+  })
+  .superRefine((def, ctx) => {
+    // `source` only makes sense on a `type: 'file'` input — the worker resolves a
+    // string id to a file artifact. On any other type the id would be silently
+    // skipped (arrays) or overwrite a scalar with a file descriptor (strings), so
+    // reject it at authoring/push time instead.
+    if (def.source && def.type !== 'file') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['source'],
+        message: `"source" is only valid on a file input; input "${def.name}" has type "${def.type}"`,
+      });
+    }
+
+    // `mimeType` / `extension` are resolver type-hints — they only do anything on
+    // a sourced file input, where the worker uses them to name the materialized
+    // artifact. Accepting them on any other input silently does nothing, so flag
+    // it. At most one may be set (runtime uses `mimeType ?? extension`; setting
+    // both is ambiguous). Validate their basic shape so a typo is caught here.
+    const hasHint = def.mimeType !== undefined || def.extension !== undefined;
+    if (hasHint && !(def.type === 'file' && def.source)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [def.mimeType !== undefined ? 'mimeType' : 'extension'],
+        message: `"mimeType"/"extension" hints are only valid on a file input with a "source"; input "${def.name}" is not.`,
+      });
+    }
+    if (def.mimeType !== undefined && def.extension !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['extension'],
+        message: `Set at most one of "mimeType" or "extension" on input "${def.name}".`,
+      });
+    }
+    if (def.mimeType !== undefined && !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(def.mimeType.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['mimeType'],
+        message: `"mimeType" on input "${def.name}" must look like "application/pdf".`,
+      });
+    }
+    if (def.extension !== undefined && !/^\.?[a-z0-9]+$/i.test(def.extension.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['extension'],
+        message: `"extension" on input "${def.name}" must be a bare extension like "pdf".`,
+      });
+    }
+  });
 export type WorkflowInputDef = z.infer<typeof WorkflowInputDefSchema>;
 
 // ==================

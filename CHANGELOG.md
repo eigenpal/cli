@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.2
+
+### Patch Changes
+
+- ca9ae4f: Workflow inputs can declare an external file `source` (single-tenant on-prem). A `type: file` input with `source: <name>` (e.g. `gpfs`) is provided as a plain string id at run time; the worker resolves it to a file artifact via the configured source before the workflow executes.
+
 ## 0.9.0
 
 ### Minor Changes

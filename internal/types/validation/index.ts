@@ -3,6 +3,7 @@ export {
   INPUT_VALIDATION_CODES,
   PENDING_FILE_REF,
   coerceInput,
+  inputsWithSource,
   parseInputSchemaJson,
   projectAgentInputFiles,
   validateInput,

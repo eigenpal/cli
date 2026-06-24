@@ -57,6 +57,22 @@ export interface WorkflowInputDefLike {
   default?: unknown;
   values?: string[];
   items?: { type: string; values?: string[] };
+  /**
+   * External file source (single-tenant). When set on a `type: 'file'` input,
+   * the run carries a plain string **id** for this field (resolved to a file
+   * artifact by the worker), so the input validates as a non-empty string, not
+   * a file reference.
+   */
+  source?: string;
+}
+
+/**
+ * Inputs declared with an external file `source` (single-tenant string-id file
+ * resolution). Single source of truth for "which inputs need resolution", so
+ * the gate, the worker phase guard, and the resolver pass agree.
+ */
+export function inputsWithSource<T extends { source?: string }>(inputs: T[] | undefined): T[] {
+  return (inputs ?? []).filter((i) => Boolean(i.source));
 }
 
 /**
@@ -84,6 +100,11 @@ export function workflowInputsToJsonSchema(
 }
 
 function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string, unknown> {
+  // A file input sourced from an external resolver receives a plain string id
+  // at run start; the worker resolves it to a file artifact before execution.
+  if (def.source && def.type === 'file') {
+    return { type: 'string', minLength: 1 };
+  }
   switch (def.type) {
     case 'string':
       return { type: 'string' };

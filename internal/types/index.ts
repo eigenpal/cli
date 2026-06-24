@@ -156,9 +156,11 @@ export {
   PointSchema,
   PositionedTextSchema,
   TableCellSchema,
+  extensionForMimeType,
   getAllSupportedMimeTypes,
   getParserCategory,
   getSupportedFormatsLabel,
+  mimeTypeForExtension,
   requiresSpecializedParser,
   resolveEffectiveMimeType,
   // Types
@@ -281,6 +283,8 @@ export * from './validation';
 
 // Workflow types (YAML-based sequential execution)
 export * from './workflow';
+
+export * from './file-source';
 
 // Eval primitives (shared by app + worker)
 export * from './eval';
