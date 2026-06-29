@@ -400,6 +400,35 @@ function registerWorkflowCoreCommands(parent: Command): void {
     })
   );
 
+  const schemaCmd = parent
+    .command('schema <workflow-id>')
+    .description('Show the inferred output schema for a workflow (what it returns).')
+    .option('--format <format>', 'json | typescript | python', 'json')
+    .option('--out <path>', 'Write to file instead of stdout')
+    .addHelpText(
+      'after',
+      '\nExamples\n' +
+        '  eigenpal workflow schema income-assessment\n' +
+        '  eigenpal workflow schema wf_123 --format typescript\n' +
+        '  eigenpal workflow schema wf_123 --format python --out Output.py\n'
+    );
+  withBaseUrl(schemaCmd).action(
+    action(
+      async (workflow: string, opts: WorkflowCommandConfig & { format?: string; out?: string }) => {
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const format = opts.format ?? 'json';
+        const result = await client.get(`/api/workflows/${workflowId}/output-schema`, { format });
+        if (format === 'json') {
+          await writeOrPrint(opts.out, JSON.stringify(result, null, 2));
+        } else {
+          // typescript/python come back as plain text, not JSON.
+          const text = result instanceof Response ? await result.text() : String(result);
+          await writeOrPrint(opts.out, text);
+        }
+      }
+    )
+  );
+
   const pushCmd = parent
     .command('push')
     .description(descriptionFor('workflow_set_definition'))
@@ -1130,8 +1159,9 @@ Examples:
   $ cat expected.json | eigenpal workflow dataset example create wf_abc123 --name piped --input-json '{}' --expected-file -
 
 \`--input-json\` and \`--input-file\` (same for \`--expected-*\`) are mutually
-exclusive. File uploads still require a full \`dataset push\`; CRUD only
-handles JSON input + \`expected.json\`-style outputs.
+exclusive. To attach files without a dataset folder, pass ingress refs in JSON:
+\`{"document":{"$fileId":"file_..."}}\` or
+\`{"document":{"$inline":{"filename":"doc.pdf","mimeType":"application/pdf","base64":"..."}}}\`.
 `
     );
   addJsonFlag(withBaseUrl(createCmd)).action(

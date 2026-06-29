@@ -126,6 +126,7 @@ export const ProcessorExecutionContextSchema = z.object({
   jobId: z.string(),
   stepId: z.string(),
   tenantId: z.string(),
+  automationId: z.string().optional(),
   workflowId: z.string(),
   workerId: z.string().optional(),
 });

@@ -63,6 +63,15 @@ describe('command aliases', () => {
   });
 });
 
+describe('workflow schema command', () => {
+  test('registers with a format option and examples', () => {
+    const result = spawnSync('bun', [CLI, 'workflow', 'schema', '--help'], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('--format');
+    expect(result.stdout).toContain('inferred output schema');
+  });
+});
+
 describe('datasetExportPath', () => {
   const base = '/api/v1/automations/wf_abc123/dataset/export';
 

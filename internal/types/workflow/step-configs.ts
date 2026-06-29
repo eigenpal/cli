@@ -495,7 +495,7 @@ export const TransformXlsxToJsonConfigSchema = z.object({
     .string()
     .min(1, 'Input is required')
     .describe(
-      'File input - template expression e.g. {{input.document}} resolving to fileId or file path descriptor'
+      'File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime'
     ),
   sheet: z
     .union([z.number().int().min(0), z.string()])
@@ -845,21 +845,28 @@ export const ActionHttpOutputSchema = z.object({
  */
 export const ActionInvokeWorkflowConfigSchema = z.object({
   workflowId: z.string().min(1, 'Workflow ID is required').describe('ID of workflow to invoke'),
-  input: z.record(z.string(), z.unknown()).optional().describe('Input to pass to workflow'),
+  input: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Input record keyed by the invoked workflow's declared inputs"),
   wait: z
     .boolean()
     .optional()
-    .describe('If true, wait for the invoked workflow to complete (default: false)'),
-  timeout: z.number().optional().describe('Max wait time in ms when wait=true (default: 300000)'),
+    .describe(
+      'Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget.'
+    ),
+  timeout: z.number().optional().describe('Max wait time in ms when waiting (default: 300000)'),
   pollInterval: z
     .number()
     .optional()
-    .describe('How often to poll status in ms when wait=true (default: 1000)'),
+    .describe('How often to poll status in ms when waiting (default: 1000)'),
 });
 
 export const ActionInvokeWorkflowOutputSchema = z
   .record(z.string(), z.unknown())
-  .describe('Output from invoked workflow');
+  .describe(
+    "When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. Call get_workflow_output_schema to see the exact resolved fields."
+  );
 
 /**
  * action.website-reader - Fetch and parse website content to markdown

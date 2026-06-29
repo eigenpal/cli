@@ -574,7 +574,7 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `input` | string | yes |  | File input - template expression e.g. {{input.document}} resolving to fileId or file path descriptor |
+| `input` | string | yes |  | File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime |
 | `sheet` | integer \| string | no |  | Sheet to read: 0-based index or sheet name. Omit for first sheet. |
 | `outputCsv` | boolean | no | `false` | If true, also write CSV to storage and include fileId in output |
 | `outputFilename` | string | no |  | Output CSV filename when outputCsv is true - supports LiquidJS e.g. {{filename}}.csv |
@@ -679,14 +679,14 @@ Execute another workflow and return its output
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `workflowId` | string | yes |  | ID of workflow to invoke |
-| `input` | record<string, unknown> | no |  | Input to pass to workflow |
-| `wait` | boolean | no |  | If true, wait for the invoked workflow to complete (default: false) |
-| `timeout` | number | no |  | Max wait time in ms when wait=true (default: 300000) |
-| `pollInterval` | number | no |  | How often to poll status in ms when wait=true (default: 1000) |
+| `input` | record<string, unknown> | no |  | Input record keyed by the invoked workflow's declared inputs |
+| `wait` | boolean | no |  | Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
+| `timeout` | number | no |  | Max wait time in ms when waiting (default: 300000) |
+| `pollInterval` | number | no |  | How often to poll status in ms when waiting (default: 1000) |
 
 **Output:** `record<string, unknown>`
 
-> Output from invoked workflow
+> When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. Call get_workflow_output_schema to see the exact resolved fields.
 
 #### `action.website-reader` — Website Reader
 

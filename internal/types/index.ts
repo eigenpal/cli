@@ -31,6 +31,64 @@ export {
   type TemplatePlaceholder,
 } from './core';
 
+// File references
+export {
+  LEGACY_FILE_REF_COMPATIBILITY,
+  type LegacyFileRefCompatibilityId,
+} from './files/legacy-boundary';
+export {
+  DbFileRefSchema,
+  InlineFileRefSchema,
+  LegacyFileIdInputSchema,
+  LocalFileRefSchema,
+  ResolvedProcessorFileSchema,
+  FilePathDescriptorSchema as RuntimeFilePathDescriptorSchema,
+  RuntimeFileRefSchema,
+  S3FileRefSchema,
+  WORKFLOW_FILE_REF_JSON_SCHEMA,
+  isResolvedProcessorFile,
+  isRuntimeFileRef,
+  normalizeLegacyFileIdInput,
+  type DbFileRef,
+  type InlineFileRef,
+  type LegacyFileIdInput,
+  type LocalFileRef,
+  type ResolvedProcessorFile,
+  type RuntimeFileRef,
+  type S3FileRef,
+} from './files/runtime-file-ref';
+export {
+  FileIdIngressRefSchema,
+  FileIngressRefSchema,
+  FileReferenceSentinelSchema,
+  InlineFileIngressPayloadSchema,
+  InlineFileIngressRefSchema,
+  ScopedFileRefSchema,
+  collectFileReferenceSentinels,
+  fileReferenceKind,
+  isFileIdIngressRef,
+  isFileIngressRef,
+  isFileReferenceSentinel,
+  isInlineFileIngressRef,
+  isScopedFileRef,
+  mapFileReferenceSentinels,
+  validateScopedArtifactPath,
+  walkFileReferenceSentinels,
+  type FileIdIngressRef,
+  type FileIngressRef,
+  type FileReferenceKind,
+  type FileReferenceMatch,
+  type FileReferenceSentinel,
+  type InlineFileIngressPayload,
+  type InlineFileIngressRef,
+  type ResolvedScopedFile,
+  type ScopedArtifactPath,
+  type ScopedArtifactPathValidation,
+  type ScopedFileOwnerContext,
+  type ScopedFileRef,
+  type ScopedFileResolver,
+} from './files/scoped-file-ref';
+
 // Processor types (definitions, execution, configs)
 export {
   // Processor configs

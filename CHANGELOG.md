@@ -1,5 +1,16 @@
 # @eigenpal/cli
 
+## 0.10.5
+
+### Minor Changes
+
+- d3a8b79: Workflow dataset commands now handle nested file references in example inputs, so local dataset archives can round-trip file-backed examples through the CLI without flattening the input shape.
+
+### Patch Changes
+
+- 9343b8c: Add `eigenpal workflow schema <workflow>` to print a workflow's inferred output schema — the fields and files it returns, typed from its own steps — as JSON Schema, or as a TypeScript or Python type with `--format`.
+- 9343b8c: `workflow validate` gains an `--online` flag that checks cross-workflow `action.invoke-workflow` references against the server (target existence, input type-match, missing/unknown input keys, undeclared output, and invoke cycles). Local validation can only check a workflow's own shape, so these reference errors previously surfaced only at push; run `eigenpal workflow validate --online` to catch them beforehand.
+
 ## 0.10.2
 
 ### Patch Changes

@@ -189,6 +189,9 @@ export interface OCROptions {
 
   /** Output format: 'text' (default) or 'markdown' (Azure prebuilt-layout only) */
   outputContentFormat?: 'text' | 'markdown';
+
+  /** Abort the provider request/poll when the caller cancels the step */
+  signal?: AbortSignal;
 }
 
 /**

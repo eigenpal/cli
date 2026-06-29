@@ -17,6 +17,7 @@ export interface FileSourceResolveResult {
 /** Context handed to a resolver for logging / scoping. */
 export interface FileSourceResolveContext {
   tenantId: string;
+  automationId: string;
   workflowId: string;
   runId: string;
   /** The workflow input field name this id was supplied for. */

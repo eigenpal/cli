@@ -290,8 +290,13 @@ export const WorkflowDefinitionSchema = z.object({
   /** Steps execute sequentially unless control flow changes order */
   steps: z.array(StepSchema),
 
-  /** Output fields - object with field names as keys and template expressions as values */
-  output: z.record(z.string(), z.string()).optional(),
+  /**
+   * Workflow output. Either:
+   * - a map of field name -> template expression (named fields), or
+   * - a single template expression that resolves to the whole output object
+   *   (passthrough, e.g. "{{ steps.invoke.output }}").
+   */
+  output: z.union([z.record(z.string(), z.string()), z.string()]).optional(),
 
   /** Global workflow settings */
   settings: WorkflowSettingsSchema.optional(),

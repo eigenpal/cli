@@ -17,6 +17,7 @@ Manage workflows: push, pull, and evaluate.
 - [Details](#details)
   - [`eigenpal workflow list|ls [options]`](#eigenpal-workflow-listls-options)
   - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
+  - [`eigenpal workflow schema [options] <workflow-id>`](#eigenpal-workflow-schema-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
   - [`eigenpal workflow validate [options] [path]`](#eigenpal-workflow-validate-options-path)
@@ -53,6 +54,7 @@ Manage workflows: push, pull, and evaluate.
 workflow
 ├── list|ls
 ├── pull <workflow-id>
+├── schema <workflow-id>
 ├── push
 ├── move <workflow-id>
 ├── evaluators
@@ -100,6 +102,7 @@ workflow
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                      |
 | `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                     |
+| `eigenpal workflow schema [options] <workflow-id>`      | Show the inferred output schema for a workflow (what it returns).                                                                                                                                                                                                        |
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                            |
 | `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                             |
 | `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
@@ -198,6 +201,24 @@ Download the YAML definition of the workflow at its current version.
 | `--out <path>`     | no       |         | Write YAML to file instead of stdout |
 | `--base-url <url>` | no       |         | Server base URL                      |
 
+### `eigenpal workflow schema [options] <workflow-id>`
+
+Show the inferred output schema for a workflow (what it returns).
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+
+### Options
+
+| Flag                | Required | Default  | Description                     |
+| ------------------- | -------- | -------- | ------------------------------- |
+| `--format <format>` | no       | `"json"` | json \| typescript \| python    |
+| `--out <path>`      | no       |          | Write to file instead of stdout |
+| `--base-url <url>`  | no       |          | Server base URL                 |
+
 ### `eigenpal workflow push [options]`
 
 Create or update a workflow from a YAML file.
@@ -243,9 +264,11 @@ Local-only validation. Without [path]: runs the templated three-way check (./wor
 
 ### Options
 
-| Flag           | Required | Default | Description                                                                |
-| -------------- | -------- | ------- | -------------------------------------------------------------------------- |
-| `--dir <path>` | no       |         | Project root (defaults to cwd; resolves the three default paths from here) |
+| Flag               | Required | Default | Description                                                                                                                                                                                                                                         |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dir <path>`     | no       |         | Project root (defaults to cwd; resolves the three default paths from here)                                                                                                                                                                          |
+| `--online`         | no       |         | Also validate cross-workflow action.invoke-workflow references against the server (needs auth). Catches target-not-found, input type mismatches, missing/unknown input keys, undeclared output, and invoke cycles that local validation cannot see. |
+| `--base-url <url>` | no       |         | Server base URL                                                                                                                                                                                                                                     |
 
 ### `eigenpal workflow clear-local [options] [examples...]`
 

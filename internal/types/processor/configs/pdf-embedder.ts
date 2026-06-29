@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ResolvedProcessorFileSchema } from '../../files/runtime-file-ref';
 import { PageResultSchema } from '../../parser/parser';
 
 /**
@@ -19,7 +20,7 @@ import { PageResultSchema } from '../../parser/parser';
 
 export const PdfEmbedderInputSchema = z.object({
   // Required: source file
-  fileId: z.string().describe('File ID from files table'),
+  file: ResolvedProcessorFileSchema.describe('Resolved source file handle'),
 
   // Required: parse result from ai.parse step
   parseResult: z

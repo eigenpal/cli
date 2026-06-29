@@ -29,7 +29,10 @@ import type { Command } from 'commander';
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { parse as parseYaml } from 'yaml';
-import { error, success, ui, warn } from '../../lib/ui';
+import { ApiClient } from '../../lib/client';
+import { requireApiKey, resolveConfig } from '../../lib/config';
+import { action } from '../../lib/format-error';
+import { error, success, ui, warn, withBaseUrl } from '../../lib/ui';
 
 interface ValidationIssue {
   field: string;
@@ -382,15 +385,39 @@ interface DirOpt {
   dir?: string;
 }
 
+interface OnlineOpt extends DirOpt {
+  online?: boolean;
+  baseUrl?: string;
+}
+
 function rootDir(opts: DirOpt): string {
   return resolve(opts.dir ?? process.cwd());
+}
+
+/**
+ * Server-side validation of cross-workflow `action.invoke-workflow` references.
+ * Local validation can only check a workflow's own shape; resolving invoke
+ * targets (existence, input type-match, missing/unknown keys, output
+ * declaration, cycles) needs the tenant's published workflows from the DB, so
+ * `POST /api/workflows/validate` runs the same gate as push without persisting.
+ * Returns the structured issues so the caller renders them like the local ones.
+ */
+async function onlineInvokeIssues(yamlText: string, opts: OnlineOpt): Promise<ValidationIssue[]> {
+  const config = resolveConfig(opts);
+  requireApiKey(config);
+  const client = new ApiClient(config);
+  const res = (await client.post('/api/workflows/validate', { yaml: yamlText })) as {
+    valid: boolean;
+    issues?: ValidationIssue[];
+  };
+  return res.issues ?? [];
 }
 
 /** Register `<parent> validate` (no subcommand): runs all three local checks
  *  against the templated project layout (`./workflow.yaml`, `./evaluators.yaml`,
  *  `./dataset/`). For targeted validation use the per-noun helpers. */
 export function registerAllValidateCommand(parent: Command): void {
-  parent
+  const cmd = parent
     .command('validate [path]')
     .description(
       'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.'
@@ -399,7 +426,19 @@ export function registerAllValidateCommand(parent: Command): void {
       '--dir <path>',
       'Project root (defaults to cwd; resolves the three default paths from here)'
     )
-    .action((path: string | undefined, opts: DirOpt) => {
+    .option(
+      '--online',
+      'Also validate cross-workflow action.invoke-workflow references against the server (needs auth). Catches target-not-found, input type mismatches, missing/unknown input keys, undeclared output, and invoke cycles that local validation cannot see.'
+    )
+    .addHelpText(
+      'after',
+      '\nNote\n' +
+        '  Local validation cannot resolve action.invoke-workflow targets (they live\n' +
+        '  in the server DB), so invoke reference/type/cycle errors only surface at\n' +
+        '  push — or run `validate --online` to check them before pushing.\n'
+    );
+  withBaseUrl(cmd).action(
+    action(async (path: string | undefined, opts: OnlineOpt) => {
       // Single-file mode: caller passed a positional path pointing at a YAML
       // file. Validate only that workflow and the schema-quality warnings;
       // skip evaluators/dataset entirely so a quick `validate ./wf.yaml`
@@ -409,13 +448,22 @@ export function registerAllValidateCommand(parent: Command): void {
         const wfResult = validateWorkflowYaml(target);
         const wfOk = printIssues('workflow.yaml', target, wfResult.issues);
         if (wfOk) printSchemaQualityWarnings(target, wfResult.warnings);
-        if (!wfOk) process.exit(1);
+        let onlineOk = true;
+        if (wfOk && opts.online) {
+          onlineOk = printIssues(
+            'invoke refs (server)',
+            target,
+            await onlineInvokeIssues(readFileSync(target, 'utf-8'), opts)
+          );
+        }
+        if (!wfOk || !onlineOk) process.exit(1);
         return;
       }
 
       const root = rootDir(opts);
-      const wfResult = validateWorkflowYaml(join(root, 'workflow.yaml'));
-      const wfPath = relPath(root, join(root, 'workflow.yaml'));
+      const wfFile = join(root, 'workflow.yaml');
+      const wfResult = validateWorkflowYaml(wfFile);
+      const wfPath = relPath(root, wfFile);
       const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
       if (wfOk) printSchemaQualityWarnings(wfPath, wfResult.warnings);
       const evOk = printIssues(
@@ -428,8 +476,19 @@ export function registerAllValidateCommand(parent: Command): void {
         relPath(root, join(root, 'dataset')),
         validateDatasetFolder(join(root, 'dataset'))
       );
-      if (!wfOk || !evOk || !dsOk) process.exit(1);
-    });
+      // Online invoke check runs only when the local workflow shape is valid —
+      // the server would just re-report the same parse/schema errors otherwise.
+      let onlineOk = true;
+      if (wfOk && opts.online && existsSync(wfFile)) {
+        onlineOk = printIssues(
+          'invoke refs (server)',
+          wfPath,
+          await onlineInvokeIssues(readFileSync(wfFile, 'utf-8'), opts)
+        );
+      }
+      if (!wfOk || !evOk || !dsOk || !onlineOk) process.exit(1);
+    })
+  );
 }
 
 export function registerEvaluatorsValidateCommand(parent: Command): void {

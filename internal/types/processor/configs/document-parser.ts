@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  FilePathDescriptorSchema,
+  LegacyFileIdInputSchema,
+  ResolvedProcessorFileSchema,
+  isFilePathDescriptor,
+  type FilePathDescriptor,
+  type InlineFileRef,
+  type LocalFileRef,
+  type S3FileRef,
+} from '../../files/runtime-file-ref';
 import { ParseResultSchema } from '../../parser/parser';
 
 /**
@@ -9,68 +19,24 @@ import { ParseResultSchema } from '../../parser/parser';
  * Plaintext and office documents are auto-detected and use native parsers.
  */
 
-export const FileIdInputSchema = z.object({
-  fileId: z.string().describe('File ID from files table'),
-  filename: z.string().optional().describe('Original filename (for inline files)'),
-  mimeType: z.string().optional().describe('MIME type (for inline files)'),
-});
+export const FileIdInputSchema = LegacyFileIdInputSchema;
 
 /**
- * FilePathDescriptor — used when a step input refers to a file that is NOT
- * tracked by the `files` table. Three flavours:
- *
- *   - `kind: 'local'` — emitted by `bun eigenpal exec` (CLI) and the headless
- *     server. The worker reads from the local disk path. CLI keeps working
- *     without R2 credentials for the dev loop.
- *
- *   - `kind: 's3'` — emitted by an internal step output → input chain when the
- *     producer hasn't created a `files` row (rare; most outputs do). The
- *     worker downloads from tenant storage using `ref` directly.
- *
- *   - `kind: 'inline'` — base64-encoded bytes embedded directly in the input.
- *     Used by ad-hoc API `workflow run` calls and by the eval expected-output
- *     `_inline` shape after CLI normalisation. Capped at 5 MB on the wire.
- *
- * For DB-tracked files, prefer `FileIdInputSchema` instead — the worker
- * resolves through `files.key` and benefits from row-level audit/RLS.
+ * Legacy descriptor exports remain available for migration adapters, but the
+ * document-parser processor itself accepts only `ResolvedProcessorFileSchema`.
+ * Public `$file`, `$fileId`, legacy `{ fileId }`, local, S3, and inline shapes
+ * are normalized before processor invocation.
  */
-const LocalFileRefSchema = z.object({
-  kind: z.literal('local'),
-  path: z.string().describe('Absolute path to a file on disk'),
-  filename: z.string().describe('Original filename'),
-  mimeType: z.string().describe('MIME type of the file'),
-});
+export {
+  FilePathDescriptorSchema,
+  isFilePathDescriptor,
+  type FilePathDescriptor,
+  type InlineFileRef,
+  type LocalFileRef,
+  type S3FileRef,
+};
 
-const S3FileRefSchema = z.object({
-  kind: z.literal('s3'),
-  ref: z.string().describe('Storage key (suffix-only, prefix added by adapter)'),
-  filename: z.string().describe('Original filename'),
-  mimeType: z.string().describe('MIME type of the file'),
-});
-
-const InlineFileRefSchema = z.object({
-  kind: z.literal('inline'),
-  base64: z.string().describe('Base64-encoded file bytes'),
-  filename: z.string().describe('Original filename'),
-  mimeType: z.string().describe('MIME type of the file'),
-});
-
-export const FilePathDescriptorSchema = z.discriminatedUnion('kind', [
-  LocalFileRefSchema,
-  S3FileRefSchema,
-  InlineFileRefSchema,
-]);
-
-export const DocumentParserInputSchema = z.union([FileIdInputSchema, FilePathDescriptorSchema]);
-
-export type FilePathDescriptor = z.infer<typeof FilePathDescriptorSchema>;
-export type LocalFileRef = z.infer<typeof LocalFileRefSchema>;
-export type S3FileRef = z.infer<typeof S3FileRefSchema>;
-export type InlineFileRef = z.infer<typeof InlineFileRefSchema>;
-
-export function isFilePathDescriptor(input: unknown): input is FilePathDescriptor {
-  return FilePathDescriptorSchema.safeParse(input).success;
-}
+export const DocumentParserInputSchema = ResolvedProcessorFileSchema;
 
 export const DocumentParserOutputSchema = ParseResultSchema;
 

@@ -15,6 +15,7 @@ eigenpal
 ├── workflow
 │   ├── list|ls
 │   ├── pull <workflow-id>
+│   ├── schema <workflow-id>
 │   ├── push
 │   ├── move <workflow-id>
 │   ├── evaluators

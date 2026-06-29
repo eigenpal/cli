@@ -79,10 +79,14 @@ The materialized shape on `triggerInput` is driven by the YAML, not by
 how many files the dataset uploaded. Get this wrong and the worker
 sees the opposite shape:
 
-| YAML                                       | `triggerInput.<name>` | Template                                |
-| ------------------------------------------ | --------------------- | --------------------------------------- |
-| `type: file`                               | `{ fileId }`          | `{{ input.<name> }}`                    |
-| `type: array`, `items: { type: file }`     | `[{ fileId }, ...]`   | `{{ input.<name>[0] }}` (or `forEach:`) |
+| YAML                                       | durable `triggerInput.<name>` | Template                                |
+| ------------------------------------------ | ------------------------------ | --------------------------------------- |
+| `type: file`                               | `{ "$file": "input/..." }`     | `{{ input.<name> }}`                    |
+| `type: array`, `items: { type: file }`     | `[{ "$file": "input/..." }]`   | `{{ input.<name>[0] }}` (or `forEach:`) |
+
+API/SDK ingress can use `{ "$fileId": "file_..." }`, inline bytes via
+`{ "$inline": { filename, mimeType, base64 } }`, or multipart file parts.
+Eigenpal snapshots those into run-scoped artifacts before execution.
 
 If you see `Invalid input ... expected object, received array` from a
 step that takes a single file, the workflow input is `type: file` but
@@ -474,7 +478,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `triggerMethods` | array<object> | no | `[{"type":"manual"}]` |  |
 | `inputs` | array<object> | no |  |  |
 | `steps` | array<unknown> | yes |  |  |
-| `output` | record<string, string> | no |  |  |
+| `output` | record<string, string> \| string | no |  |  |
 | `settings` | object | no |  |  |
 | `defaultModel` | string | no |  |  |
 

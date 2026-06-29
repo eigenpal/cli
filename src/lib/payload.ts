@@ -1,3 +1,5 @@
+import { validateScopedArtifactPath } from '@eigenpal/types';
+
 /**
  * Build payloads for `eigenpal run ... --example` from local dataset
  * folders. The only supported layout is the flat one that
@@ -89,18 +91,19 @@ function readCanonicalInput(
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const refs = topLevelFileRefs(value);
     if (refs.length === 0) {
-      scalars[key] = value;
+      scalars[key] = materializeNestedFileRefs(exampleDir, inputPath, value);
       continue;
     }
     for (const ref of refs) {
-      const relative = parseDatasetInputFileRef(ref);
-      if (!relative) {
+      const validation = validateScopedArtifactPath(ref, { allowedRoots: ['input'] });
+      if (!validation.ok) {
         throw new Error(
           `${inputPath}: ${key} must reference files under input/ without path traversal.`
         );
       }
-      const filePath = join(exampleDir, 'input', relative);
-      const filename = relative.split('/').at(-1) ?? relative;
+      const relative = validation.value.segments.slice(1).join('/');
+      const filePath = join(exampleDir, validation.value.path);
+      const filename = validation.value.segments.at(-1) ?? relative;
       files.push({
         argument: key,
         filename,
@@ -112,31 +115,65 @@ function readCanonicalInput(
   return { scalars, files };
 }
 
+function materializeNestedFileRefs(exampleDir: string, inputPath: string, value: unknown): unknown {
+  if (isScopedFileRef(value)) {
+    const validation = validateScopedArtifactPath(value.$file, { allowedRoots: ['input'] });
+    if (!validation.ok) {
+      throw new Error(`${inputPath}: $file refs must reference files under input/.`);
+    }
+    const filename = validation.value.segments.at(-1) ?? 'file';
+    const filePath = join(exampleDir, validation.value.path);
+    return {
+      $inline: {
+        filename,
+        mimeType: guessMimeType(filename) ?? 'application/octet-stream',
+        base64: readFileSync(filePath).toString('base64'),
+      },
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => materializeNestedFileRefs(exampleDir, inputPath, item));
+  }
+
+  if (value && typeof value === 'object') {
+    if (hasFileKey(value)) {
+      throw new Error('file refs must be exact { "$file": "input/..." } objects.');
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      out[key] = materializeNestedFileRefs(exampleDir, inputPath, item);
+    }
+    return out;
+  }
+
+  return value;
+}
+
 function topLevelFileRefs(value: unknown): string[] {
-  if (isFileRef(value)) return [value.$file];
-  if (Array.isArray(value) && value.every(isFileRef)) return value.map((item) => item.$file);
-  if (Array.isArray(value) && value.some(isFileRef)) {
-    throw new Error('file arrays must contain only { "$file": "input/..." } entries.');
+  if (isScopedFileRef(value)) return [value.$file];
+  if (hasFileKey(value)) {
+    throw new Error('file refs must be exact { "$file": "input/..." } objects.');
+  }
+  if (Array.isArray(value) && value.every(isScopedFileRef)) return value.map((item) => item.$file);
+  if (Array.isArray(value) && value.some(hasFileKey)) {
+    throw new Error('file arrays must contain only exact { "$file": "input/..." } entries.');
   }
   return [];
 }
 
-function isFileRef(value: unknown): value is { $file: string } {
+function isScopedFileRef(value: unknown): value is { $file: string } {
   return (
     value !== null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
     typeof (value as { $file?: unknown }).$file === 'string'
   );
 }
 
-function parseDatasetInputFileRef(path: string): string | null {
-  if (!path.startsWith('input/')) return null;
-  if (path.startsWith('/') || path.includes('\\') || path.includes('\u0000')) return null;
-  const relative = path.slice('input/'.length);
-  const parts = relative.split('/');
-  if (parts.some((part) => !part || part === '.' || part === '..')) return null;
-  return parts.join('/');
+function hasFileKey(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && '$file' in value;
 }
 
 /** Read `meta.json`'s `overrides.steps` if present, else null. */

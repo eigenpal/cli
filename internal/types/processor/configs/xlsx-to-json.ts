@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FileIdInputSchema, FilePathDescriptorSchema } from './document-parser';
+import { ResolvedProcessorFileSchema } from '../../files/runtime-file-ref';
 
 /**
  * XLSX to JSON Processor Schemas
@@ -8,7 +8,7 @@ import { FileIdInputSchema, FilePathDescriptorSchema } from './document-parser';
  * Optionally writes CSV to storage and returns fileId.
  */
 
-export const XlsxToJsonInputSchema = z.union([FileIdInputSchema, FilePathDescriptorSchema]);
+export const XlsxToJsonInputSchema = ResolvedProcessorFileSchema;
 
 export const XlsxToJsonOutputSchema = z.object({
   rows: z

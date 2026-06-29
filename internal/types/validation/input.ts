@@ -1,4 +1,5 @@
 import type { ErrorObject } from 'ajv';
+import { WORKFLOW_FILE_REF_JSON_SCHEMA } from '../files/runtime-file-ref';
 import { eigenpalAjv } from './ajv';
 
 /**
@@ -26,24 +27,6 @@ export interface InputValidationIssue {
 export type InputValidationResult =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; issues: InputValidationIssue[] };
-
-/**
- * JSON Schema describing the canonical file-reference shape stored in
- * `triggerInput` after the route uploads multipart files. The
- * `x-eigenpal-type: 'file'` marker is how `classifyAjvError` knows a `type`
- * mismatch on this subschema means "expected a file" (rather than a generic
- * object mismatch).
- */
-const FILE_REF_SCHEMA = {
-  type: 'object',
-  required: ['fileId'],
-  'x-eigenpal-type': 'file',
-  properties: {
-    fileId: { type: 'string' },
-    filename: { type: 'string' },
-    mimeType: { type: 'string' },
-  },
-} as const;
 
 /**
  * Workflow-side input definition shape (kept loose here to avoid a circular
@@ -119,7 +102,7 @@ function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string
     case 'boolean':
       return { type: 'boolean' };
     case 'file':
-      return { ...FILE_REF_SCHEMA };
+      return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
     case 'array':
       return { type: 'array', items: itemsToJsonSchema(def.items) };
     case 'object':
@@ -134,7 +117,7 @@ function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string
 
 function itemsToJsonSchema(items?: { type: string; values?: string[] }): Record<string, unknown> {
   if (!items) return {};
-  if (items.type === 'file') return { ...FILE_REF_SCHEMA };
+  if (items.type === 'file') return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
   if (items.type === 'enum' && items.values && items.values.length > 0) {
     return { type: 'string', enum: items.values };
   }
@@ -282,7 +265,7 @@ export function projectAgentInputFiles(
 /**
  * Build the post-upload "virtual" input for workflow runs so the schema can
  * validate file fields up front (before storage I/O). Each pending multipart
- * upload becomes a synthetic `{fileId: PLACEHOLDER, ...}` ref; multiple
+ * upload becomes a synthetic `{ "$file": "input/..." }` ref; multiple
  * files under the same field name collapse into an array. Counterpart to
  * `projectAgentInputFiles` for the workflow run shape.
  */
@@ -299,15 +282,10 @@ export function withPendingFileRefs(
   files: PendingMultipartFile[]
 ): Record<string, unknown> {
   if (files.length === 0) return input;
-  const refsByField: Record<
-    string,
-    Array<{ fileId: string; filename: string; mimeType: string }>
-  > = {};
+  const refsByField: Record<string, Array<{ $file: string }>> = {};
   for (const f of files) {
     (refsByField[f.fieldName] ??= []).push({
-      fileId: PENDING_FILE_REF,
-      filename: f.filename,
-      mimeType: f.mimeType,
+      $file: `input/${f.fieldName}/${PENDING_FILE_REF}-${f.filename}`,
     });
   }
   const merged = { ...input };

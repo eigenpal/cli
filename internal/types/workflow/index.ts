@@ -240,3 +240,12 @@ export {
   type WorkflowFileOutput,
   type WorkflowResult,
 } from './execution';
+
+// Invoke-workflow typed contract helpers (shared by app publish + worker runtime)
+export {
+  buildWorkflowInputsJsonSchema,
+  buildWorkflowOutputContractSchema,
+  collectInvokeWorkflowTargetIds,
+  hasDeclaredOutput,
+  workflowInputAcceptsType,
+} from './invoke-workflow-contract';
