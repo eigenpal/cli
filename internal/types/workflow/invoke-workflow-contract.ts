@@ -22,7 +22,12 @@ function inputToJsonSchema(input: WorkflowInputDef): Record<string, unknown> {
       if (itemType === 'enum' && input.items?.values?.length) {
         return { type: 'array', items: { type: 'string', enum: input.items.values } };
       }
-      return itemType ? { type: 'array', items: { type: itemType } } : { type: 'array' };
+      // `file` is not a JSON Schema type, and file elements arrive as a string id
+      // or a resolved descriptor object — so leave array-of-file items unconstrained
+      // (mirrors the scalar `file` case). Constraining them would make ajv.compile
+      // throw and reject valid file values.
+      if (!itemType || itemType === 'file') return { type: 'array' };
+      return { type: 'array', items: { type: itemType } };
     }
     // Files arrive as a string id (external source) or a resolved descriptor object;
     // both are valid, so do not constrain the shape.

@@ -20,7 +20,10 @@ appear in user examples, but do not prefer them.
   experiments, versions, and step schemas.
 - `eigenpal agents` manages Git-backed agent source packages, shared resources,
   releases, sync, secrets, datasets, and live file inspection.
-- `eigenpal run` starts a workflow or agent run from a target.
+- `eigenpal run` starts a single workflow or agent run from a target. This is the
+  command for running something once and reading its output, including
+  API-triggered workflows. (`eigenpal workflow experiment` is a separate batch run
+  over a whole dataset, not the single-run path.)
 - `eigenpal runs` inspects, watches, compares, reruns, cancels, and downloads
   artifacts for workflow or agent runs.
 
@@ -48,10 +51,20 @@ eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties
 eigenpal workflow validate ./workflow.yaml
 eigenpal workflow push --file workflow.yaml
 
-# Run one example.
+# Run with ad-hoc input and read the output (use this for API-triggered workflows).
+# `--wait --json` polls to completion and prints the run with top-level `output`.
+eigenpal run workflows.<workflow-id> --input-json '{"document":"..."}' --wait --json | jq '.output'
+eigenpal run workflows.<workflow-id> --input-file document=./invoice.pdf --wait --json | jq '.output'
+
+# Run one persisted example instead.
 eigenpal run workflows.<workflow-id> --example <example-name>
+
+# Inspect a run after the fact. `runs get --json` returns top-level
+# `output`/`files`/`error` once the run is completed. Plain `run --wait`
+# without `--json` only prints "Run <id> is completed", so pass `--json` or
+# use `runs get` to see the output.
 eigenpal runs watch <execution-id>
-eigenpal runs get <execution-id> --json
+eigenpal runs get <execution-id> --json | jq '.output'
 
 # Push dataset and evaluators.
 eigenpal workflow dataset validate ./dataset

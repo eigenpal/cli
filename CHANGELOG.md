@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.7
+
+### Patch Changes
+
+- 664bbed: `eigenpal --help` now groups `run`, `rerun`, and `runs` under a dedicated "Run" section instead of the catch-all "Other" bucket, so starting a run and reading its output is easy to find from the top-level help. The "Workflows" and "Agents" group descriptions were tightened to match.
+
 ## 0.10.5
 
 ### Minor Changes

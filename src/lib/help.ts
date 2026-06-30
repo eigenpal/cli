@@ -23,14 +23,12 @@ export interface CommandGroup {
 }
 
 /**
- * Order matters — sections render top-to-bottom in this order. Any command
- * not listed here falls into a final "Other" bucket so a new addition
- * doesn't disappear silently.
- *
- * Exported so the CLI docs generator (`scripts/generate-cli-docs.ts`) can
- * mirror the exact same grouping in the markdown index without drifting.
+ * Order matters — sections render top-to-bottom in this order. This list should
+ * cover every top-level command a user reaches for. Anything not listed falls
+ * into a final "Other" bucket (so a new command never disappears silently),
+ * which should hold only plumbing like `completion` and `git-credential-helper`.
  */
-export const HELP_GROUPS: CommandGroup[] = [
+const HELP_GROUPS: CommandGroup[] = [
   {
     title: 'Get started',
     commands: ['init'],
@@ -42,14 +40,19 @@ export const HELP_GROUPS: CommandGroup[] = [
   },
   {
     title: 'Workflows',
-    description: 'Definition, evaluators, dataset, experiments, and local runs',
+    description: 'Definition, evaluators, dataset, experiments, and versions',
     commands: ['workflow'],
   },
   {
     title: 'Agents',
     description:
-      'Git-backed source (clone, save, release, sync), runs, datasets, sessions. `git` passthrough adds org remote auth.',
+      'Git-backed source (clone, save, release, sync), datasets, sessions. `git` passthrough adds org remote auth.',
     commands: ['agents', 'git'],
+  },
+  {
+    title: 'Run',
+    description: 'Start runs, then watch them, read their output, and download artifacts.',
+    commands: ['run', 'rerun', 'runs'],
   },
   {
     title: 'Tooling',
