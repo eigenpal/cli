@@ -15,6 +15,21 @@ const ScoreInUnitInterval = z
   .min(0, { message: 'score must be >= 0' })
   .max(1, { message: 'score must be <= 1' });
 
+/**
+ * Workflow-level pass threshold used when a config sets neither a workflow-level
+ * threshold nor any legacy per-evaluator thresholds to derive one from.
+ */
+export const DEFAULT_PASS_THRESHOLD = 0.7;
+
+/**
+ * Description shared by the legacy per-evaluator `passThreshold` fields. Pass/fail
+ * now uses the single workflow-level threshold; this value is retained only so
+ * configs authored before that change keep their original run gate (see
+ * `resolveWorkflowPassThreshold`).
+ */
+const LEGACY_EVALUATOR_THRESHOLD_DESCRIPTION =
+  'Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model.';
+
 /** Minimum prompt-extension length for an `llm-judge` evaluator. Below this
  *  the prompt has no useful criteria and the LLM invents its own rubric. */
 export const LLM_JUDGE_PROMPT_MIN_LENGTH = 10;
@@ -36,9 +51,7 @@ export const ExactDiffConfigSchema = z
       .describe(
         'When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly.'
       ),
-    passThreshold: ScoreInUnitInterval.default(1.0).describe(
-      'Minimum diff score this evaluator must reach for a run to pass. 1.0 = perfect match required.'
-    ),
+    passThreshold: ScoreInUnitInterval.optional().describe(LEGACY_EVALUATOR_THRESHOLD_DESCRIPTION),
     paths: z
       .array(z.string().min(1))
       .optional()
@@ -46,7 +59,7 @@ export const ExactDiffConfigSchema = z
         'Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score.'
       ),
   })
-  .default({ numericTolerance: 1e-6, allowExtraFields: true, passThreshold: 1.0 });
+  .default({ numericTolerance: 1e-6, allowExtraFields: true });
 export type ExactDiffConfig = z.infer<typeof ExactDiffConfigSchema>;
 
 // ------- llm-judge config -------
@@ -71,9 +84,7 @@ export const LlmJudgeConfigSchema = z
     labels: LabelsRecord.optional().describe(
       'Allowed labels and the score each maps to. Required in discrete mode. The judge MUST return one of these labels; each score must be in [0, 1].'
     ),
-    passThreshold: ScoreInUnitInterval.default(0.7).describe(
-      'Minimum judge score this evaluator must reach for a run to pass.'
-    ),
+    passThreshold: ScoreInUnitInterval.optional().describe(LEGACY_EVALUATOR_THRESHOLD_DESCRIPTION),
     promptExtension: z
       .string()
       .trim()
@@ -186,9 +197,7 @@ export const CustomScriptConfigSchema = z.object({
     .describe(
       'Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings.'
     ),
-  passThreshold: ScoreInUnitInterval.default(1.0).describe(
-    'Minimum script score this evaluator must reach for a run to pass.'
-  ),
+  passThreshold: ScoreInUnitInterval.optional().describe(LEGACY_EVALUATOR_THRESHOLD_DESCRIPTION),
 });
 export type CustomScriptConfig = z.infer<typeof CustomScriptConfigSchema>;
 
@@ -233,14 +242,49 @@ export type EvaluatorConfig = z.infer<typeof EvaluatorConfigSchema>;
 export const EvalConfigYamlSchema = z.object({
   evaluators: z.array(EvaluatorConfigSchema).default([]),
   /**
-   * Single workflow-level pass threshold in [0, 1]. A run passes when its
-   * weighted-mean score across evaluators clears this number. When omitted,
-   * the worker falls back to the weighted-mean of per-evaluator
-   * `passThreshold` values for backward compatibility.
+   * Single workflow-level pass threshold in [0, 1] and the source of truth for
+   * pass/fail across the worker and the dashboards: a run passes when its
+   * weighted-mean score across evaluators clears this number, and every
+   * evaluator's own pass display is decided against it too. Optional on disk —
+   * when omitted, `resolveWorkflowPassThreshold` derives it (preserving the run
+   * gate of older per-evaluator configs), so always resolve through that helper
+   * rather than reading this field directly.
    */
-  passThreshold: ScoreInUnitInterval.default(0.7),
+  passThreshold: ScoreInUnitInterval.optional(),
 });
 export type EvalConfigYaml = z.infer<typeof EvalConfigYamlSchema>;
+
+/**
+ * Resolve the single workflow-level pass threshold that governs both the
+ * run-level gate and every evaluator's pass display.
+ *
+ *   1. An explicit workflow-level `passThreshold` always wins.
+ *   2. Otherwise, for configs authored before the single-threshold model (which
+ *      baked a `passThreshold` on every evaluator but never a workflow-level
+ *      one), derive the weighted mean of those per-evaluator thresholds — this
+ *      preserves the exact run gate those configs ran under, with no migration.
+ *   3. Otherwise fall back to {@link DEFAULT_PASS_THRESHOLD}.
+ *
+ * This is the one place "what is the pass threshold" is decided, so the worker,
+ * the dashboards, and the API all agree on a single number.
+ */
+export function resolveWorkflowPassThreshold(config: {
+  passThreshold?: number | null;
+  evaluators: ReadonlyArray<{ weight?: number; config: { passThreshold?: number | null } }>;
+}): number {
+  if (typeof config.passThreshold === 'number') return config.passThreshold;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const evaluator of config.evaluators) {
+    const threshold = evaluator.config?.passThreshold;
+    const weight = evaluator.weight ?? 1;
+    if (typeof threshold === 'number' && weight > 0) {
+      weightedSum += threshold * weight;
+      totalWeight += weight;
+    }
+  }
+  return totalWeight > 0 ? weightedSum / totalWeight : DEFAULT_PASS_THRESHOLD;
+}
 
 // ------- evaluator result (what evaluators return; what the dispatcher persists) -------
 

@@ -49,6 +49,10 @@ eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties
 
 # Validate and push.
 eigenpal workflow validate ./workflow.yaml
+# If the workflow has action.invoke-workflow steps, local validation cannot
+# resolve their targets (sibling workflows live in the server DB). Add --online
+# to check invoke targets, input types, and cycles before pushing.
+eigenpal workflow validate ./workflow.yaml --online
 eigenpal workflow push --file workflow.yaml
 
 # Run with ad-hoc input and read the output (use this for API-triggered workflows).

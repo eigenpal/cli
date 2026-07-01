@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.10.8
+
+### Patch Changes
+
+- df3468e: `eigenpal workflow validate` now tells you when a workflow contains Invoke Workflow steps that local validation cannot fully check. Because those steps reference other workflows that live on the server, the command prints a short note pointing you to `validate --online` (or push) to verify the invoke targets, input types, and cycles. The skill guidance now shows the `--online` step in the validate-then-push flow as well.
+- 1010d2e: The evaluator configuration reference now reflects the single workflow-level pass threshold. A per-evaluator `passThreshold` is documented as legacy — pass/fail is decided by the one workflow-level threshold — and that workflow-level threshold no longer shows a fixed default, since it is derived when omitted.
+
 ## 0.10.7
 
 ### Patch Changes

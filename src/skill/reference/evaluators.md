@@ -249,7 +249,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `evaluators` | array<object> | no | `[]` |  |
-| `passThreshold` | number | no | `0.7` |  |
+| `passThreshold` | number | no |  |  |
 
 ### Common entry fields (every evaluator type)
 
@@ -265,7 +265,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | --- | --- | --- | --- | --- |
 | `numericTolerance` | number | no | `0.000001` | Maximum absolute difference between numeric values that still counts as equal. Use 1e-6 for floats, 0 for exact integer match. |
 | `allowExtraFields` | boolean | no | `true` | When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly. |
-| `passThreshold` | number | no | `1` | Minimum diff score this evaluator must reach for a run to pass. 1.0 = perfect match required. |
+| `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
 | `paths` | array<string> | no |  | Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score. |
 
 
@@ -276,7 +276,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | `model` | string | no |  | Which LLM grades the output. Falls back to the workspace's default LLM provider when unset. |
 | `mode` | `"continuous"` \| `"discrete"` | no | `"continuous"` | Continuous = the LLM returns a free-form score in [0, 1]. Discrete = the LLM picks one of your labels and the score is looked up from the table. |
 | `labels` | record<string, number> | no |  | Allowed labels and the score each maps to. Required in discrete mode. The judge MUST return one of these labels; each score must be in [0, 1]. |
-| `passThreshold` | number | no | `0.7` | Minimum judge score this evaluator must reach for a run to pass. |
+| `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
 | `promptExtension` | string | yes |  | Required. Evaluation criteria appended to the judge prompt — describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria. |
 | `docLabel` | string | no | `"output"` | Name the judge uses to refer to the output in its prompt (e.g. 'invoice', 'extraction'). Default is 'output'. |
 
@@ -288,5 +288,5 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | `function` | string | yes |  | Full TypeScript source for optional `type` aliases plus `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
 | `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it is killed and the run is marked failed. |
 | `memoryLimitMb` | integer | no | `10` | Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings. |
-| `passThreshold` | number | no | `1` | Minimum script score this evaluator must reach for a run to pass. |
+| `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
 <!-- GENERATED:EVALUATOR_CATALOG END -->

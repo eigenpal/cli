@@ -32,7 +32,7 @@ import { parse as parseYaml } from 'yaml';
 import { ApiClient } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
-import { error, success, ui, warn, withBaseUrl } from '../../lib/ui';
+import { error, info, success, ui, warn, withBaseUrl } from '../../lib/ui';
 
 interface ValidationIssue {
   field: string;
@@ -57,12 +57,45 @@ function isDirSafe(path: string, issues: ValidationIssue[], field: string): bool
 
 // ---------- workflow.yaml -------------------------------------------------
 
+/**
+ * Count action.invoke-workflow steps anywhere in the tree (including nested
+ * control containers). Used to decide whether to nudge the user toward
+ * `--online`, since local validation cannot resolve invoke targets. Walks an
+ * untyped shape so it stays robust to step variants.
+ */
+export function countInvokeWorkflowSteps(steps: unknown): number {
+  if (!Array.isArray(steps)) return 0;
+  let count = 0;
+  for (const entry of steps) {
+    if (!entry || typeof entry !== 'object') continue;
+    const step = entry as Record<string, unknown>;
+    if (step.type === 'action.invoke-workflow') count++;
+    count += countInvokeWorkflowSteps(step.steps);
+    count += countInvokeWorkflowSteps(step.then);
+    count += countInvokeWorkflowSteps(step.else);
+    if (Array.isArray(step.branches)) {
+      for (const branch of step.branches) {
+        if (branch && typeof branch === 'object') {
+          count += countInvokeWorkflowSteps((branch as Record<string, unknown>).steps);
+        }
+      }
+    }
+  }
+  return count;
+}
+
 function validateWorkflowYaml(path: string): {
   issues: ValidationIssue[];
   warnings: SchemaQualityWarning[];
+  /** action.invoke-workflow step count — drives the `--online` nudge. */
+  invokeStepCount: number;
 } {
   if (!existsSync(path)) {
-    return { issues: [{ field: path, message: 'File not found.' }], warnings: [] };
+    return {
+      issues: [{ field: path, message: 'File not found.' }],
+      warnings: [],
+      invokeStepCount: 0,
+    };
   }
   const text = readFileSync(path, 'utf-8');
   try {
@@ -73,11 +106,15 @@ function validateWorkflowYaml(path: string): {
     } catch {
       warnings = [];
     }
-    return { issues: [], warnings };
+    return { issues: [], warnings, invokeStepCount: countInvokeWorkflowSteps(definition.steps) };
   } catch (err) {
     if (err instanceof YamlParseError) {
       const where = err.line !== undefined ? ` (line ${err.line})` : '';
-      return { issues: [{ field: 'yaml', message: `${err.message}${where}` }], warnings: [] };
+      return {
+        issues: [{ field: 'yaml', message: `${err.message}${where}` }],
+        warnings: [],
+        invokeStepCount: 0,
+      };
     }
     if (err instanceof WorkflowValidationError) {
       return {
@@ -86,13 +123,29 @@ function validateWorkflowYaml(path: string): {
           message: e.message,
         })),
         warnings: [],
+        invokeStepCount: 0,
       };
     }
     return {
       issues: [{ field: '(root)', message: err instanceof Error ? err.message : String(err) }],
       warnings: [],
+      invokeStepCount: 0,
     };
   }
+}
+
+/**
+ * Print the `--online` nudge after a local validate when the workflow contains
+ * action.invoke-workflow steps and the online check was not run. Local
+ * validation cannot resolve invoke targets (they live in the server DB), so
+ * these references go unchecked unless the user runs `--online` (or pushes).
+ */
+function printInvokeOnlineHint(invokeStepCount: number, online: boolean | undefined): void {
+  if (online || invokeStepCount === 0) return;
+  const plural = invokeStepCount === 1 ? '' : 's';
+  info(
+    `${invokeStepCount} action.invoke-workflow step${plural} not checked locally. Run \`validate --online\` (or push) to validate invoke targets, input types, and cycles against the server.`
+  );
 }
 
 function printSchemaQualityWarnings(path: string, warnings: SchemaQualityWarning[]): void {
@@ -447,7 +500,10 @@ export function registerAllValidateCommand(parent: Command): void {
         const target = resolve(path);
         const wfResult = validateWorkflowYaml(target);
         const wfOk = printIssues('workflow.yaml', target, wfResult.issues);
-        if (wfOk) printSchemaQualityWarnings(target, wfResult.warnings);
+        if (wfOk) {
+          printSchemaQualityWarnings(target, wfResult.warnings);
+          printInvokeOnlineHint(wfResult.invokeStepCount, opts.online);
+        }
         let onlineOk = true;
         if (wfOk && opts.online) {
           onlineOk = printIssues(
@@ -465,7 +521,10 @@ export function registerAllValidateCommand(parent: Command): void {
       const wfResult = validateWorkflowYaml(wfFile);
       const wfPath = relPath(root, wfFile);
       const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
-      if (wfOk) printSchemaQualityWarnings(wfPath, wfResult.warnings);
+      if (wfOk) {
+        printSchemaQualityWarnings(wfPath, wfResult.warnings);
+        printInvokeOnlineHint(wfResult.invokeStepCount, opts.online);
+      }
       const evOk = printIssues(
         'evaluators.yaml',
         relPath(root, join(root, 'evaluators.yaml')),
