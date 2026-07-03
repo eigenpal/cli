@@ -11,7 +11,13 @@ import { z } from 'zod';
  */
 
 // AI step types
-export const AI_STEP_TYPES = ['ai.parse', 'ai.extract', 'ai.split', 'ai.classify'] as const;
+export const AI_STEP_TYPES = [
+  'ai.parse',
+  'ai.extract',
+  'ai.split',
+  'ai.segment',
+  'ai.classify',
+] as const;
 
 // Transform step types
 export const TRANSFORM_STEP_TYPES = [
@@ -38,6 +44,7 @@ export const ACTION_STEP_TYPES = [
 // Control step types
 export const CONTROL_STEP_TYPES = [
   'control.if',
+  'control.switch',
   'control.foreach',
   'control.parallel',
   'control.parallel_map',
@@ -64,6 +71,7 @@ export const StepTypeValue = {
   AI_PARSE: 'ai.parse',
   AI_EXTRACT: 'ai.extract',
   AI_SPLIT: 'ai.split',
+  AI_SEGMENT: 'ai.segment',
   AI_CLASSIFY: 'ai.classify',
   // Transform
   TRANSFORM_SET: 'transform.set',
@@ -83,6 +91,7 @@ export const StepTypeValue = {
   ACTION_WEBSITE_READER: 'action.website-reader',
   // Control
   CONTROL_IF: 'control.if',
+  CONTROL_SWITCH: 'control.switch',
   CONTROL_FOREACH: 'control.foreach',
   CONTROL_PARALLEL: 'control.parallel',
   CONTROL_PARALLEL_MAP: 'control.parallel_map',
@@ -192,6 +201,7 @@ export type Step =
   | WaitStep
   | FailStep
   | IfStep
+  | SwitchStep
   | ParallelStep
   | ForeachStep
   | ParallelMapStep
@@ -216,6 +226,36 @@ export interface IfStep {
   then: Step[];
   /** Steps to execute if condition is false */
   else?: Step[];
+}
+
+/**
+ * Switch control flow step — multi-way routing.
+ *
+ * Resolves `on` to a value and runs the first case whose `when` equals it
+ * (string-compared), else `default`. The matched branch's last step output is
+ * exposed as `result`, mirroring control.if. Cleaner than a nested control.if
+ * chain for routing an item to one of N pipelines by a discriminator field.
+ */
+export interface SwitchCase {
+  /** Value matched (string-compared) against the resolved `on` expression. */
+  when: string | number | boolean;
+  /** Steps to run when this case matches. */
+  steps: Step[];
+}
+export interface SwitchStep {
+  type: 'control.switch';
+  name: string;
+  description?: string;
+  if?: string;
+  timeout?: number;
+  retries?: number;
+  retryDelay?: number;
+  with?: Record<string, unknown>;
+  /** Template expression whose resolved value selects the case, e.g. "{{ doc.type }}". */
+  on: string;
+  cases: SwitchCase[];
+  /** Steps to run when no case matches. */
+  default?: Step[];
 }
 
 /**
@@ -326,6 +366,18 @@ const IfStepSchemaInner = BaseStepSchema.extend({
   else: z.lazy((): z.ZodType<Step[]> => z.array(StepSchema)).optional(),
 });
 
+// Schema for switch step
+const SwitchCaseSchemaInner = z.object({
+  when: z.union([z.string(), z.number(), z.boolean()]),
+  steps: z.lazy((): z.ZodType<Step[]> => z.array(StepSchema)),
+});
+const SwitchStepSchemaInner = BaseStepSchema.extend({
+  type: z.literal('control.switch'),
+  on: z.string(),
+  cases: z.array(SwitchCaseSchemaInner),
+  default: z.lazy((): z.ZodType<Step[]> => z.array(StepSchema)).optional(),
+});
+
 // Schema for parallel branch
 const ParallelBranchSchemaInner = z.object({
   name: z.string().min(1),
@@ -370,6 +422,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
     FailStepSchema,
     BlockStepSchemaInner,
     IfStepSchemaInner,
+    SwitchStepSchemaInner,
     ParallelStepSchemaInner,
     ForeachStepSchemaInner,
     ParallelMapStepSchemaInner,
@@ -379,6 +432,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
 // Re-export schemas for the control flow steps (for external use)
 export const BlockStepSchema = BlockStepSchemaInner;
 export const IfStepSchema = IfStepSchemaInner;
+export const SwitchStepSchema = SwitchStepSchemaInner;
 export const ParallelBranchSchema = ParallelBranchSchemaInner;
 export const ParallelStepSchema = ParallelStepSchemaInner;
 export const ForeachStepSchema = ForeachStepSchemaInner;

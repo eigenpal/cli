@@ -160,7 +160,9 @@ function validateStepConfigsRecursive(
       then?: Step[];
       else?: Step[];
       steps?: Step[];
+      default?: Step[];
       branches?: Array<{ name: string; steps: Step[] }>;
+      cases?: Array<{ steps: Step[] }>;
     };
     if (Array.isArray(anyStep.then)) {
       issues.push(...validateStepConfigsRecursive(anyStep.then, [...stepPath, 'then']));
@@ -170,6 +172,21 @@ function validateStepConfigsRecursive(
     }
     if (Array.isArray(anyStep.steps)) {
       issues.push(...validateStepConfigsRecursive(anyStep.steps, [...stepPath, 'steps']));
+    }
+    if (Array.isArray(anyStep.default)) {
+      issues.push(...validateStepConfigsRecursive(anyStep.default, [...stepPath, 'default']));
+    }
+    if (Array.isArray(anyStep.cases)) {
+      for (let j = 0; j < anyStep.cases.length; j++) {
+        issues.push(
+          ...validateStepConfigsRecursive(anyStep.cases[j].steps, [
+            ...stepPath,
+            'cases',
+            j,
+            'steps',
+          ])
+        );
+      }
     }
     if (Array.isArray(anyStep.branches)) {
       for (let j = 0; j < anyStep.branches.length; j++) {

@@ -188,6 +188,33 @@ function descendNestedContainers(
         out
       );
     }
+    return;
+  }
+  if (step.type === 'control.switch') {
+    const switchStep = step as unknown as {
+      cases?: Array<{ steps?: unknown }>;
+      default?: unknown;
+    };
+    const cases = switchStep.cases ?? [];
+    for (let c = 0; c < cases.length; c++) {
+      const caseSteps = cases[c]?.steps;
+      if (Array.isArray(caseSteps)) {
+        walkContainer(
+          caseSteps as WorkflowDefinition['steps'],
+          ancestorsInScope,
+          `${stepPath}.cases.${c}.steps`,
+          out
+        );
+      }
+    }
+    if (Array.isArray(switchStep.default)) {
+      walkContainer(
+        switchStep.default as WorkflowDefinition['steps'],
+        ancestorsInScope,
+        `${stepPath}.default`,
+        out
+      );
+    }
   }
 }
 

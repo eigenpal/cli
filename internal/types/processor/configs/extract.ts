@@ -53,6 +53,32 @@ export const ExtractConfigSchema = z.object({
     .describe(
       'Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit.'
     ),
+  // --- Optional langextract grounding (opt-in) ---
+  grounded: z
+    .boolean()
+    .optional()
+    .describe(
+      'When true, run a grounding pass over the schema fields and attach per-field source spans + confidence under a `_grounding` key, flagging ungrounded/fuzzy fields for human review. Grounding always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY.'
+    ),
+  groundingModel: z
+    .string()
+    .optional()
+    .describe(
+      'Provider/model for the grounding pass. Defaults to the workspace default LLM; grounding runs against OpenAI, so pick an OpenAI-compatible model.'
+    ),
+  groundingExamples: z
+    .array(
+      z.object({
+        text: z.string(),
+        extractions: z.array(z.object({ field: z.string(), text: z.string() })),
+      })
+    )
+    .optional()
+    .describe('Few-shot examples for grounding (verbatim source text per field). Optional.'),
+  reviewOn: z
+    .enum(['medium_or_low', 'low_only'])
+    .optional()
+    .describe('Which grounding confidences flag a field for review. Default: medium_or_low.'),
 });
 
 export type ExtractInput = z.infer<typeof ExtractInputSchema>;

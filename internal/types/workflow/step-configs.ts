@@ -117,6 +117,31 @@ export const AiExtractConfigSchema = z.object({
     .describe(
       'Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit.'
     ),
+  grounded: z
+    .boolean()
+    .optional()
+    .describe(
+      'Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY. Values stay the reliable schema-typed ones.'
+    ),
+  groundingModel: z
+    .string()
+    .optional()
+    .describe(
+      'Provider/model for the grounding pass. Defaults to the workspace default LLM; grounding runs against OpenAI, so pick an OpenAI-compatible model.'
+    ),
+  groundingExamples: z
+    .array(
+      z.object({
+        text: z.string(),
+        extractions: z.array(z.object({ field: z.string(), text: z.string() })),
+      })
+    )
+    .optional()
+    .describe('Optional few-shot examples pinning grounding to verbatim source text per field.'),
+  reviewOn: z
+    .enum(['medium_or_low', 'low_only'])
+    .optional()
+    .describe('Which grounding confidences flag a field for review. Default: medium_or_low.'),
 });
 
 export const AiExtractOutputSchema = z
@@ -262,6 +287,138 @@ export const AiSplitOutputSchema = z.object({
       })
     )
     .describe('Sections found in the document, in page order. Absent sections are omitted.'),
+});
+
+/**
+ * ai.segment - Separate a concatenated batch into typed document instances.
+ *
+ * The inverse of ai.split: instead of locating a KNOWN, ordered list of named
+ * sections inside one document, segment takes ONLY a type taxonomy and discovers
+ * an UNKNOWN number of documents in arbitrary order, finding each boundary and
+ * assigning a type. Repeated instances of the same type are first-class. Reuses
+ * split's windowed boundary-detection engine.
+ */
+export const AiSegmentConfigSchema = z.object({
+  input: z
+    .string()
+    .describe('Template expression resolving to ai.parse output, e.g. "{{ steps.parse.output }}"'),
+  documentTypes: z
+    .array(
+      z.object({
+        name: z
+          .string()
+          .min(1)
+          .describe('Type label returned in documents[].type (e.g. "timesheet", "deal-memo")'),
+        description: z
+          .string()
+          .optional()
+          .describe(
+            'What this document type looks like — headings, layout, vocabulary, and the cues that mark its FIRST page. Fed to the LLM for both boundary detection and typing.'
+          ),
+      })
+    )
+    .min(1)
+    .describe(
+      'The document-type taxonomy. The LLM tags each detected document with one of these names, or the reserved "unknown" type when none fit.'
+    ),
+  rules: z
+    .string()
+    .optional()
+    .describe('Optional natural-language rules appended to the system prompt.'),
+  provider: z
+    .string()
+    .optional()
+    .describe(
+      'Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted.'
+    ),
+  windowTokenBudget: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      'Override the per-window token ceiling. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000.'
+    ),
+});
+
+export const AiSegmentOutputSchema = z.object({
+  summary: z
+    .object({
+      total: z.number().int().describe('Total documents discovered.'),
+      labelled: z.number().int().describe('Documents assigned a known taxonomy type.'),
+      unlabelled: z
+        .number()
+        .int()
+        .describe(
+          'Documents the segmenter could not label (type "unknown") — escalate to a human.'
+        ),
+      lowConfidence: z.number().int().describe('Documents with low boundary/type confidence.'),
+      byType: z.record(z.string(), z.number().int()).describe('Per-type document counts.'),
+      needsReview: z
+        .array(
+          z.object({
+            index: z.number().int(),
+            type: z.string(),
+            page_range: z.tuple([z.number().int(), z.number().int()]),
+            reason: z.enum(['unlabelled', 'low_confidence']),
+            notes: z.string(),
+          })
+        )
+        .describe('Documents to escalate to a human operator, with the reason for each.'),
+    })
+    .describe(
+      'Batch-level escalation summary: labelled vs unlabelled counts + docs needing review.'
+    ),
+  documents: z
+    .array(
+      z.object({
+        index: z.number().int().describe('0-based position of this document in the batch'),
+        type: z.string().describe('Chosen type name from the taxonomy, or "unknown"'),
+        page_range: z
+          .tuple([z.number().int(), z.number().int()])
+          .describe('[startIndex, endIndex] inclusive, 0-based page indices'),
+        confidence: z
+          .enum(['low', 'medium', 'high'])
+          .describe('LLM confidence at the boundary + type. Coarse enum (low | medium | high).'),
+        notes: z.string().describe('LLM justification for the boundary — useful for debugging'),
+        evidence: z
+          .object({
+            start_heading_text: z
+              .string()
+              .nullable()
+              .optional()
+              .describe('Verbatim heading/title text the LLM cited as the document start'),
+            start_page: z
+              .number()
+              .int()
+              .nullable()
+              .optional()
+              .describe('Page where the start appears'),
+          })
+          .optional()
+          .describe('Structured start evidence — parse this instead of regexing over `notes`.'),
+        text: z
+          .string()
+          .describe('Joined per-page content for this document, ready for downstream ai.extract'),
+        pages: z
+          .array(
+            z.object({
+              pageIndex: z.number().int(),
+              text: z.string(),
+              pageName: z.string().optional(),
+              source: z.enum(['anchored', 'inferred']),
+            })
+          )
+          .describe('Raw per-page records covered by this document, in page order.'),
+        pages_anchored: z
+          .array(z.number().int())
+          .describe('Pages with direct LLM boundary evidence'),
+        pages_inferred: z
+          .array(z.number().int())
+          .describe('Pages assigned by deterministic continuity fill'),
+      })
+    )
+    .describe('Documents discovered in the batch, in page order. The full batch is covered.'),
 });
 
 /**
@@ -917,6 +1074,36 @@ export const ControlIfOutputSchema = z.object({
 });
 
 /**
+ * control.switch - Multi-way routing. Config is step-level (on, cases, default),
+ * not in step.with.
+ */
+export const ControlSwitchConfigSchema = z.object({
+  on: z
+    .string()
+    .min(1, 'Switch `on` expression is required')
+    .describe('Template expression whose resolved value selects the case, e.g. "{{ doc.type }}".'),
+  cases: z
+    .array(
+      z.object({
+        when: z
+          .union([z.string(), z.number(), z.boolean()])
+          .describe('Value matched (string-compared) against the resolved `on` value.'),
+      })
+    )
+    .min(1)
+    .describe('Ordered cases; the first whose `when` matches runs. Each case has its own `steps`.'),
+});
+
+export const ControlSwitchOutputSchema = z.object({
+  matched: z
+    .union([z.string(), z.number(), z.boolean()])
+    .nullable()
+    .describe('The `when` value that matched, or null when the default (or no) branch ran.'),
+  branch: z.enum(['case', 'default', 'none']).describe('Which branch executed.'),
+  result: z.unknown().describe('Output from the executed branch (its last step).'),
+});
+
+/**
  * control.foreach - Loop over array
  * Config is step-level (items, as, indexAs), not in step.with
  */
@@ -1084,6 +1271,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: AiSplitOutputSchema,
     configInWith: true,
   },
+  'ai.segment': {
+    type: 'ai.segment',
+    category: 'ai',
+    name: 'Separate Documents',
+    description:
+      'Separate a concatenated batch (one big scan) into typed document instances using an LLM. Consumes ai.parse output and a type taxonomy; discovers an unknown number of documents in any order and emits per-document page ranges + text + type, ready for type-specific ai.extract via control.parallel_map. The inverse of ai.split.',
+    configSchema: AiSegmentConfigSchema,
+    outputSchema: AiSegmentOutputSchema,
+    configInWith: true,
+  },
   'ai.classify': {
     type: 'ai.classify',
     category: 'ai',
@@ -1238,6 +1435,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     description: 'Branch execution based on a condition expression',
     configSchema: ControlIfConfigSchema,
     outputSchema: ControlIfOutputSchema,
+    configInWith: false,
+  },
+  'control.switch': {
+    type: 'control.switch',
+    category: 'control',
+    name: 'Switch',
+    description:
+      'Multi-way routing: resolve an expression and run the first case whose value matches (else default). Cleaner than a nested control.if chain for routing an item to one of N pipelines by a discriminator field like a document type.',
+    configSchema: ControlSwitchConfigSchema,
+    outputSchema: ControlSwitchOutputSchema,
     configInWith: false,
   },
   'control.foreach': {
@@ -1443,6 +1650,8 @@ export type AiExtractConfig = z.infer<typeof AiExtractConfigSchema>;
 export type AiExtractOutput = z.infer<typeof AiExtractOutputSchema>;
 export type AiSplitConfig = z.infer<typeof AiSplitConfigSchema>;
 export type AiSplitOutput = z.infer<typeof AiSplitOutputSchema>;
+export type AiSegmentConfig = z.infer<typeof AiSegmentConfigSchema>;
+export type AiSegmentOutput = z.infer<typeof AiSegmentOutputSchema>;
 export type AiClassifyConfig = z.infer<typeof AiClassifyConfigSchema>;
 export type AiClassifyOutput = z.infer<typeof AiClassifyOutputSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
@@ -1463,6 +1672,8 @@ export type ActionInvokeWorkflowConfig = z.infer<typeof ActionInvokeWorkflowConf
 export type ActionWebsiteReaderConfig = z.infer<typeof ActionWebsiteReaderConfigSchema>;
 export type ActionWebsiteReaderOutput = z.infer<typeof ActionWebsiteReaderOutputSchema>;
 export type ControlIfConfig = z.infer<typeof ControlIfConfigSchema>;
+export type ControlSwitchConfig = z.infer<typeof ControlSwitchConfigSchema>;
+export type ControlSwitchOutput = z.infer<typeof ControlSwitchOutputSchema>;
 export type ControlForeachConfig = z.infer<typeof ControlForeachConfigSchema>;
 export type ControlParallelMapConfig = z.infer<typeof ControlParallelMapConfigSchema>;
 export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;

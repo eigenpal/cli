@@ -20,6 +20,7 @@ export * from './document-parser';
 export * from './extract';
 export * from './merge';
 export * from './pdf-embedder';
+export * from './segment';
 export * from './split';
 export * from './template';
 export * from './xlsx-to-json';
@@ -38,6 +39,7 @@ import {
   PdfEmbedderInputSchema,
   PdfEmbedderOutputSchema,
 } from './pdf-embedder';
+import { SegmentConfigSchema, SegmentInputSchema, SegmentOutputSchema } from './segment';
 import { SplitConfigSchema, SplitInputSchema, SplitOutputSchema } from './split';
 import { TemplateConfigSchema, TemplateInputSchema, TemplateOutputSchema } from './template';
 import {
@@ -95,6 +97,12 @@ export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
     inputSchema: SplitInputSchema,
     outputSchema: SplitOutputSchema,
     configSchema: SplitConfigSchema,
+  },
+  [PROCESSOR_IDS.SEGMENT]: {
+    id: PROCESSOR_IDS.SEGMENT,
+    inputSchema: SegmentInputSchema,
+    outputSchema: SegmentOutputSchema,
+    configSchema: SegmentConfigSchema,
   },
   [PROCESSOR_IDS.CLASSIFY]: {
     id: PROCESSOR_IDS.CLASSIFY,

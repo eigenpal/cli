@@ -109,6 +109,7 @@ export {
   StepSchema,
   StepTypeSchema,
   StepTypeValue,
+  SwitchStepSchema,
   TransformStepSchema,
   WaitStepSchema,
   isStepCategory,
@@ -125,6 +126,8 @@ export {
   type ParallelStep,
   type Step,
   type StepType,
+  type SwitchCase,
+  type SwitchStep,
   type TransformStep,
   type WaitStep,
 } from './steps';

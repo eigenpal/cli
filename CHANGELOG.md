@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.9
+
+### Patch Changes
+
+- 69fe792: The workflow step catalog now lists the new document-separation and multi-way routing steps, plus the grounded-extraction options, so authoring and validating workflows from the CLI stays in step with what the platform supports.
+
 ## 0.10.8
 
 ### Patch Changes

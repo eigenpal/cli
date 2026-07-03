@@ -13,6 +13,7 @@ export const PROCESSOR_IDS = {
   DOCUMENT_PARSER: 'builtin/parser',
   EXTRACT: 'builtin/extract',
   SPLIT: 'builtin/split',
+  SEGMENT: 'builtin/segment',
   CLASSIFY: 'builtin/classify',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',

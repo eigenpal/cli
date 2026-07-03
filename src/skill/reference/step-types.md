@@ -390,6 +390,10 @@ Extract structured data from text using AI with a JSON schema
 | `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
 | `model` | string | no |  | Model override |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
+| `grounded` | boolean | no |  | Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY. Values stay the reliable schema-typed ones. |
+| `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM; grounding runs against OpenAI, so pick an OpenAI-compatible model. |
+| `groundingExamples` | array<object> | no |  | Optional few-shot examples pinning grounding to verbatim source text per field. |
+| `reviewOn` | `"medium_or_low"` \| `"low_only"` | no |  | Which grounding confidences flag a field for review. Default: medium_or_low. |
 
 **Output:** `record<string, unknown>`
 
@@ -414,6 +418,27 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `splits` | array<object> | yes |  | Sections found in the document, in page order. Absent sections are omitted. |
+
+#### `ai.segment` — Separate Documents
+
+Separate a concatenated batch (one big scan) into typed document instances using an LLM. Consumes ai.parse output and a type taxonomy; discovers an unknown number of documents in any order and emits per-document page ranges + text + type, ready for type-specific ai.extract via control.parallel_map. The inverse of ai.split.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | Template expression resolving to ai.parse output, e.g. "{{ steps.parse.output }}" |
+| `documentTypes` | array<object> | yes |  | The document-type taxonomy. The LLM tags each detected document with one of these names, or the reserved "unknown" type when none fit. |
+| `rules` | string | no |  | Optional natural-language rules appended to the system prompt. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted. |
+| `windowTokenBudget` | integer | no |  | Override the per-window token ceiling. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `summary` | object | yes |  | Batch-level escalation summary: labelled vs unlabelled counts + docs needing review. |
+| `documents` | array<object> | yes |  | Documents discovered in the batch, in page order. The full batch is covered. |
 
 #### `ai.classify` — Classify
 
@@ -731,6 +756,25 @@ Branch execution based on a condition expression
 | `condition` | boolean | yes |  | Evaluated condition result |
 | `branch` | `"then"` \| `"else"` | yes |  | Which branch was executed |
 | `result` | unknown | yes |  | Output from executed branch |
+
+#### `control.switch` — Switch
+
+Multi-way routing: resolve an expression and run the first case whose value matches (else default). Cleaner than a nested control.if chain for routing an item to one of N pipelines by a discriminator field like a document type.
+
+**Config** (at step level):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `on` | string | yes |  | Template expression whose resolved value selects the case, e.g. "{{ doc.type }}". |
+| `cases` | array<object> | yes |  | Ordered cases; the first whose `when` matches runs. Each case has its own `steps`. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `matched` | string \| number \| boolean \| null | yes |  | The `when` value that matched, or null when the default (or no) branch ran. |
+| `branch` | `"case"` \| `"default"` \| `"none"` | yes |  | Which branch executed. |
+| `result` | unknown | yes |  | Output from the executed branch (its last step). |
 
 #### `control.foreach` — For Each
 
