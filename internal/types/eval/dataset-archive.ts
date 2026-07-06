@@ -90,13 +90,28 @@ export type EvaluatorsImportRequest = z.infer<typeof EvaluatorsImportRequestSche
 export const EvalResultsExportFormatSchema = z.enum(['csv', 'json']);
 export type EvalResultsExportFormat = z.infer<typeof EvalResultsExportFormatSchema>;
 
+const BooleanQueryFlagSchema = z
+  .enum(['true', 'false', '1', '0'])
+  .optional()
+  .transform((value) => value === 'true' || value === '1');
+
+const ExperimentExportBaseQuerySchema = z.object({
+  format: EvalResultsExportFormatSchema,
+});
+
 /**
- * Query string for experiment result exports:
- * `GET /api/v1/automations/:id/experiments/export` and
+ * Query string for all-experiment result exports:
+ * `GET /api/v1/automations/:id/experiments/export`.
+ */
+export const ExperimentExportAllQuerySchema = ExperimentExportBaseQuerySchema;
+export type ExperimentExportAllQuery = z.infer<typeof ExperimentExportAllQuerySchema>;
+
+/**
+ * Query string for single-experiment result exports:
  * `GET /api/v1/automations/:id/experiments/:experimentId/export`.
  */
-export const ExperimentExportQuerySchema = z.object({
-  format: EvalResultsExportFormatSchema,
+export const ExperimentExportQuerySchema = ExperimentExportBaseQuerySchema.extend({
+  includeTrace: BooleanQueryFlagSchema,
 });
 export type ExperimentExportQuery = z.infer<typeof ExperimentExportQuerySchema>;
 

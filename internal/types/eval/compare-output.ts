@@ -122,7 +122,7 @@ function partialMatch(
     }
     let allMatch = true;
     for (let i = 0; i < expected.length; i++) {
-      const childPath = path ? `${path}.${i}` : String(i);
+      const childPath = path ? `${path}[${i}]` : `[${i}]`;
       if (!partialMatch(expected[i], actual[i], childPath, mismatches)) {
         allMatch = false;
       }
