@@ -289,24 +289,26 @@ export function resolveWorkflowPassThreshold(config: {
 // ------- evaluator result (what evaluators return; what the dispatcher persists) -------
 
 export const EvaluatorResultSchema = z.object({
-  score: ScoreInUnitInterval,
-  passed: z.boolean(),
+  // Null means the evaluator was not applicable for this example and should
+  // not contribute to weighted aggregate scoring.
+  score: ScoreInUnitInterval.nullable(),
+  passed: z.boolean().nullable(),
   label: z.string().optional(),
   details: z.unknown(),
 });
 export type EvaluatorResult = z.infer<typeof EvaluatorResultSchema>;
 
 /**
- * Weighted mean of scores, skipping weight-zero entries from the denominator.
+ * Weighted mean of scores, skipping weight-zero and null-score entries from the denominator.
  * Returns null if there are no contributing evaluators.
  */
 export function combineEvalScores(
-  results: Array<{ score: number; weight: number }>
+  results: Array<{ score: number | null; weight: number }>
 ): number | null {
   let numerator = 0;
   let denominator = 0;
   for (const r of results) {
-    if (r.weight <= 0) continue;
+    if (r.weight <= 0 || r.score === null) continue;
     numerator += r.score * r.weight;
     denominator += r.weight;
   }
