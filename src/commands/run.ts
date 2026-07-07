@@ -31,10 +31,34 @@ export function registerRunCommands(program: Command): void {
     )
     .option('--example <name>', 'Run one persisted example by name')
     .option('--dir <dir>', 'Local eigenpal directory for workflow examples', undefined)
+    .option(
+      '--fail-on-mismatch',
+      'For --example runs, exit non-zero when a graded example fails (evaluator fail, or output mismatch)'
+    )
     .option('--wait', 'Poll until the run reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
     .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
-    .action(action(runTarget));
+    .action(action(runTarget))
+    .addHelpText(
+      'after',
+      `
+Grading --example runs
+  --example runs the workflow's CURRENT published version on the SERVER's stored
+  dataset example, so push your latest dataset/evaluators first
+  (eigenpal workflow dataset push / evaluators push).
+
+  If the workflow has evaluators configured, they run automatically and the CLI
+  shows the real weighted score and per-evaluator pass/fail. If it has no
+  evaluators, the output is graded by a structural diff against the example's
+  stored expected output (every expected field must be present and equal; extra
+  output fields are ignored, arrays match by index). The summary reports two
+  separate signals: execution health ("ok"/"errored") and accuracy.
+
+Exit codes
+  1  a run errored (or, with --fail-on-mismatch, a graded example failed)
+  By default a grading failure is informational and does not change the exit code.
+`
+    );
 
   addJsonFlag(withBaseUrl(program.command('rerun <run-id>')))
     .description("Create a new run from a previous run's stored input snapshot.")
@@ -56,6 +80,7 @@ async function runTarget(
     inputFile?: string[];
     example?: string;
     dir?: string;
+    failOnMismatch?: boolean;
     wait?: boolean;
     interval: number;
     maxWait: number;
@@ -76,6 +101,7 @@ async function runTarget(
     return runSavedWorkflowExamples(parsed.idOrSlug, [opts.example], {
       ...opts,
       version: String(parsed.requestedVersion),
+      failOnMismatch: opts.failOnMismatch,
     });
   }
 

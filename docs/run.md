@@ -18,6 +18,7 @@ Start a workflow or agent run, e.g. workflows.extract-invoice.
 | `--input-file <field=path>` | no       | `[]`    | Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file". |
 | `--example <name>`          | no       |         | Run one persisted example by name                                                                    |
 | `--dir <dir>`               | no       |         | Local eigenpal directory for workflow examples                                                       |
+| `--fail-on-mismatch`        | no       |         | For --example runs, exit non-zero when a graded example fails (evaluator fail, or output mismatch)   |
 | `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                         |
 | `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
 | `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exit code 2                                                                      |

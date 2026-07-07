@@ -1,5 +1,22 @@
 # @eigenpal/cli
 
+## 0.10.16
+
+### Patch Changes
+
+- b1f0bca: `eigenpal run <workflow> --example <name>` now actually grades the example
+  instead of printing `PASS` whenever the run merely finished. It runs the
+  workflow's current published version on the server's stored dataset example, so
+  configured evaluators run automatically and the CLI surfaces the real weighted
+  score and per-evaluator pass/fail. Workflows with no evaluators fall back to a
+  structural diff of the output against the example's stored expected output. The
+  summary reports two separate signals: execution health (`ok`/`errored`) and
+  accuracy. Add `--fail-on-mismatch` to exit non-zero when a graded example fails.
+
+  Because the run uses the server-side example, push your latest dataset and
+  evaluators (`eigenpal workflow dataset push`, `eigenpal workflow evaluators
+push`) before running `--example`.
+
 ## 0.10.9
 
 ### Patch Changes
