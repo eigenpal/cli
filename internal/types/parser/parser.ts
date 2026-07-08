@@ -288,6 +288,19 @@ export const ParseOptionsSchema = z.object({
   model: z.string().optional(),
   maxConcurrency: z.number().min(1).max(30).default(3),
   pagesPerBatch: z.number().min(1).max(20).default(5),
+  pdfRenderScale: z
+    .number()
+    .min(1)
+    .max(4)
+    .default(1)
+    .describe('Scale factor used when rendering PDF pages for VLM parsing'),
+  imageQuality: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(85)
+    .describe('JPEG quality used for PDF page images sent to VLM parsing'),
   prompt: z.string().optional().describe('Custom prompt for LLM-based parsing'),
 
   // Language hints

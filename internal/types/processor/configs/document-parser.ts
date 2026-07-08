@@ -59,6 +59,21 @@ export const DocumentParserConfigSchema = z
       .max(20)
       .default(5)
       .describe('Number of page images per VLM request'),
+    pdfRenderScale: z
+      .number()
+      .min(1)
+      .max(4)
+      .default(1)
+      .optional()
+      .describe('Scale factor used when rendering PDF pages for VLM parsing'),
+    imageQuality: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(85)
+      .optional()
+      .describe('JPEG quality used for PDF page images sent to VLM parsing'),
     prompt: z.string().optional().describe('Custom extraction prompt'),
 
     // Native text extraction

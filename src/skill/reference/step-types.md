@@ -363,6 +363,8 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 | `llmModel` | string | no |  | LLM provider ID for vision-based parsing |
 | `maxConcurrency` | number | no | `3` | Max concurrent VLM batch requests |
 | `pagesPerBatch` | number | no | `5` | Number of page images per VLM request |
+| `pdfRenderScale` | number | no | `1` | Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes. |
+| `imageQuality` | integer | no | `85` | JPEG quality for rendered PDF page images sent to VLM parsing. Higher values reduce compression artifacts at larger payload sizes. |
 | `prompt` | string | no |  | Custom extraction prompt |
 | `languages` | array<string> | no |  | OCR language hints |
 | `outputFormat` | `"plain"` \| `"markdown"` \| `"djot"` \| `"html"` | no | `"markdown"` | Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown. |

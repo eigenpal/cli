@@ -45,6 +45,25 @@ export const AiParseConfigSchema = z.object({
     .default(5)
     .optional()
     .describe('Number of page images per VLM request'),
+  pdfRenderScale: z
+    .number()
+    .min(1)
+    .max(4)
+    .default(1)
+    .optional()
+    .describe(
+      'Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes.'
+    ),
+  imageQuality: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(85)
+    .optional()
+    .describe(
+      'JPEG quality for rendered PDF page images sent to VLM parsing. Higher values reduce compression artifacts at larger payload sizes.'
+    ),
   prompt: z.string().optional().describe('Custom extraction prompt'),
   languages: z.array(z.string()).optional().describe('OCR language hints'),
   outputFormat: z
