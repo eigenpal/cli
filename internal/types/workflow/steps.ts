@@ -49,7 +49,6 @@ export const CONTROL_STEP_TYPES = [
   'control.parallel',
   'control.parallel_map',
   'control.wait',
-  'control.block',
   'control.fail',
 ] as const;
 
@@ -96,7 +95,6 @@ export const StepTypeValue = {
   CONTROL_PARALLEL: 'control.parallel',
   CONTROL_PARALLEL_MAP: 'control.parallel_map',
   CONTROL_WAIT: 'control.wait',
-  CONTROL_BLOCK: 'control.block',
   CONTROL_FAIL: 'control.fail',
 } as const;
 
@@ -205,7 +203,7 @@ export type Step =
   | ParallelStep
   | ForeachStep
   | ParallelMapStep
-  | BlockStep;
+  | LegacyBlockStep;
 
 /**
  * If/else control flow step
@@ -333,26 +331,24 @@ export interface ParallelMapStep {
 }
 
 /**
- * Block step - reference a reusable workflow block
+ * @deprecated Removed — use `action.invoke-workflow` with `execution: inline`.
+ * Retained only for in-flight definition snapshots until the compatibility shim is removed.
  */
-export interface BlockStep {
+export interface LegacyBlockStep {
   type: 'control.block';
   name: string;
-  /** Optional human-readable description of what this step does */
   description?: string;
   if?: string;
   timeout?: number;
   retries?: number;
   retryDelay?: number;
   with?: Record<string, unknown>;
-  /** Name of the block workflow to execute */
   blockName: string;
-  /** Input mapping for the block (key: blockInputName, value: template expression) */
   inputs?: Record<string, unknown>;
 }
 
-// Schema for block step
-const BlockStepSchemaInner = BaseStepSchema.extend({
+// Schema for legacy block step (parse-only for in-flight snapshots)
+const LegacyBlockStepSchemaInner = BaseStepSchema.extend({
   type: z.literal('control.block'),
   blockName: z.string().min(1),
   inputs: z.record(z.string(), z.unknown()).optional(),
@@ -420,7 +416,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
     ActionStepSchema,
     WaitStepSchema,
     FailStepSchema,
-    BlockStepSchemaInner,
+    LegacyBlockStepSchemaInner,
     IfStepSchemaInner,
     SwitchStepSchemaInner,
     ParallelStepSchemaInner,
@@ -430,7 +426,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
 ) as z.ZodType<Step>;
 
 // Re-export schemas for the control flow steps (for external use)
-export const BlockStepSchema = BlockStepSchemaInner;
+export const LegacyBlockStepSchema = LegacyBlockStepSchemaInner;
 export const IfStepSchema = IfStepSchemaInner;
 export const SwitchStepSchema = SwitchStepSchemaInner;
 export const ParallelBranchSchema = ParallelBranchSchemaInner;
@@ -441,7 +437,7 @@ export const ParallelMapStepSchema = ParallelMapStepSchemaInner;
 /**
  * Parse step type into category and operation
  */
-export function parseStepType(type: StepType): { category: string; operation: string } {
+export function parseStepType(type: string): { category: string; operation: string } {
   const [category, operation] = type.split('.');
   return { category, operation };
 }
@@ -450,7 +446,7 @@ export function parseStepType(type: StepType): { category: string; operation: st
  * Check if step type is in a category
  */
 export function isStepCategory(
-  type: StepType,
+  type: string,
   category: 'ai' | 'transform' | 'action' | 'control'
 ): boolean {
   return type.startsWith(`${category}.`);

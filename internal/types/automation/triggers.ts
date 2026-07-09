@@ -31,7 +31,6 @@ function workflowMethodEnabled(methods: TriggerMethod[], type: TriggerMethod['ty
 export function triggersFromWorkflowDefinition(
   definition: WorkflowDefinition
 ): AutomationTriggerProjection[] {
-  if (definition.kind === 'block') return [];
   const methods = getTriggerMethods(definition);
   return [
     { type: 'api', enabled: workflowMethodEnabled(methods, 'api') },

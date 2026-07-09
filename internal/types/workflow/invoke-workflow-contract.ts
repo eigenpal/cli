@@ -121,9 +121,41 @@ export function hasDeclaredOutput(output: Record<string, string> | string | unde
   return !!output && Object.keys(output).length > 0;
 }
 
+export type InvokeExecutionMode = 'inline' | 'child';
+
+export interface InvokeWorkflowTargetRef {
+  /** Workflow name or `wf_` id as authored in the step config. */
+  ref: string;
+  mode: InvokeExecutionMode;
+  stepName?: string;
+}
+
+/** Whether a invoke target reference is a workflow id (`wf_…`). */
+export function isWorkflowIdRef(ref: string): boolean {
+  return ref.startsWith('wf_');
+}
+
+/** Resolve `execution` from step `with` config; defaults to `inline`. */
+export function getInvokeExecutionMode(
+  withConfig: Record<string, unknown> | undefined
+): InvokeExecutionMode {
+  return withConfig?.execution === 'child' ? 'child' : 'inline';
+}
+
+/** Resolve the target reference from `workflow` or legacy `workflowId`. */
+export function getInvokeWorkflowRef(
+  withConfig: Record<string, unknown> | undefined
+): string | undefined {
+  const workflow = withConfig?.workflow;
+  if (typeof workflow === 'string' && workflow.length > 0) return workflow;
+  const workflowId = withConfig?.workflowId;
+  if (typeof workflowId === 'string' && workflowId.length > 0) return workflowId;
+  return undefined;
+}
+
 interface StepLike {
   type?: unknown;
-  with?: { workflowId?: unknown } | undefined;
+  with?: { workflow?: unknown; workflowId?: unknown; execution?: unknown } | undefined;
   [key: string]: unknown;
 }
 
@@ -151,16 +183,47 @@ function* iterateSteps(steps: unknown): Iterable<StepLike> {
   }
 }
 
-/** Unique target workflow ids referenced by action.invoke-workflow steps. */
+/** Every invoke target reference (name or id) with its execution mode. */
+export function collectInvokeWorkflowTargets(
+  definition: { steps?: unknown[] } | undefined
+): InvokeWorkflowTargetRef[] {
+  const seen = new Set<string>();
+  const targets: InvokeWorkflowTargetRef[] = [];
+  for (const step of iterateSteps(definition?.steps)) {
+    if (step.type !== 'action.invoke-workflow') continue;
+    const withConfig = step.with as Record<string, unknown> | undefined;
+    const ref = getInvokeWorkflowRef(withConfig);
+    if (!ref) continue;
+    const key = `${getInvokeExecutionMode(withConfig)}:${ref}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push({
+      ref,
+      mode: getInvokeExecutionMode(withConfig),
+      stepName: typeof step.name === 'string' ? step.name : undefined,
+    });
+  }
+  return targets;
+}
+
+/** Unique `wf_` ids referenced by action.invoke-workflow steps (child gate batch lookup). */
 export function collectInvokeWorkflowTargetIds(
   definition: { steps?: unknown[] } | undefined
 ): string[] {
   const ids = new Set<string>();
-  for (const step of iterateSteps(definition?.steps)) {
-    if (step.type === 'action.invoke-workflow') {
-      const id = step.with?.workflowId;
-      if (typeof id === 'string' && id.length > 0) ids.add(id);
-    }
+  for (const { ref } of collectInvokeWorkflowTargets(definition)) {
+    if (isWorkflowIdRef(ref)) ids.add(ref);
   }
   return [...ids];
+}
+
+/** Unique workflow names referenced by inline/child invoke steps (tenant name lookup). */
+export function collectInvokeWorkflowTargetNames(
+  definition: { steps?: unknown[] } | undefined
+): string[] {
+  const names = new Set<string>();
+  for (const { ref } of collectInvokeWorkflowTargets(definition)) {
+    if (!isWorkflowIdRef(ref)) names.add(ref);
+  }
+  return [...names];
 }

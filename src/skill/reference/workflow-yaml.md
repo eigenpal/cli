@@ -471,7 +471,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `name` | string | yes |  |  |
-| `kind` | `"workflow"` \| `"block"` | no | `"workflow"` |  |
+| `kind` | `"workflow"` | no | `"workflow"` |  |
 | `version` | string | no | `"1.0.0"` |  |
 | `description` | string | no |  |  |
 | `enabled` | boolean | no | `true` |  |

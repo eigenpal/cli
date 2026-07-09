@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.19
+
+### Minor Changes
+
+- b84a877: Workflow YAML reference docs now describe `action.invoke-workflow` as the single composition primitive, including inline and child execution modes.
+
 ## 0.10.16
 
 ### Patch Changes

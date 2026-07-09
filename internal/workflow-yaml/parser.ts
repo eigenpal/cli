@@ -76,6 +76,17 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
   // Apply upgrades to convert legacy formats
   const upgraded = upgradeWorkflow(parsed as Record<string, unknown>);
 
+  const deprecatedIssues = collectDeprecatedBlockIssues(upgraded);
+  if (deprecatedIssues.length > 0) {
+    const errorMessages = deprecatedIssues
+      .map((e) => `${e.path.join('.')}: ${e.message}`)
+      .join('; ');
+    throw new WorkflowValidationError(
+      `Invalid workflow definition: ${errorMessages}`,
+      deprecatedIssues
+    );
+  }
+
   // Validate against schema
   const result = WorkflowDefinitionSchema.safeParse(upgraded);
 
@@ -123,6 +134,72 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
  * by the discriminated-union step schema (`FailStepSchema`, `IfStepSchema`,
  * etc.) — we skip them here to avoid double-validating BaseStep fields.
  */
+function collectDeprecatedBlockIssues(definition: Record<string, unknown>): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (definition.kind === 'block') {
+    issues.push({
+      path: ['kind'],
+      message:
+        'kind: block was removed. Define a regular workflow and invoke it with action.invoke-workflow (execution: inline).',
+      code: 'deprecated_kind_block',
+    });
+  }
+
+  function walkSteps(steps: unknown, pathPrefix: (string | number)[]) {
+    if (!Array.isArray(steps)) return;
+    for (let i = 0; i < steps.length; i++) {
+      const raw = steps[i];
+      if (!raw || typeof raw !== 'object') continue;
+      const step = raw as Record<string, unknown>;
+      const stepPath: (string | number)[] = [...pathPrefix, i];
+      if (step.type === 'control.block') {
+        issues.push({
+          path: [...stepPath, 'type'],
+          message:
+            'control.block was removed. Use action.invoke-workflow with execution: inline and workflow set to the target name or wf_ id.',
+          code: 'deprecated_control_block',
+        });
+      }
+      for (const [key, value] of Object.entries(step)) {
+        if (!Array.isArray(value)) continue;
+        for (let j = 0; j < value.length; j++) {
+          const item = value[j];
+          if (!item || typeof item !== 'object') continue;
+          const obj = item as Record<string, unknown>;
+          if ('type' in obj) {
+            walkSteps([obj], [...stepPath, key]);
+          } else if (Array.isArray(obj.steps)) {
+            walkSteps(obj.steps, [...stepPath, key, j, 'steps']);
+          }
+        }
+      }
+      if (Array.isArray(step.then)) walkSteps(step.then, [...stepPath, 'then']);
+      if (Array.isArray(step.else)) walkSteps(step.else, [...stepPath, 'else']);
+      if (Array.isArray(step.steps)) walkSteps(step.steps, [...stepPath, 'steps']);
+      if (Array.isArray(step.default)) walkSteps(step.default, [...stepPath, 'default']);
+      if (Array.isArray(step.cases)) {
+        for (let j = 0; j < step.cases.length; j++) {
+          const c = step.cases[j] as { steps?: unknown };
+          if (Array.isArray(c?.steps)) {
+            walkSteps(c.steps, [...stepPath, 'cases', j, 'steps']);
+          }
+        }
+      }
+      if (Array.isArray(step.branches)) {
+        for (let j = 0; j < step.branches.length; j++) {
+          const b = step.branches[j] as { steps?: unknown };
+          if (Array.isArray(b?.steps)) {
+            walkSteps(b.steps, [...stepPath, 'branches', j, 'steps']);
+          }
+        }
+      }
+    }
+  }
+
+  walkSteps(definition.steps, ['steps']);
+  return issues;
+}
+
 function validateStepConfigsRecursive(
   steps: Step[],
   pathPrefix: (string | number)[]
@@ -132,6 +209,10 @@ function validateStepConfigsRecursive(
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     const stepPath: (string | number)[] = [...pathPrefix, i];
+
+    if (step.type === 'control.block') {
+      continue;
+    }
 
     const schemaDef = getStepSchema(step.type);
     if (schemaDef?.configInWith) {
@@ -242,6 +323,18 @@ export function tryParseWorkflow(yaml: string): ParseResult {
 export function validateWorkflow(obj: unknown): ParseResult {
   // Apply upgrades to convert legacy formats
   const upgraded = upgradeWorkflow(obj as Record<string, unknown>);
+
+  const deprecatedIssues = collectDeprecatedBlockIssues(upgraded);
+  if (deprecatedIssues.length > 0) {
+    const errorMessages = deprecatedIssues
+      .map((e) => `${e.path.join('.')}: ${e.message}`)
+      .join('; ');
+    return {
+      success: false,
+      error: `Invalid workflow definition: ${errorMessages}`,
+      validationErrors: deprecatedIssues,
+    };
+  }
 
   const result = WorkflowDefinitionSchema.safeParse(upgraded);
 

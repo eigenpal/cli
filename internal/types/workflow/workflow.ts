@@ -269,8 +269,8 @@ export const WorkflowDefinitionSchema = z.object({
    * `WORKFLOW_NAME_PATTERN` (lowercase letters/digits/`_`/`-`, 1–64 chars).
    */
   name: WorkflowNameSchema,
-  /** Kind: 'workflow' (default) or 'block' (reusable block) */
-  kind: z.enum(['workflow', 'block']).default('workflow').optional(),
+  /** @deprecated Use triggerMethods / automation_triggers instead of kind. */
+  kind: z.enum(['workflow']).default('workflow').optional(),
   /** Semantic version */
   version: z.string().default('1.0.0'),
   /** Human-readable description */

@@ -1019,24 +1019,85 @@ export const ActionHttpOutputSchema = z.object({
  * action.invoke-workflow - Invoke another workflow
  * Config goes in step.with
  */
-export const ActionInvokeWorkflowConfigSchema = z.object({
-  workflowId: z.string().min(1, 'Workflow ID is required').describe('ID of workflow to invoke'),
-  input: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe("Input record keyed by the invoked workflow's declared inputs"),
-  wait: z
-    .boolean()
-    .optional()
-    .describe(
-      'Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget.'
-    ),
-  timeout: z.number().optional().describe('Max wait time in ms when waiting (default: 300000)'),
-  pollInterval: z
-    .number()
-    .optional()
-    .describe('How often to poll status in ms when waiting (default: 1000)'),
-});
+export const ActionInvokeWorkflowConfigSchema = z
+  .object({
+    workflow: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Workflow to invoke — definition name or wf_ id (tenant-scoped)'),
+    workflowId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Legacy alias for workflow when the value is a wf_ id'),
+    execution: z
+      .enum(['inline', 'child'])
+      .optional()
+      .describe(
+        'inline: run target steps in this execution (default). child: spawn a separate run with lineage.'
+      ),
+    input: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Input record keyed by the invoked workflow's declared inputs"),
+    wait: z
+      .boolean()
+      .optional()
+      .describe(
+        'Child mode only. Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget.'
+      ),
+    timeout: z
+      .number()
+      .optional()
+      .describe('Child mode only. Max wait time in ms when waiting (default: 300000)'),
+    pollInterval: z
+      .number()
+      .optional()
+      .describe('Child mode only. How often to poll status in ms when waiting (default: 1000)'),
+  })
+  .superRefine((data, ctx) => {
+    const hasWorkflow = typeof data.workflow === 'string' && data.workflow.length > 0;
+    const hasWorkflowId = typeof data.workflowId === 'string' && data.workflowId.length > 0;
+    if (hasWorkflow && hasWorkflowId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Cannot set both workflow and workflowId',
+        path: ['workflow'],
+      });
+    }
+    if (!hasWorkflow && !hasWorkflowId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'workflow or workflowId is required',
+        path: ['workflow'],
+      });
+    }
+    const mode = data.execution === 'child' ? 'child' : 'inline';
+    if (mode === 'inline') {
+      if (data.wait === false) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'wait: false is not supported with execution: inline',
+          path: ['wait'],
+        });
+      }
+      if (data.timeout !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'timeout is only supported with execution: child',
+          path: ['timeout'],
+        });
+      }
+      if (data.pollInterval !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'pollInterval is only supported with execution: child',
+          path: ['pollInterval'],
+        });
+      }
+    }
+  });
 
 export const ActionInvokeWorkflowOutputSchema = z
   .record(z.string(), z.unknown())
@@ -1191,19 +1252,6 @@ export const ControlWaitConfigSchema = z.object({
 export const ControlWaitOutputSchema = z.object({
   waited: z.number().describe('Actual milliseconds waited'),
 });
-
-/**
- * control.block - Execute a reusable block workflow inline
- * Config is step-level (blockName, inputs), not in step.with
- */
-export const ControlBlockConfigSchema = z.object({
-  blockName: z.string().min(1, 'Block name is required').describe('Name of the block to execute'),
-  inputs: z.record(z.string(), z.unknown()).optional().describe('Input mapping for the block'),
-});
-
-export const ControlBlockOutputSchema = z
-  .record(z.string(), z.unknown())
-  .describe("Output from block's declared output mapping");
 
 /**
  * control.fail - Terminate the workflow with a typed status code + message.
@@ -1502,15 +1550,6 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: ControlWaitOutputSchema,
     configInWith: false,
   },
-  'control.block': {
-    type: 'control.block',
-    category: 'control',
-    name: 'Block',
-    description: 'Execute a reusable block workflow inline with input/output mapping',
-    configSchema: ControlBlockConfigSchema,
-    outputSchema: ControlBlockOutputSchema,
-    configInWith: false,
-  },
   'control.fail': {
     type: 'control.fail',
     category: 'control',
@@ -1697,5 +1736,4 @@ export type ControlForeachConfig = z.infer<typeof ControlForeachConfigSchema>;
 export type ControlParallelMapConfig = z.infer<typeof ControlParallelMapConfigSchema>;
 export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;
 export type ControlWaitConfig = z.infer<typeof ControlWaitConfigSchema>;
-export type ControlBlockConfig = z.infer<typeof ControlBlockConfigSchema>;
 export type ControlFailConfig = z.infer<typeof ControlFailConfigSchema>;

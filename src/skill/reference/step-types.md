@@ -25,7 +25,7 @@ implement at runtime. Server-side validation errors point you here.
 - `transform.*` — deterministic data transforms (set, remove, combine, split, merge,
   script, template, pdf-embed, xlsx-to-json). WASM sandboxed where applicable.
 - `action.*` — external side effects (HTTP, invoke another workflow, website reader).
-- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, block, fail).
+- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, fail).
 
 The full per-type catalog with field tables is auto-generated below from
 `STEP_SCHEMAS`. The high-level map above tells you which family you want;
@@ -105,7 +105,7 @@ Reference user-supplied schema fields the same way:
 ## Control containers — nested step shape and scoping
 
 `control.parallel`, `control.parallel_map`, `control.foreach`, `control.if`,
-and `control.block` contain nested steps. The auto-generated catalog below
+and inline `action.invoke-workflow` (`execution: inline`) contain nested steps. The auto-generated catalog below
 cannot render that shape, so the YAML form lives here. Same for the scoping
 rules — important because the runtime treats nested steps differently from
 top-level ones, and getting the access path wrong silently returns
@@ -285,19 +285,23 @@ scopes), but the template breaks the moment the OTHER branch runs. Use
 `steps.<if>.output.result` so the access is branch-agnostic — or compute
 the final shape in a trailing `transform.script` that handles both cases.
 
-### `control.block` — call a reusable workflow block
+### `action.invoke-workflow` (inline) — call another workflow in the same run
 
 ```yaml
 - name: invoice-flow
-  type: control.block
-  blockName: parse-invoice          # other workflow's `name:`
-  inputs:
-    contract: '{{ input.contract }}'
+  type: action.invoke-workflow
+  with:
+    workflow: parse-invoice          # target workflow name or wf_ id
+    execution: inline                # default; omit for same-run execution
+    input:
+      contract: '{{ input.contract }}'
 ```
 
-**Access the output:** the block's declared output fields are exposed as
-top-level keys under `steps.<this-step>.output`. Block-internal steps are
-not visible — the block runs in an isolated scope.
+**Access the output:** the target's declared output fields are exposed as
+top-level keys under `steps.<this-step>.output`, with a `files` array alongside.
+Invoked workflow steps run in an isolated scope inside the parent run.
+
+For a separate child run (lineage, fire-and-forget, polling), set `execution: child`.
 
 ## Classify-and-fail pattern
 
@@ -705,11 +709,13 @@ Execute another workflow and return its output
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `workflowId` | string | yes |  | ID of workflow to invoke |
+| `workflow` | string | no |  | Workflow to invoke — definition name or wf_ id (tenant-scoped) |
+| `workflowId` | string | no |  | Legacy alias for workflow when the value is a wf_ id |
+| `execution` | `"inline"` \| `"child"` | no |  | inline: run target steps in this execution (default). child: spawn a separate run with lineage. |
 | `input` | record<string, unknown> | no |  | Input record keyed by the invoked workflow's declared inputs |
-| `wait` | boolean | no |  | Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
-| `timeout` | number | no |  | Max wait time in ms when waiting (default: 300000) |
-| `pollInterval` | number | no |  | How often to poll status in ms when waiting (default: 1000) |
+| `wait` | boolean | no |  | Child mode only. Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
+| `timeout` | number | no |  | Child mode only. Max wait time in ms when waiting (default: 300000) |
+| `pollInterval` | number | no |  | Child mode only. How often to poll status in ms when waiting (default: 1000) |
 
 **Output:** `record<string, unknown>`
 
@@ -846,21 +852,6 @@ Pause workflow execution for a specified duration
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `waited` | number | yes |  | Actual milliseconds waited |
-
-#### `control.block` — Block
-
-Execute a reusable block workflow inline with input/output mapping
-
-**Config** (at step level):
-
-| Field | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `blockName` | string | yes |  | Name of the block to execute |
-| `inputs` | record<string, unknown> | no |  | Input mapping for the block |
-
-**Output:** `record<string, unknown>`
-
-> Output from block's declared output mapping
 
 #### `control.fail` — Fail
 

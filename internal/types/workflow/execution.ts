@@ -36,6 +36,7 @@ export const ScopeEntryTypeSchema = z.enum([
   'parallel-branch',
   'foreach-iteration',
   'parallel-map-iteration',
+  'inline-invoke',
   'block',
 ]);
 export type ScopeEntryType = z.infer<typeof ScopeEntryTypeSchema>;
