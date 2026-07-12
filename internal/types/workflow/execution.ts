@@ -8,6 +8,12 @@ import {
   type StepExecutionStatus as ProcessorStepExecutionStatus,
   type WorkflowExecutionStatus as ProcessorWorkflowExecutionStatus,
 } from '../processor/execution';
+import {
+  ExecutionFailureSchema,
+  ResolvedRetryPolicySchema,
+  RetryDecisionSchema,
+  RetryPolicySourceSchema,
+} from './retry';
 import { WorkflowDefinitionSchema } from './workflow';
 
 /**
@@ -162,6 +168,7 @@ export const WorkflowExecutionSchema = z.object({
 
   /** Queue management */
   priority: z.number().default(50),
+  availableAt: TimestampSchema,
   leaseId: z.string().nullable(),
   leaseExpiresAt: TimestampSchema.nullable(),
   workerId: z.string().nullable(),
@@ -215,6 +222,11 @@ export const StepExecutionSchema = z.object({
 
   /** Retry tracking for step-level retries */
   stepAttempt: z.number().default(0),
+  stepPath: z.string().nullable().optional(),
+  effectiveRetryPolicy: ResolvedRetryPolicySchema.nullable().optional(),
+  retryPolicySource: RetryPolicySourceSchema.nullable().optional(),
+  latestAttempt: z.number().default(0),
+  nextAttemptAt: TimestampSchema.nullable().optional(),
 
   /** Input data */
   inputData: z.unknown().nullable(),
@@ -235,6 +247,23 @@ export const StepExecutionSchema = z.object({
   completedAt: TimestampSchema.nullable(),
 });
 export type StepExecution = z.infer<typeof StepExecutionSchema>;
+
+export const StepExecutionAttemptSchema = z.object({
+  id: z.string(),
+  stepExecutionId: z.string(),
+  executionId: z.string(),
+  tenantId: z.string(),
+  attemptNumber: z.number().int().min(1),
+  status: z.enum(['running', 'success', 'failure', 'cancelled']),
+  resolvedConfig: z.unknown().nullable(),
+  failure: ExecutionFailureSchema.nullable(),
+  retryDecision: RetryDecisionSchema.nullable(),
+  replaySafe: z.boolean().nullable(),
+  startedAt: TimestampSchema,
+  completedAt: TimestampSchema.nullable(),
+  durationMs: z.number().nullable(),
+});
+export type StepExecutionAttempt = z.infer<typeof StepExecutionAttemptSchema>;
 
 /**
  * Connector definition

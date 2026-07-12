@@ -127,6 +127,44 @@ Step references resolve via Liquid template expressions:
 `steps[].name` is the only handle into the step from later steps. Use
 short, descriptive names (`parse`, `extract`, `score`).
 
+<!-- GENERATED:RETRY_REFERENCE START -->
+## Durable retry policies
+
+_Policy syntax is generated from `WorkflowRetryPolicySchema` and `StepRetryPolicySchema`; step capability notes are generated from `STEP_RETRY_CAPABILITIES` in `@eigenpal/types`._
+
+- Workflow policy values: `automatic`, `never` or an object with `mode` and `maxAttempts`.
+- Step policy values: `inherit`, `automatic`, `never`. `automatic` supports object form with `mode` and `maxAttempts`; `never` supports `{ mode: 'never' }`; `inherit` is string-only.
+- The schema accepts `maxAttempts` from 1 through 10. Studio offers 2-3 total attempts, and the current worker ceiling is 3.
+- `maxAttempts` includes the first attempt. If no policy is set, durable retries are off.
+
+```yaml
+settings:
+  retry:
+    mode: automatic
+    maxAttempts: 3
+
+steps:
+  - name: fetch-catalog
+    type: action.http
+    retry: inherit
+    with:
+      method: GET
+      url: 'https://api.example.com/catalog'
+
+  - name: read-product-page
+    type: action.website-reader
+    retry: never
+    with:
+      url: '{{ input.url }}'
+```
+
+`automatic` retries transient timeouts, rate limits, and selected retryable server failures. Delays use bounded exponential backoff, honor `Retry-After`, and stop after a five-minute elapsed budget.
+
+Durable leaf retries are supported for Website Reader and HTTP `GET`/`HEAD`. Unsafe HTTP methods, Invoke Workflow, AI steps (which may have separate provider request retries), and transforms or file outputs are not durably replayed. Control containers are not attempts themselves; eligible leaves inside sequential If, Switch, and For Each scopes may retry, while concurrent Parallel and Parallel Map branches do not. See each generated step entry for its capability.
+
+Legacy whole-run retry counts are accepted for compatibility but no longer restart failed runs. Move retry intent to the workflow retry default or an eligible step.
+<!-- GENERATED:RETRY_REFERENCE END -->
+
 ### `output`
 
 ```yaml

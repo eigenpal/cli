@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { StepRetryPolicySchema } from './retry';
 
 /**
  * Compound step types - format: "category.operation"
@@ -106,24 +107,30 @@ export const StepTypeSchema = z.enum(STEP_TYPES);
 /**
  * Base step properties shared by all step types
  */
-const BaseStepSchema = z.object({
-  /** Step type in format "category.operation" */
-  type: StepTypeSchema,
-  /** Unique step name within the workflow */
-  name: z.string().min(1),
-  /** Optional human-readable description of what this step does */
-  description: z.string().optional(),
-  /** Optional condition - step runs only if this evaluates to true */
-  if: z.string().optional(),
-  /** Step timeout in milliseconds */
-  timeout: z.number().positive().optional(),
-  /** Number of retries on failure */
-  retries: z.number().int().min(0).optional(),
-  /** Delay between retries in milliseconds */
-  retryDelay: z.number().positive().optional(),
-  /** Step configuration with template expressions */
-  with: z.record(z.string(), z.unknown()).optional(),
-});
+const BaseStepSchema = z
+  .object({
+    /** Step type in format "category.operation" */
+    type: StepTypeSchema,
+    /** Unique step name within the workflow */
+    name: z.string().min(1),
+    /** Optional human-readable description of what this step does */
+    description: z.string().optional(),
+    /** Optional condition - step runs only if this evaluates to true */
+    if: z.string().optional(),
+    /** Step timeout in milliseconds */
+    timeout: z.number().positive().optional(),
+    /** Retry policy for this executable leaf step. Omit to inherit workflow defaults. */
+    retry: StepRetryPolicySchema.optional(),
+    /** @deprecated Parsed for compatibility; no longer drives execution. */
+    retries: z.number().int().min(0).optional(),
+    /** @deprecated Parsed for compatibility; no longer drives execution. */
+    retryDelay: z.number().positive().optional(),
+    /** Step configuration with template expressions */
+    with: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const ControlContainerBaseStepSchema = BaseStepSchema.omit({ retry: true });
 
 /**
  * AI step - AI-powered operations
@@ -144,7 +151,7 @@ export type TransformStep = z.infer<typeof TransformStepSchema>;
 /**
  * HTTP method for action steps
  */
-export const HttpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+export const HttpMethodSchema = z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 export type HttpMethod = z.infer<typeof HttpMethodSchema>;
 
 /**
@@ -215,8 +222,6 @@ export interface IfStep {
   description?: string;
   if?: string;
   timeout?: number;
-  retries?: number;
-  retryDelay?: number;
   with?: Record<string, unknown>;
   /** Condition expression (LiquidJS) */
   condition: string;
@@ -246,8 +251,6 @@ export interface SwitchStep {
   description?: string;
   if?: string;
   timeout?: number;
-  retries?: number;
-  retryDelay?: number;
   with?: Record<string, unknown>;
   /** Template expression whose resolved value selects the case, e.g. "{{ doc.type }}". */
   on: string;
@@ -274,8 +277,6 @@ export interface ParallelStep {
   description?: string;
   if?: string;
   timeout?: number;
-  retries?: number;
-  retryDelay?: number;
   with?: Record<string, unknown>;
   /** Named branches to execute concurrently */
   branches: ParallelBranch[];
@@ -291,8 +292,6 @@ export interface ForeachStep {
   description?: string;
   if?: string;
   timeout?: number;
-  retries?: number;
-  retryDelay?: number;
   with?: Record<string, unknown>;
   /** Expression returning array to iterate */
   items: string;
@@ -315,8 +314,6 @@ export interface ParallelMapStep {
   description?: string;
   if?: string;
   timeout?: number;
-  retries?: number;
-  retryDelay?: number;
   with?: Record<string, unknown>;
   /** Expression returning array to iterate */
   items: string;
@@ -350,12 +347,14 @@ export interface LegacyBlockStep {
 // Schema for legacy block step (parse-only for in-flight snapshots)
 const LegacyBlockStepSchemaInner = BaseStepSchema.extend({
   type: z.literal('control.block'),
+  retries: z.number().int().min(0).optional(),
+  retryDelay: z.number().positive().optional(),
   blockName: z.string().min(1),
   inputs: z.record(z.string(), z.unknown()).optional(),
 });
 
 // Schema for if step
-const IfStepSchemaInner = BaseStepSchema.extend({
+const IfStepSchemaInner = ControlContainerBaseStepSchema.extend({
   type: z.literal('control.if'),
   condition: z.string(),
   then: z.lazy((): z.ZodType<Step[]> => z.array(StepSchema)),
@@ -367,7 +366,7 @@ const SwitchCaseSchemaInner = z.object({
   when: z.union([z.string(), z.number(), z.boolean()]),
   steps: z.lazy((): z.ZodType<Step[]> => z.array(StepSchema)),
 });
-const SwitchStepSchemaInner = BaseStepSchema.extend({
+const SwitchStepSchemaInner = ControlContainerBaseStepSchema.extend({
   type: z.literal('control.switch'),
   on: z.string(),
   cases: z.array(SwitchCaseSchemaInner),
@@ -381,13 +380,13 @@ const ParallelBranchSchemaInner = z.object({
 });
 
 // Schema for parallel step
-const ParallelStepSchemaInner = BaseStepSchema.extend({
+const ParallelStepSchemaInner = ControlContainerBaseStepSchema.extend({
   type: z.literal('control.parallel'),
   branches: z.array(ParallelBranchSchemaInner),
 });
 
 // Schema for foreach step
-const ForeachStepSchemaInner = BaseStepSchema.extend({
+const ForeachStepSchemaInner = ControlContainerBaseStepSchema.extend({
   type: z.literal('control.foreach'),
   items: z.string(),
   as: z.string(),
@@ -396,7 +395,7 @@ const ForeachStepSchemaInner = BaseStepSchema.extend({
 });
 
 // Schema for parallel_map step
-const ParallelMapStepSchemaInner = BaseStepSchema.extend({
+const ParallelMapStepSchemaInner = ControlContainerBaseStepSchema.extend({
   type: z.literal('control.parallel_map'),
   items: z.string(),
   as: z.string(),

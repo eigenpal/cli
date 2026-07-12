@@ -30,6 +30,7 @@ export {
   ControlWaitConfigSchema,
   ControlWaitOutputSchema,
   // Registry and utilities
+  STEP_RETRY_CAPABILITIES,
   STEP_SCHEMAS,
   // Transform step schemas
   TransformCombineConfigSchema,
@@ -54,6 +55,7 @@ export {
   getRequiredOutputKeys,
   getStepConfigSchema,
   getStepOutputSchema,
+  getStepRetryCapability,
   getStepSchema,
   isOutputSchemaUnknown,
   listStepTypes,
@@ -128,6 +130,31 @@ export {
   type TransformStep,
   type WaitStep,
 } from './steps';
+
+// Retry policies and structured failures
+export {
+  ExecutionFailureSchema,
+  ResolvedRetryPolicySchema,
+  RetryCategorySchema,
+  RetryDecisionSchema,
+  RetryPolicySourceSchema,
+  RetryTerminalReasonSchema,
+  StepRetryCapabilitySchema,
+  StepRetryPolicySchema,
+  WorkflowRetryPolicySchema,
+  resolveRetryPolicy,
+  type ExecutionFailure,
+  type ResolvedRetryPolicy,
+  type ResolvedRetryPolicyWithSource,
+  type RetryCategory,
+  type RetryDecision,
+  type RetryPolicyCeilings,
+  type RetryPolicySource,
+  type RetryTerminalReason,
+  type StepRetryCapability,
+  type StepRetryPolicy,
+  type WorkflowRetryPolicy,
+} from './retry';
 
 // Workflow types
 export {
@@ -213,6 +240,7 @@ export {
   ScopeEntrySchema,
   ScopeEntryTypeSchema,
   ScopeStackSchema,
+  StepExecutionAttemptSchema,
   StepExecutionSchema,
   StepExecutionStatusSchema,
   StepExecutionStatusValue,
@@ -232,6 +260,7 @@ export {
   type ScopeEntryType,
   type ScopeStack,
   type StepExecution,
+  type StepExecutionAttempt,
   type StepExecutionStatus,
   type StepInputReference,
   type StepResult,

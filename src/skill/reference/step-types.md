@@ -358,6 +358,8 @@ _Generated from `STEP_SCHEMAS` in `@eigenpal/types/src/workflow/step-configs.ts`
 
 Extract text from documents (PDF, DOCX, images) using OCR or vision models
 
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -386,6 +388,8 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 
 Extract structured data from text using AI with a JSON schema
 
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -409,6 +413,8 @@ Extract structured data from text using AI with a JSON schema
 
 Split a parsed document into named sections using an LLM. Consumes ai.parse output; emits per-section page ranges and text ready for downstream ai.extract via control.parallel_map.
 
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -428,6 +434,8 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 #### `ai.segment` — Separate Documents
 
 Separate a concatenated batch (one big scan) into typed document instances using an LLM. Consumes ai.parse output and a type taxonomy; discovers an unknown number of documents in any order and emits per-document page ranges + text + type, ready for type-specific ai.extract via control.parallel_map. The inverse of ai.split.
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
 
 **Config** (in `step.with`):
 
@@ -449,6 +457,8 @@ Separate a concatenated batch (one big scan) into typed document instances using
 #### `ai.classify` — Classify
 
 Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
 
 **Config** (in `step.with`):
 
@@ -475,6 +485,8 @@ Classify a document or text into one of a fixed label set using an LLM. Output e
 
 Set key-value pairs in the output object
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -489,6 +501,8 @@ Set key-value pairs in the output object
 #### `transform.remove` — Remove Fields
 
 Remove specified fields from an object
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
 
 **Config** (in `step.with`):
 
@@ -505,6 +519,8 @@ Remove specified fields from an object
 
 Merge multiple objects or concatenate arrays
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -520,6 +536,8 @@ Merge multiple objects or concatenate arrays
 #### `transform.split` — Split Data
 
 Split a string by delimiter or extract keys from an object
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
 
 **Config** (in `step.with`):
 
@@ -540,6 +558,8 @@ Split a string by delimiter or extract keys from an object
 
 Merge multiple named inputs into a single output
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -558,6 +578,8 @@ Merge multiple named inputs into a single output
 #### `transform.template` — Fill Template
 
 Fill a DOCX template with data from previous steps. Select a template in the workflow builder or provide a template ID from your workspace.
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
 
 **Config** (in `step.with`):
 
@@ -578,6 +600,8 @@ Fill a DOCX template with data from previous steps. Select a template in the wor
 #### `transform.pdf-embed` — Embed PDF Text
 
 Embed OCR text layer into scanned PDFs/images to make them searchable
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
 
 **Config** (in `step.with`):
 
@@ -601,6 +625,8 @@ Embed OCR text layer into scanned PDFs/images to make them searchable
 
 Convert XLSX spreadsheet to JSON array of row objects for use in scripts or downstream steps
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -621,6 +647,8 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 
 Execute a TypeScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -637,6 +665,8 @@ Execute a TypeScript function in a QuickJS sandbox. Input keys become the functi
 #### `transform.text-chunker` — Text Chunker
 
 Split long text into chunks with regex-anchored boundaries, overlap, and header preservation. Accepts raw text or a parsed-document object; chunks carry source page indexes when pages are provided.
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
 
 **Config** (in `step.with`):
 
@@ -661,6 +691,8 @@ Split long text into chunks with regex-anchored boundaries, overlap, and header 
 
 Pull named fields from text via regex patterns (deterministic counterpart to ai.extract). Accepts raw text or a parsed-document object; matches carry `_evidence.pageIndex` when pages are provided.
 
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
@@ -680,12 +712,14 @@ Pull named fields from text via regex patterns (deterministic counterpart to ai.
 
 Make an HTTP request to an external API
 
+**Durable retry:** HTTP `GET` and `HEAD` can durably retry transient timeout, rate limits, selected retryable server failures failures. Other methods are not replayed.
+
 **Config** (in `step.with`):
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `url` | string | yes |  | Request URL (supports template expressions) |
-| `method` | `"GET"` \| `"POST"` \| `"PUT"` \| `"PATCH"` \| `"DELETE"` | no | `"GET"` |  |
+| `method` | `"GET"` \| `"HEAD"` \| `"POST"` \| `"PUT"` \| `"PATCH"` \| `"DELETE"` | no | `"GET"` |  |
 | `headers` | record<string, string> | no |  | HTTP headers |
 | `body` | unknown | no |  | Request body (JSON or string) |
 | `timeout` | number | no | `30000` | Timeout in milliseconds |
@@ -704,6 +738,8 @@ Make an HTTP request to an external API
 #### `action.invoke-workflow` — Invoke Workflow
 
 Execute another workflow and return its output
+
+**Durable retry:** Invoked workflows are not replayed as durable leaf attempts.
 
 **Config** (in `step.with`):
 
@@ -724,6 +760,8 @@ Execute another workflow and return its output
 #### `action.website-reader` — Website Reader
 
 Fetch a webpage and convert content to markdown
+
+**Durable retry:** Supported for transient timeout, rate limits, selected retryable server failures failures.
 
 **Config** (in `step.with`):
 
@@ -751,6 +789,8 @@ Fetch a webpage and convert content to markdown
 
 Branch execution based on a condition expression
 
+**Durable retry:** The control container itself is not retried, but eligible leaves inside its sequential scope may retry durably.
+
 **Config** (at step level):
 
 | Field | Type | Required | Default | Description |
@@ -768,6 +808,8 @@ Branch execution based on a condition expression
 #### `control.switch` — Switch
 
 Multi-way routing: resolve an expression and run the first case whose value matches (else default). Cleaner than a nested control.if chain for routing an item to one of N pipelines by a discriminator field like a document type.
+
+**Durable retry:** The control container itself is not retried, but eligible leaves inside its sequential scope may retry durably.
 
 **Config** (at step level):
 
@@ -788,6 +830,8 @@ Multi-way routing: resolve an expression and run the first case whose value matc
 
 Loop over an array and execute steps for each item
 
+**Durable retry:** The control container itself is not retried, but eligible leaves inside its sequential scope may retry durably.
+
 **Config** (at step level):
 
 | Field | Type | Required | Default | Description |
@@ -807,6 +851,8 @@ Loop over an array and execute steps for each item
 #### `control.parallel_map` — Parallel Map
 
 Iterate over an array with concurrent execution up to a limit
+
+**Durable retry:** The control container and leaves inside its concurrent branches do not retry durably.
 
 **Config** (at step level):
 
@@ -829,6 +875,8 @@ Iterate over an array with concurrent execution up to a limit
 
 Execute multiple branches concurrently
 
+**Durable retry:** The control container and leaves inside its concurrent branches do not retry durably.
+
 **Config** (at step level):
 
 _No fields._
@@ -840,6 +888,8 @@ _No fields._
 #### `control.wait` — Wait
 
 Pause workflow execution for a specified duration
+
+**Durable retry:** This control step is not retried durably.
 
 **Config** (at step level):
 
@@ -856,6 +906,8 @@ Pause workflow execution for a specified duration
 #### `control.fail` — Fail
 
 Terminate the workflow with a typed status code + message. With an optional condition, only fails when the condition is truthy; otherwise always fails when reached. Pair with ai.classify or any prior step to fail fast on bad inputs.
+
+**Durable retry:** This control step is not retried durably.
 
 **Config** (at step level):
 

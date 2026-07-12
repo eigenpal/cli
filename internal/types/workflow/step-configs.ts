@@ -15,6 +15,7 @@
 import { z } from 'zod';
 import { toJsonSchema, type JsonSchema7Type } from '../core/common';
 import { compileTypedScript } from '../typed-script';
+import type { StepRetryCapability } from './retry';
 import { SCRIPT_FN_MAX_BYTES } from './script-function';
 import type { StepType } from './steps';
 import { STEP_TYPES } from './steps';
@@ -992,7 +993,7 @@ export const TransformRegexExtractOutputSchema = z
  */
 export const ActionHttpConfigSchema = z.object({
   url: z.string().min(1, 'URL is required').describe('Request URL (supports template expressions)'),
-  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET').optional(),
+  method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET').optional(),
   headers: z.record(z.string(), z.string()).optional().describe('HTTP headers'),
   body: z.unknown().optional().describe('Request body (JSON or string)'),
   timeout: z.number().positive().default(30000).optional().describe('Timeout in milliseconds'),
@@ -1306,6 +1307,77 @@ export interface StepSchemaDefinition {
   outputSchema: z.ZodType;
   /** Whether config goes in step.with (true) or step-level properties (false) */
   configInWith: boolean;
+}
+
+const AI_RETRY_CAPABILITY: StepRetryCapability = {
+  replaySafety: 'safe',
+  automaticCategories: [
+    'timeout',
+    'rate_limited',
+    'temporarily_unavailable',
+    'invalid_provider_output',
+  ],
+  hasProviderRequestRetries: true,
+};
+
+const DETERMINISTIC_RETRY_CAPABILITY: StepRetryCapability = {
+  replaySafety: 'safe',
+  automaticCategories: [],
+};
+
+const CONTROL_RETRY_CAPABILITY: StepRetryCapability = {
+  replaySafety: 'never',
+  automaticCategories: [],
+};
+
+// These processors publish durable file rows and object-storage keys during
+// execution. Keep replay disabled until attempt-scoped artifact staging can
+// atomically promote their outputs.
+const FILE_OUTPUT_RETRY_CAPABILITY: StepRetryCapability = {
+  replaySafety: 'never',
+  automaticCategories: [],
+};
+
+export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
+  'ai.parse': AI_RETRY_CAPABILITY,
+  'ai.extract': AI_RETRY_CAPABILITY,
+  'ai.split': AI_RETRY_CAPABILITY,
+  'ai.segment': AI_RETRY_CAPABILITY,
+  'ai.classify': AI_RETRY_CAPABILITY,
+  'transform.set': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.remove': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.combine': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.split': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.merge': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.template': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.pdf-embed': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.xlsx-to-json': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.script': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.text-chunker': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.regex-extract': DETERMINISTIC_RETRY_CAPABILITY,
+  'action.http': {
+    replaySafety: 'requires-idempotency',
+    automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
+  },
+  'action.invoke-workflow': {
+    replaySafety: 'requires-idempotency',
+    automaticCategories: ['timeout', 'temporarily_unavailable'],
+  },
+  'action.website-reader': {
+    replaySafety: 'safe',
+    automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
+  },
+  'control.if': CONTROL_RETRY_CAPABILITY,
+  'control.switch': CONTROL_RETRY_CAPABILITY,
+  'control.foreach': CONTROL_RETRY_CAPABILITY,
+  'control.parallel': CONTROL_RETRY_CAPABILITY,
+  'control.parallel_map': CONTROL_RETRY_CAPABILITY,
+  'control.wait': CONTROL_RETRY_CAPABILITY,
+  'control.fail': CONTROL_RETRY_CAPABILITY,
+};
+
+export function getStepRetryCapability(stepType: StepType): StepRetryCapability {
+  return STEP_RETRY_CAPABILITIES[stepType];
 }
 
 export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {

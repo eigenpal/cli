@@ -4,6 +4,7 @@ import {
   TriggerTypeSchema as ProcessorTriggerTypeSchema,
   TriggerTypeValue as ProcessorTriggerTypeValue,
 } from '../processor/execution';
+import { WorkflowRetryPolicySchema } from './retry';
 import { StepSchema } from './steps';
 
 /**
@@ -215,14 +216,18 @@ export type TriggerMethods = z.infer<typeof TriggerMethodsSchema>;
 /**
  * Workflow settings
  */
-export const WorkflowSettingsSchema = z.object({
-  /** Default timeout for all steps (ms) */
-  timeout: z.number().positive().optional(),
-  /** Default retries for all steps */
-  retries: z.number().int().min(0).optional(),
-  /** Retry delay (ms) */
-  retryDelay: z.number().positive().optional(),
-});
+export const WorkflowSettingsSchema = z
+  .object({
+    /** Default timeout for all steps (ms) */
+    timeout: z.number().positive().optional(),
+    /** Default retry behavior inherited by executable leaf steps. */
+    retry: WorkflowRetryPolicySchema.optional(),
+    /** @deprecated Parsed for compatibility; no longer drives execution. */
+    retries: z.number().int().min(0).optional(),
+    /** @deprecated Parsed for compatibility; no longer drives execution. */
+    retryDelay: z.number().positive().optional(),
+  })
+  .strict();
 export type WorkflowSettings = z.infer<typeof WorkflowSettingsSchema>;
 
 /**

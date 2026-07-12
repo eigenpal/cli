@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.20
+
+### Minor Changes
+
+- 28f2e84: The bundled workflow reference now documents durable retry policies, inheritance, supported step types, and retry safety limits.
+
 ## 0.10.19
 
 ### Minor Changes

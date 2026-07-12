@@ -18,11 +18,14 @@ import {
   EvaluatorBaseEntrySchema,
   ExactDiffConfigSchema,
   LlmJudgeConfigSchema,
+  STEP_RETRY_CAPABILITIES,
   STEP_SCHEMAS,
-  type StepCategory,
-  type StepSchemaDefinition,
+  StepRetryPolicySchema,
   WorkflowDefinitionSchema,
   WorkflowInputDefSchema,
+  WorkflowRetryPolicySchema,
+  type StepCategory,
+  type StepSchemaDefinition,
 } from '@eigenpal/types';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -37,12 +40,15 @@ const CLI_DOCS_DEST = join(SKILL_DIR, 'cli');
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 
 interface JsonSchemaLike {
+  const?: unknown;
   type?: string | string[];
   description?: string;
   properties?: Record<string, JsonSchemaLike>;
   required?: string[];
   default?: unknown;
   enum?: unknown[];
+  minimum?: number;
+  maximum?: number;
   items?: JsonSchemaLike | JsonSchemaLike[];
   anyOf?: JsonSchemaLike[];
   oneOf?: JsonSchemaLike[];
@@ -63,6 +69,7 @@ function toJsonSchema(schema: ZodType): JsonSchemaLike {
 
 function describeType(schema: JsonSchemaLike | undefined): string {
   if (!schema) return '—';
+  if (schema.const !== undefined) return `\`${JSON.stringify(schema.const)}\``;
   if (schema.enum) {
     return schema.enum.map((v) => `\`${JSON.stringify(v)}\``).join(' \\| ');
   }
@@ -123,6 +130,73 @@ function renderObjectFields(schema: JsonSchemaLike): string {
   return rows.join('\n') + '\n';
 }
 
+function findPropertySchema(
+  schema: JsonSchemaLike,
+  propertyName: string
+): JsonSchemaLike | undefined {
+  const direct = schema.properties?.[propertyName];
+  if (direct) return direct;
+  for (const branch of [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])]) {
+    const found = findPropertySchema(branch, propertyName);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function literalValues(schema: JsonSchemaLike): unknown[] {
+  const values: unknown[] = [];
+  if (schema.const !== undefined) values.push(schema.const);
+  if (schema.enum) values.push(...schema.enum);
+  for (const branch of [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])]) {
+    values.push(...literalValues(branch));
+  }
+  return [...new Set(values)];
+}
+
+function formatCodeValues(values: unknown[]): string {
+  return values.map((value) => `\`${String(value)}\``).join(', ');
+}
+
+function retryCategoryLabel(category: string): string {
+  if (category === 'rate_limited') return 'rate limits';
+  if (category === 'temporarily_unavailable') return 'selected retryable server failures';
+  return category;
+}
+
+function retryCapabilitySummary(def: StepSchemaDefinition): string {
+  const capability = STEP_RETRY_CAPABILITIES[def.type];
+  if (def.type === 'action.http') {
+    return `HTTP \`GET\` and \`HEAD\` can durably retry transient ${capability.automaticCategories
+      .map(retryCategoryLabel)
+      .join(', ')} failures. Other methods are not replayed.`;
+  }
+  if (def.type === 'action.website-reader') {
+    return `Supported for transient ${capability.automaticCategories
+      .map(retryCategoryLabel)
+      .join(', ')} failures.`;
+  }
+  if (def.type === 'action.invoke-workflow') {
+    return 'Invoked workflows are not replayed as durable leaf attempts.';
+  }
+  if (capability.hasProviderRequestRetries) {
+    return 'Provider request retries are separate; the workflow engine does not durably retry this step.';
+  }
+  if (def.category === 'transform') {
+    return 'Transforms, including those that write files, are not durably retried.';
+  }
+  if (def.type === 'control.parallel' || def.type === 'control.parallel_map') {
+    return 'The control container and leaves inside its concurrent branches do not retry durably.';
+  }
+  if (
+    def.type === 'control.if' ||
+    def.type === 'control.switch' ||
+    def.type === 'control.foreach'
+  ) {
+    return 'The control container itself is not retried, but eligible leaves inside its sequential scope may retry durably.';
+  }
+  return 'This control step is not retried durably.';
+}
+
 // ---------------------------------------------------------------------------
 // step-types.md — STEP_CATALOG
 // ---------------------------------------------------------------------------
@@ -155,6 +229,8 @@ function renderStepCatalog(): string {
       lines.push(`#### \`${def.type}\` — ${def.name}`);
       lines.push('');
       lines.push(def.description);
+      lines.push('');
+      lines.push(`**Durable retry:** ${retryCapabilitySummary(def)}`);
       lines.push('');
       const where = def.configInWith ? '(in `step.with`)' : '(at step level)';
       lines.push(`**Config** ${where}:`);
@@ -233,6 +309,55 @@ function renderEvaluatorCatalog(): string {
 // workflow-yaml.md — WORKFLOW_TOP_LEVEL + INPUT_FIELDS
 // ---------------------------------------------------------------------------
 
+function renderRetryReference(): string {
+  const workflowPolicy = toJsonSchema(WorkflowRetryPolicySchema);
+  const stepPolicy = toJsonSchema(StepRetryPolicySchema);
+  const maxAttempts = findPropertySchema(stepPolicy, 'maxAttempts');
+  const workflowModes = literalValues(workflowPolicy).filter((value) => typeof value === 'string');
+  const stepModes = literalValues(stepPolicy).filter((value) => typeof value === 'string');
+  const schemaMinimum = maxAttempts?.minimum ?? 1;
+  const schemaMaximum = maxAttempts?.maximum ?? 10;
+
+  return [
+    '## Durable retry policies',
+    '',
+    '_Policy syntax is generated from `WorkflowRetryPolicySchema` and `StepRetryPolicySchema`; step capability notes are generated from `STEP_RETRY_CAPABILITIES` in `@eigenpal/types`._',
+    '',
+    `- Workflow policy values: ${formatCodeValues(workflowModes)} or an object with \`mode\` and \`maxAttempts\`.`,
+    `- Step policy values: ${formatCodeValues(stepModes)}. \`automatic\` supports object form with \`mode\` and \`maxAttempts\`; \`never\` supports \`{ mode: 'never' }\`; \`inherit\` is string-only.`,
+    `- The schema accepts \`maxAttempts\` from ${schemaMinimum} through ${schemaMaximum}. Studio offers 2-3 total attempts, and the current worker ceiling is 3.`,
+    '- `maxAttempts` includes the first attempt. If no policy is set, durable retries are off.',
+    '',
+    '```yaml',
+    'settings:',
+    '  retry:',
+    '    mode: automatic',
+    '    maxAttempts: 3',
+    '',
+    'steps:',
+    '  - name: fetch-catalog',
+    '    type: action.http',
+    '    retry: inherit',
+    '    with:',
+    '      method: GET',
+    "      url: 'https://api.example.com/catalog'",
+    '',
+    '  - name: read-product-page',
+    '    type: action.website-reader',
+    '    retry: never',
+    '    with:',
+    "      url: '{{ input.url }}'",
+    '```',
+    '',
+    '`automatic` retries transient timeouts, rate limits, and selected retryable server failures. Delays use bounded exponential backoff, honor `Retry-After`, and stop after a five-minute elapsed budget.',
+    '',
+    'Durable leaf retries are supported for Website Reader and HTTP `GET`/`HEAD`. Unsafe HTTP methods, Invoke Workflow, AI steps (which may have separate provider request retries), and transforms or file outputs are not durably replayed. Control containers are not attempts themselves; eligible leaves inside sequential If, Switch, and For Each scopes may retry, while concurrent Parallel and Parallel Map branches do not. See each generated step entry for its capability.',
+    '',
+    'Legacy whole-run retry counts are accepted for compatibility but no longer restart failed runs. Move retry intent to the workflow retry default or an eligible step.',
+    '',
+  ].join('\n');
+}
+
 function renderWorkflowTopLevel(): string {
   const lines: string[] = [];
   lines.push('## Top-level fields — full reference');
@@ -271,7 +396,10 @@ const GENERATIONS: Generation[] = [
   },
   {
     file: 'workflow-yaml.md',
-    blocks: { WORKFLOW_REFERENCE: renderWorkflowTopLevel() },
+    blocks: {
+      RETRY_REFERENCE: renderRetryReference(),
+      WORKFLOW_REFERENCE: renderWorkflowTopLevel(),
+    },
   },
 ];
 
