@@ -52,6 +52,11 @@ export const ID_PREFIXES = {
   AUTOMATION_TRIGGER: 'atr',
   // External file-source resolver instance config (single-tenant)
   FILE_SOURCE_CONFIG: 'fsc',
+  // Outbound webhooks
+  WEBHOOK_ENDPOINT: 'whep',
+  WEBHOOK_EVENT: 'whev',
+  WEBHOOK_DELIVERY: 'whdl',
+  WEBHOOK_ATTEMPT: 'what',
   // Token prefixes (not IDs, but follow the same registry)
   SANDBOX_WS_TOKEN: 'sws',
 } as const;

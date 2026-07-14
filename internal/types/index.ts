@@ -365,6 +365,9 @@ export * from './api/display-path';
 
 export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/sample-rank';
 
+// Organization-managed outbound webhook contracts
+export * from './webhooks';
+
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';
 
