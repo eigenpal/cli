@@ -23,7 +23,7 @@ import { z } from 'zod';
 import { ApiClient, ApiError } from '../../lib/client';
 import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
-import { addJsonFlag, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
+import { addJsonFlag, dim, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
 import { registerSourceInitCommand } from './init';
 import { runGitPassthrough, type BaseOpts } from './passthrough';
 import { registerSourceSecretCommands } from './secrets';
@@ -644,12 +644,44 @@ export function bumpReleaseVersion(
   return `${major}.${minor}.${patch + 1}`;
 }
 
+/** Gateway/unavailable statuses the sync endpoint uses for "try again". */
+const RETRYABLE_SYNC_STATUSES = new Set([502, 503, 504]);
+
+/**
+ * Right after `agents release` pushes the tag, the git provider can be
+ * momentarily behind and the server answers 503. Retry briefly before
+ * surfacing the failure — the identical request succeeds seconds later.
+ * Non-gateway statuses (auth, validation, plain 500s) are NOT retried.
+ * Exported for tests.
+ */
+export async function retrySyncRequest(
+  request: () => Promise<unknown>,
+  opts: { attempts?: number; delayMs?: (attempt: number) => number } = {}
+): Promise<void> {
+  const attempts = opts.attempts ?? 4;
+  const delayMs = opts.delayMs ?? ((attempt: number) => attempt * 1500);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await request();
+      return;
+    } catch (err) {
+      const retryable =
+        err instanceof ApiError && RETRYABLE_SYNC_STATUSES.has(err.status) && attempt < attempts;
+      if (!retryable) throw err;
+      dim(`  sync attempt ${attempt} failed (HTTP ${(err as ApiError).status}), retrying...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs(attempt)));
+    }
+  }
+}
+
 async function syncLatestAutomation(
   client: ApiClient,
   packagePath: SourcePackagePath
 ): Promise<void> {
   const automation = pathToDottedPackageName(packagePath);
-  await client.post(`/api/v1/automations/${encodeURIComponent(automation)}/sync`);
+  await retrySyncRequest(() =>
+    client.post(`/api/v1/automations/${encodeURIComponent(automation)}/sync`)
+  );
   success(`Synced ${automation} to latest release.`);
 }
 

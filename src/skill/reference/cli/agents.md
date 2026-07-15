@@ -8,12 +8,11 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
 - [Commands](#commands)
   - [Core](#core)
   - [File](#file)
-  - [Secret](#secret)
+  - [Secrets](#secrets)
   - [Dataset](#dataset)
   - [Experiment](#experiment)
   - [Session](#session)
   - [Env](#env)
-  - [Secrets](#secrets)
 - [Details](#details)
   - [`eigenpal agents list|ls [options]`](#eigenpal-agents-listls-options)
   - [`eigenpal agents validate [options] [dir]`](#eigenpal-agents-validate-options-dir)
@@ -36,9 +35,11 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
   - [`eigenpal agents file list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-file-listls-options-agent-id-or-slug)
   - [`eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`](#eigenpal-agents-file-get-options-agent-id-or-slug-remote-path)
   - [`eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>`](#eigenpal-agents-file-diff-options-agent-id-or-slug-remote-path-local-path)
-  - [`eigenpal agents secret set [options] <name>`](#eigenpal-agents-secret-set-options-name)
-  - [`eigenpal agents secret unset [options] <name>`](#eigenpal-agents-secret-unset-options-name)
-  - [`eigenpal agents secret import [options] <env-file>`](#eigenpal-agents-secret-import-options-env-file)
+  - [`eigenpal agents secrets|secret list|ls [options]`](#eigenpal-agents-secretssecret-listls-options)
+  - [`eigenpal agents secrets|secret set [options] <name>`](#eigenpal-agents-secretssecret-set-options-name)
+  - [`eigenpal agents secrets|secret unset [options] <name>`](#eigenpal-agents-secretssecret-unset-options-name)
+  - [`eigenpal agents secrets|secret import [options] <env-file>`](#eigenpal-agents-secretssecret-import-options-env-file)
+  - [`eigenpal agents secrets|secret export [options] [target]`](#eigenpal-agents-secretssecret-export-options-target)
   - [`eigenpal agents dataset list|ls [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-listls-options-agent-id-or-slug)
   - [`eigenpal agents dataset push [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-push-options-agent-id-or-slug)
   - [`eigenpal agents dataset pull [options] <agent-id-or-slug>`](#eigenpal-agents-dataset-pull-options-agent-id-or-slug)
@@ -55,7 +56,6 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
   - [`eigenpal agents session message [options] <session-id>`](#eigenpal-agents-session-message-options-session-id)
   - [`eigenpal agents session stop [options] <session-id>`](#eigenpal-agents-session-stop-options-session-id)
   - [`eigenpal agents env pull [options] [target]`](#eigenpal-agents-env-pull-options-target)
-  - [`eigenpal agents secrets export [options] [target]`](#eigenpal-agents-secrets-export-options-target)
 
 ## Surface
 
@@ -83,10 +83,12 @@ agents
 ├── versions <package>
 ├── release <version> [dir]
 ├── sync [automation]
-├── secret
+├── secrets|secret
+│   ├── list|ls
 │   ├── set <name>
 │   ├── unset <name>
-│   └── import <env-file>
+│   ├── import <env-file>
+│   └── export [target]
 ├── dataset
 │   ├── list|ls <agent-id-or-slug>
 │   ├── push <agent-id-or-slug>
@@ -105,10 +107,8 @@ agents
 │   ├── start <agent-id-or-slug>
 │   ├── message <session-id>
 │   └── stop <session-id>
-├── env
-│   └── pull [target]
-└── secrets
-    └── export [target]
+└── env
+    └── pull [target]
 ```
 
 ## Commands
@@ -144,22 +144,24 @@ agents
 | `eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`               | Download one live agent file.                     |
 | `eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>` | Compare one live agent file against a local file. |
 
-### Secret
+### Secrets
 
-| Command                                              | Description                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------------- |
-| `eigenpal agents secret set [options] <name>`        | Encrypt and set a secret value in secrets.enc.yaml.              |
-| `eigenpal agents secret unset [options] <name>`      | Remove a secret from secrets.enc.yaml.                           |
-| `eigenpal agents secret import [options] <env-file>` | Import KEY=value entries from an env file into secrets.enc.yaml. |
+| Command                                                       | Description                                                           |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `eigenpal agents secrets\|secret list\|ls [options]`          | List secret names declared in secrets.enc.yaml (never prints values). |
+| `eigenpal agents secrets\|secret set [options] <name>`        | Encrypt and set a secret value in secrets.enc.yaml.                   |
+| `eigenpal agents secrets\|secret unset [options] <name>`      | Remove a secret from secrets.enc.yaml.                                |
+| `eigenpal agents secrets\|secret import [options] <env-file>` | Import KEY=value entries from an env file into secrets.enc.yaml.      |
+| `eigenpal agents secrets\|secret export [options] [target]`   | Decrypt source secrets and print shell exports.                       |
 
 ### Dataset
 
-| Command                                                         | Description                                                                |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>` | List dataset examples for an agent.                                        |
-| `eigenpal agents dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory or zip archive.     |
-| `eigenpal agents dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset as a .zip archive.                               |
-| `eigenpal agents dataset validate [options] [path]`             | Validate a local dataset directory against the agent input/output schemas. |
+| Command                                                         | Description                                                                                              |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>` | List dataset examples for an agent.                                                                      |
+| `eigenpal agents dataset push [options] <agent-id-or-slug>`     | Upload dataset examples from a local dataset directory or zip archive.                                   |
+| `eigenpal agents dataset pull [options] <agent-id-or-slug>`     | Download an agent dataset as a .zip archive.                                                             |
+| `eigenpal agents dataset validate [options] [path]`             | Validate a local dataset directory against the canonical examples/<name> layout. Defaults to ./dataset/. |
 
 ### Experiment
 
@@ -187,12 +189,6 @@ agents
 | Command                                       | Description                                     |
 | --------------------------------------------- | ----------------------------------------------- |
 | `eigenpal agents env pull [options] [target]` | Decrypt source secrets and print shell exports. |
-
-### Secrets
-
-| Command                                             | Description                                     |
-| --------------------------------------------------- | ----------------------------------------------- |
-| `eigenpal agents secrets export [options] [target]` | Decrypt source secrets and print shell exports. |
 
 ## Details
 
@@ -500,7 +496,18 @@ Compare one live agent file against a local file.
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
 
-### `eigenpal agents secret set [options] <name>`
+### `eigenpal agents secrets|secret list|ls [options]`
+
+List secret names declared in secrets.enc.yaml (never prints values).
+
+### Options
+
+| Flag          | Required | Default | Description                            |
+| ------------- | -------- | ------- | -------------------------------------- |
+| `--json`      | no       |         | Output the raw server response as JSON |
+| `--dir <dir>` | no       |         | Directory to inspect                   |
+
+### `eigenpal agents secrets|secret set [options] <name>`
 
 Encrypt and set a secret value in secrets.enc.yaml.
 
@@ -519,7 +526,7 @@ Encrypt and set a secret value in secrets.enc.yaml.
 | `--value-file <path>`  | no       |         | Read the secret value from a file |
 | `--description <text>` | no       |         | Secret description                |
 
-### `eigenpal agents secret unset [options] <name>`
+### `eigenpal agents secrets|secret unset [options] <name>`
 
 Remove a secret from secrets.enc.yaml.
 
@@ -535,7 +542,7 @@ Remove a secret from secrets.enc.yaml.
 | ------------- | -------- | ------- | -------------------- |
 | `--dir <dir>` | no       |         | Directory to inspect |
 
-### `eigenpal agents secret import [options] <env-file>`
+### `eigenpal agents secrets|secret import [options] <env-file>`
 
 Import KEY=value entries from an env file into secrets.enc.yaml.
 
@@ -550,6 +557,24 @@ Import KEY=value entries from an env file into secrets.enc.yaml.
 | Flag          | Required | Default | Description          |
 | ------------- | -------- | ------- | -------------------- |
 | `--dir <dir>` | no       |         | Directory to inspect |
+
+### `eigenpal agents secrets|secret export [options] [target]`
+
+Decrypt source secrets and print shell exports.
+
+### Arguments
+
+| Name     | Required | Variadic | Description |
+| -------- | -------- | -------- | ----------- |
+| `target` | no       | no       |             |
+
+### Options
+
+| Flag                | Required | Default   | Description                       |
+| ------------------- | -------- | --------- | --------------------------------- |
+| `--base-url <url>`  | no       |           | Server base URL                   |
+| `--dir <dir>`       | no       | `"."`     | Installed agent package directory |
+| `--format <format>` | no       | `"shell"` | Output format: shell or dotenv    |
 
 ### `eigenpal agents dataset list|ls [options] <agent-id-or-slug>`
 
@@ -609,7 +634,7 @@ Download an agent dataset as a .zip archive.
 
 ### `eigenpal agents dataset validate [options] [path]`
 
-Validate a local dataset directory against the agent input/output schemas.
+Validate a local dataset directory against the canonical examples/<name> layout. Defaults to ./dataset/.
 
 ### Arguments
 
@@ -619,10 +644,10 @@ Validate a local dataset directory against the agent input/output schemas.
 
 ### Options
 
-| Flag                | Required | Default | Description                                             |
-| ------------------- | -------- | ------- | ------------------------------------------------------- |
-| `--json`            | no       |         | Output the raw server response as JSON                  |
-| `--agent-dir <dir>` | no       | `"."`   | Agent package directory containing input/output schemas |
+| Flag                | Required | Default | Description                                                                             |
+| ------------------- | -------- | ------- | --------------------------------------------------------------------------------------- |
+| `--json`            | no       |         | Output the raw server response as JSON                                                  |
+| `--agent-dir <dir>` | no       | `"."`   | Agent package directory with optional input/output schemas for extra value-level checks |
 
 ### `eigenpal agents experiment|exp run [options] <agent-id-or-slug>`
 
@@ -836,24 +861,6 @@ Stop a builder session.
 | `--yes`            | no       |         | Required in non-interactive environments |
 
 ### `eigenpal agents env pull [options] [target]`
-
-Decrypt source secrets and print shell exports.
-
-### Arguments
-
-| Name     | Required | Variadic | Description |
-| -------- | -------- | -------- | ----------- |
-| `target` | no       | no       |             |
-
-### Options
-
-| Flag                | Required | Default   | Description                       |
-| ------------------- | -------- | --------- | --------------------------------- |
-| `--base-url <url>`  | no       |           | Server base URL                   |
-| `--dir <dir>`       | no       | `"."`     | Installed agent package directory |
-| `--format <format>` | no       | `"shell"` | Output format: shell or dotenv    |
-
-### `eigenpal agents secrets export [options] [target]`
 
 Decrypt source secrets and print shell exports.
 

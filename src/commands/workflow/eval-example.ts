@@ -19,6 +19,7 @@
  * `eval.passed` becoming non-null (the rollup write), not on terminal status.
  */
 
+import { env } from '../../env';
 import type { ApiClient } from '../../lib/client';
 import {
   type ExecutionArtifactPayload,
@@ -31,8 +32,20 @@ import { dim, info, ui, warn } from '../../lib/ui';
 
 const RUN_POLL_INTERVAL_MS = 2000;
 const RUN_MAX_WAIT_MS = 5 * 60 * 1000;
-/** Extra time to wait for evaluator results after the run reaches terminal. */
-const EVAL_GRACE_MS = 90 * 1000;
+/**
+ * Extra time to wait for evaluator results after the run reaches terminal.
+ * `EIGENPAL_EVAL_GRACE_MS` is a test-only override so integration tests can
+ * exercise the rollup-timeout path without waiting the real 90s.
+ */
+function resolveEvalGraceMs(): number {
+  const raw = env.EIGENPAL_EVAL_GRACE_MS;
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 90 * 1000;
+}
+export const EVAL_GRACE_MS = resolveEvalGraceMs();
 const EVAL_POLL_INTERVAL_MS = 2000;
 const EXAMPLE_PAGE_SIZE = 100; // public examples list `limit` max.
 
@@ -181,8 +194,11 @@ async function pollRunTerminal(client: ApiClient, runId: string): Promise<RunVie
  * evaluators are zero-weight), so it is the authoritative "evaluators finished"
  * signal and avoids reading a half-written rollup. Returns the rollup, or null
  * if nothing landed within the grace window (no evaluators actually scored).
+ *
+ * Shared with the agent example-run path (`runs.ts:runExample`) — agent runs
+ * write the same rollup shape onto `agent_executions`.
  */
-async function pollEvalRollup(
+export async function pollEvalRollup(
   client: ApiClient,
   runId: string
 ): Promise<{ score: number | null; passed: boolean | null } | null> {

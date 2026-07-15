@@ -90,6 +90,9 @@ export type EvaluatorsImportRequest = z.infer<typeof EvaluatorsImportRequestSche
 export const EvalResultsExportFormatSchema = z.enum(['csv', 'json']);
 export type EvalResultsExportFormat = z.infer<typeof EvalResultsExportFormatSchema>;
 
+// NOTE: URLSearchParams.get() yields null for absent params; callers must
+// coerce null to undefined before parsing (.optional() rejects null). Keeping
+// the schema .optional() keeps the generated OpenAPI spec free of null unions.
 const BooleanQueryFlagSchema = z
   .enum(['true', 'false', '1', '0'])
   .optional()

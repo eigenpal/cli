@@ -70,6 +70,39 @@ describe('agent command tree', () => {
     expect(result.status).not.toBe(0);
   });
 
+  test('agents secrets is one unified group with list/set/unset/import/export', () => {
+    const result = spawnSync('bun', [CLI, 'agents', 'secrets', '--help'], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    // Each verb must be a registered subcommand line in the Commands block —
+    // a bare `toContain(verb)` would be satisfied by the group's own
+    // description string ("list, set, unset, import, export").
+    for (const verb of ['list', 'set', 'unset', 'import', 'export']) {
+      expect(result.stdout).toMatch(new RegExp(`^\\s+${verb}\\b`, 'm'));
+    }
+    // And each verb resolves to a real subcommand, not an arity error.
+    for (const verb of ['unset', 'import', 'export']) {
+      const help = spawnSync('bun', [CLI, 'agents', 'secrets', verb, '--help'], {
+        encoding: 'utf8',
+      });
+      expect(help.status).toBe(0);
+      expect(help.stdout).toContain(`Usage: eigenpal agents secrets ${verb}`);
+    }
+    // Singular alias keeps working.
+    const alias = spawnSync('bun', [CLI, 'agents', 'secret', 'set', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(alias.status).toBe(0);
+    expect(alias.stdout).toContain('<name>');
+  });
+
+  test('agents secrets list is a real subcommand, not an arity error', () => {
+    const result = spawnSync('bun', [CLI, 'agents', 'secrets', 'list', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('too many arguments');
+  });
+
   test('root runs compare uses two positional run ids', () => {
     const result = spawnSync('bun', [CLI, 'runs', 'compare', '--help'], {
       encoding: 'utf8',

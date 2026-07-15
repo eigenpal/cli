@@ -41,15 +41,13 @@ export function registerEnvCommands(agent: Command): void {
 }
 
 export function registerSecretsExportCommands(agent: Command): void {
-  const secrets = agent
-    .command('secrets')
-    .description('Export encrypted source secrets for a local installed agent package.')
-    .action(() => {
-      process.stderr.write(
-        '`eigenpal agents secrets` requires a subcommand. Run `eigenpal agents secrets --help`.\n'
-      );
-      process.exit(2);
-    });
+  // The `secrets` group (list/set/unset/import) is created by
+  // registerSourceSecretCommands; attach `export` to it rather than
+  // registering a second command with the same name.
+  const secrets = agent.commands.find((command) => command.name() === 'secrets');
+  if (!secrets) {
+    throw new Error('registerSecretsExportCommands must run after registerSourceSecretCommands.');
+  }
 
   withBaseUrl(secrets.command('export [target]'))
     .description('Decrypt source secrets and print shell exports.')

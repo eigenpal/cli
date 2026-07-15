@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.10.24
+
+### Patch Changes
+
+- 6d1913f: Agent example runs now report a real evaluator verdict in the CLI: `eigenpal run agents.<name> --example <name> --wait` waits for the verdict, prints the weighted score and pass/fail result, and `--fail-on-mismatch` exits non-zero when the run fails its evaluators, matching the existing workflow behavior. When no evaluators are configured, the CLI says so instead of silently reporting nothing.
+- 6d1913f: `agents secrets` is now one command group with `list`, `set`, `unset`, `import`, and `export` subcommands (`agents secret` remains as an alias). The new `agents secrets list` shows the secret names and descriptions declared in the package without ever printing values. Previously `set` and `unset` lived under a separate singular command and `secrets list` failed with an argument error.
+- 6d1913f: `agents sync` retries automatically with a short backoff when the server reports the Git source as temporarily unavailable, so the sync right after `agents release` succeeds without manual retries.
+- 6d1913f: `agents dataset validate` now checks the same layout the server accepts on `agents dataset push`: example folders under `examples/`, file inputs referenced from `input.json` with `{ "$file": "input/..." }`, and `expected.json` optional. Previously the local validator demanded a different layout that push would then reject, so no dataset could satisfy both. Validation errors now point at the exact rule that failed, including a hint when example folders sit at the dataset root instead of under `examples/`. When the agent package carries an input schema, each example's full input object is validated against it (required fields, unknown keys, and value types, with `{ "$file": ... }` references accepted for file fields), so inputs that would fail at run start are caught locally. Failure-expected examples (`expected.json` with `$error`) are rejected for agent datasets, since agent runs are evaluated only when they complete.
+- 6d1913f: `workflow experiment run --json` now includes the documented `batchId` field, so scripts piping into `jq '.batchId'` get the real experiment id instead of null. `workflow experiment status` now fails with a clear message when the batch has no executions (for example when a bad batch id is passed) instead of reporting a misleading "0/0 terminal" success.
+- 6d1913f: `runs trace` now works for workflow runs as well as agent runs. Workflow runs return execution phase and step trace events; previously the command always returned HTTP 404 for workflow run ids.
+- 6d1913f: `workflow pull` no longer reports "no published version yet" for workflows that have a current published version. The command now reads the version payload the server actually returns, so freshly pushed workflows pull cleanly.
+
 ## 0.10.20
 
 ### Minor Changes

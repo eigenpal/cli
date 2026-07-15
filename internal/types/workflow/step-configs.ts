@@ -141,13 +141,13 @@ export const AiExtractConfigSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY. Values stay the reliable schema-typed ones.'
+      'Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding is OpenAI-only: the pass always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY on the worker. If the key is missing or the grounding model resolves to a non-OpenAI provider, the step fails instead of silently skipping grounding. Values stay the reliable schema-typed ones.'
     ),
   groundingModel: z
     .string()
     .optional()
     .describe(
-      'Provider/model for the grounding pass. Defaults to the workspace default LLM; grounding runs against OpenAI, so pick an OpenAI-compatible model.'
+      'Provider/model for the grounding pass. Defaults to the workspace default LLM. Grounding is OpenAI-only, so this must resolve to an OpenAI model; a non-OpenAI model fails the step at runtime.'
     ),
   groundingExamples: z
     .array(

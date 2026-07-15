@@ -387,16 +387,20 @@ function registerWorkflowCoreCommands(parent: Command): void {
       const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
       const result = (await client.get(`/api/workflows/${workflowId}`)) as {
         yamlContent?: string | null;
+        currentVersion?: { yamlContent?: string | null } | null;
       };
+      // The server nests the YAML under `currentVersion`; the top-level
+      // field is a legacy spelling kept as a fallback for older servers.
+      const yamlContent = result?.currentVersion?.yamlContent ?? result?.yamlContent;
       // No published version → no YAML to pull. Fail loudly rather than
       // silently writing an empty file (the old behavior masked a server
       // regression where the picker dropped this field).
-      if (typeof result?.yamlContent !== 'string' || result.yamlContent.length === 0) {
+      if (typeof yamlContent !== 'string' || yamlContent.length === 0) {
         throw new Error(
           `Workflow ${workflowId} has no published version yet, nothing to pull. Run \`eigenpal workflow push\` first.`
         );
       }
-      await writeOrPrint(opts.out, result.yamlContent);
+      await writeOrPrint(opts.out, yamlContent);
     })
   );
 
@@ -1518,7 +1522,10 @@ returns immediately with \`{ batchId, total }\`; poll
         const total = start.runCount ?? start.total ?? 0;
         if (!opts.wait) {
           if (opts.json) {
-            printJson(start);
+            // The server responds with `{ id, runs, total }`; the documented
+            // scripting contract is `{ batchId, total }`. Emit both spellings
+            // so `--json | jq '.batchId'` works as advertised.
+            printJson({ ...start, batchId: experimentId, total });
             return;
           }
           success(
@@ -1624,13 +1631,32 @@ returns immediately with \`{ batchId, total }\`; poll
         const url = `/api/v1/automations/${workflowId}/experiments/${batchId}`;
 
         if (!opts.watch) {
-          const result = (await client.get(url)) as {
+          // A just-created batch can legitimately read as empty for a moment
+          // (enqueue/read-replica lag), so retry briefly before treating
+          // emptiness as a bad batch id.
+          let result: {
             executions?: Array<{ status?: string }>;
             runs?: Array<{ status?: string }>;
             [k: string]: unknown;
-          };
-          const execs = result.executions ?? result.runs ?? [];
+          } = {};
+          let execs: Array<{ status?: string }> = [];
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            result = (await client.get(url)) as typeof result;
+            execs = result.executions ?? result.runs ?? [];
+            if (execs.length > 0) break;
+            if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
+          }
           const summary = summarizeExperimentExecutions(execs);
+          // A batch that stays at zero executions is a bad batch id (e.g. a
+          // script that piped a literal "null"), never a healthy experiment —
+          // refuse to report it as "0/0 terminal" success.
+          if (execs.length === 0) {
+            if (opts.json) printJson({ ...result, summary: rollupForJson(summary) });
+            error(
+              `Experiment ${batchId} still has no executions after retrying — check the batch id.`
+            );
+            process.exit(1);
+          }
           if (opts.json) {
             printJson({ ...result, summary: rollupForJson(summary) });
             return;
@@ -2154,6 +2180,7 @@ async function pollExperimentUntilTerminal({
 }): Promise<void> {
   const deadline = Date.now() + maxWait * 1000;
   let lastSummary = '';
+  let emptyPolls = 0;
 
   while (true) {
     const result = (await client.get(url)) as {
@@ -2162,6 +2189,19 @@ async function pollExperimentUntilTerminal({
       [k: string]: unknown;
     };
     const execs = result.executions ?? result.runs ?? [];
+    // A fresh batch can read empty for a poll or two (enqueue lag), but a
+    // batch that never grows executions is a bad batch id — abort instead of
+    // spinning until --max-wait.
+    if (execs.length === 0) {
+      emptyPolls += 1;
+      if (emptyPolls >= 3) {
+        if (process.stderr.isTTY) process.stderr.write('\n');
+        error(`Experiment still has no executions after ${emptyPolls} polls — check the batch id.`);
+        process.exit(1);
+      }
+    } else {
+      emptyPolls = 0;
+    }
     const summary = summarizeExperimentExecutions(execs);
     const line = renderTickLine(summary);
     if (line !== lastSummary) {

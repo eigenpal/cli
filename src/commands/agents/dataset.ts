@@ -46,6 +46,15 @@ export function registerDatasetCommands(agent: Command): void {
     .requiredOption('--file <path>', 'Dataset directory or .zip archive')
     .option('--mode <append|replace>', 'Upload mode', parseDatasetMode, 'append')
     .option('--yes', 'Confirm replace mode in non-interactive environments')
+    .addHelpText(
+      'after',
+      '\nLayout\n' +
+        '  The directory (or archive) must contain an examples/ wrapper:\n' +
+        '  examples/<name>/input.json (required), examples/<name>/input/<file>\n' +
+        '  (referenced via { "$file": "input/<path>" }), plus optional\n' +
+        '  expected.json, expected/<file>, and meta.json.\n' +
+        '  Run `eigenpal agents dataset validate` first to check locally.\n'
+    )
     .action(action(pushDataset));
 
   withBaseUrl(dataset.command('pull <agent-id-or-slug>'))
@@ -54,8 +63,30 @@ export function registerDatasetCommands(agent: Command): void {
     .action(action(pullDataset));
 
   addJsonFlag(dataset.command('validate [path]'))
-    .description('Validate a local dataset directory against the agent input/output schemas.')
-    .option('--agent-dir <dir>', 'Agent package directory containing input/output schemas', '.')
+    .description(
+      'Validate a local dataset directory against the canonical examples/<name> layout. Defaults to ./dataset/.'
+    )
+    .option(
+      '--agent-dir <dir>',
+      'Agent package directory with optional input/output schemas for extra value-level checks',
+      '.'
+    )
+    .addHelpText(
+      'after',
+      '\nLayout (mirrors the server import rules)\n' +
+        '  examples/<name>/input.json       REQUIRED, full run input object\n' +
+        '  examples/<name>/input/<file>     referenced via { "$file": "input/<path>" }\n' +
+        '  examples/<name>/expected.json    OPTIONAL, expected output object\n' +
+        '  examples/<name>/expected/<file>  referenced via { "$file": "expected/<path>" }\n' +
+        '  examples/<name>/meta.json        OPTIONAL, { rowOrder?, annotation?, overrides? }\n' +
+        '\n' +
+        '  Every file on disk under input/ or expected/ must be referenced from the\n' +
+        '  matching JSON, and every { "$file": ... } reference must resolve to a file.\n' +
+        '  A top-level manifest.json is the legacy format and is rejected.\n' +
+        '  Failure-expected examples ({ "$error": ... } in expected.json) are\n' +
+        '  workflow-only and rejected for agent datasets: agent runs are evaluated\n' +
+        '  only when they complete.\n'
+    )
     .action(action(validateDatasetCommand));
 }
 

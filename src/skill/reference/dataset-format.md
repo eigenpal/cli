@@ -54,7 +54,9 @@ same reference shape with the `expected/` prefix.
   `{ "$file": "expected/<path>" }`.
 - File references cannot use `..`, absolute paths, backslashes, or null bytes.
 - `expected.json` is optional. When present, it must be a JSON object.
-- Failure-expected examples use `expected.json` with a single `$error` key:
+- Failure-expected examples use `expected.json` with a single `$error` key.
+  They are supported for workflow datasets only; agent datasets reject them,
+  because agent runs are evaluated only when they complete:
 
 ```json
 {

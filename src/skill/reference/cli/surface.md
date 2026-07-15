@@ -76,10 +76,12 @@ eigenpal
 │   ├── versions <package>
 │   ├── release <version> [dir]
 │   ├── sync [automation]
-│   ├── secret
+│   ├── secrets|secret
+│   │   ├── list|ls
 │   │   ├── set <name>
 │   │   ├── unset <name>
-│   │   └── import <env-file>
+│   │   ├── import <env-file>
+│   │   └── export [target]
 │   ├── dataset
 │   │   ├── list|ls <agent-id-or-slug>
 │   │   ├── push <agent-id-or-slug>
@@ -98,10 +100,8 @@ eigenpal
 │   │   ├── start <agent-id-or-slug>
 │   │   ├── message <session-id>
 │   │   └── stop <session-id>
-│   ├── env
-│   │   └── pull [target]
-│   └── secrets
-│       └── export [target]
+│   └── env
+│       └── pull [target]
 ├── run <target>
 ├── rerun <run-id>
 ├── runs

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { ApiClient } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
-import { success, ui } from '../../lib/ui';
+import { addJsonFlag, info, success, table, ui } from '../../lib/ui';
 import {
   readYamlFile,
   requirePackageContext,
@@ -132,9 +132,44 @@ async function importSecrets(envFile: string, opts: SecretOpts): Promise<void> {
   success(`Imported ${ui.bold(String(entries.length))} secret(s) into secrets.enc.yaml.`);
 }
 
-export function registerSourceSecretCommands(agent: Command): void {
-  const secret = agent.command('secret').description('Edit encrypted secrets.enc.yaml.');
-  secret
+function listSecrets(opts: ContextOpts & { json?: boolean }): void {
+  const context = requirePackageContext(opts);
+  const secretsFile = readSecretsFile(context.packageRoot);
+  const rows = Object.entries(secretsFile.secrets)
+    .map(([name, entry]) => ({ name, description: entry.description ?? '' }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  if (opts.json) {
+    console.log(JSON.stringify(rows, null, 2));
+    return;
+  }
+  if (rows.length === 0) {
+    info(`No secrets in ${SOURCE_SECRETS_FILENAME}. Add one with \`agents secrets set <name>\`.`);
+    return;
+  }
+  console.log(
+    table(rows, [
+      { key: 'name', header: 'NAME' },
+      { key: 'description', header: 'DESCRIPTION' },
+    ])
+  );
+}
+
+export function registerSourceSecretCommands(agent: Command): Command {
+  const secrets = agent
+    .command('secrets')
+    .alias('secret')
+    .description('Manage encrypted secrets.enc.yaml (list, set, unset, import, export).')
+    .action(() => {
+      process.stderr.write(
+        '`eigenpal agents secrets` requires a subcommand. Run `eigenpal agents secrets --help`.\n'
+      );
+      process.exit(2);
+    });
+  addJsonFlag(secrets.command('list'))
+    .description('List secret names declared in secrets.enc.yaml (never prints values).')
+    .option('--dir <dir>', 'Directory to inspect')
+    .action(action(async (opts: ContextOpts & { json?: boolean }) => listSecrets(opts)));
+  secrets
     .command('set <name>')
     .description('Encrypt and set a secret value in secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
@@ -142,14 +177,15 @@ export function registerSourceSecretCommands(agent: Command): void {
     .option('--value-file <path>', 'Read the secret value from a file')
     .option('--description <text>', 'Secret description')
     .action(action(setSecret));
-  secret
+  secrets
     .command('unset <name>')
     .description('Remove a secret from secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(async (name: string, opts: ContextOpts) => unsetSecret(name, opts)));
-  secret
+  secrets
     .command('import <env-file>')
     .description('Import KEY=value entries from an env file into secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
     .action(action(importSecrets));
+  return secrets;
 }

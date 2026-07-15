@@ -43,19 +43,24 @@ export function registerRunCommands(program: Command): void {
       'after',
       `
 Grading --example runs
-  --example runs the workflow's CURRENT published version on the SERVER's stored
-  dataset example, so push your latest dataset/evaluators first
-  (eigenpal workflow dataset push / evaluators push).
+  --example runs the SERVER's stored dataset example for the target — workflows
+  (workflows.<slug>) and agents (agents.<slug>) alike — so push your latest
+  dataset/evaluators first (eigenpal {workflow|agent} dataset push /
+  evaluators push).
 
-  If the workflow has evaluators configured, they run automatically and the CLI
-  shows the real weighted score and per-evaluator pass/fail. If it has no
-  evaluators, the output is graded by a structural diff against the example's
-  stored expected output (every expected field must be present and equal; extra
-  output fields are ignored, arrays match by index). The summary reports two
-  separate signals: execution health ("ok"/"errored") and accuracy.
+  If the target has evaluators configured, they run automatically after the
+  execution completes and the CLI shows the real weighted score and PASS/FAIL
+  verdict (agent runs need --wait to observe it). Workflow targets without
+  evaluators are graded by a structural diff against the example's stored
+  expected output (every expected field must be present and equal; extra output
+  fields are ignored, arrays match by index); agent targets without evaluators
+  print a warning and are not graded.
 
 Exit codes
   1  a run errored (or, with --fail-on-mismatch, a graded example failed)
+  2  with --fail-on-mismatch on an agent target: evaluators are configured but
+     no verdict landed inside the grace window — the command refuses to report
+     success without a verdict (re-run, or check evaluator health)
   By default a grading failure is informational and does not change the exit code.
 `
     );

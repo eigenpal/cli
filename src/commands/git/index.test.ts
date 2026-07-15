@@ -12,7 +12,13 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bumpReleaseVersion, resolveGitSourceContext, sortReleasesNewestFirst } from './index';
+import { ApiError } from '../../lib/client';
+import {
+  bumpReleaseVersion,
+  resolveGitSourceContext,
+  retrySyncRequest,
+  sortReleasesNewestFirst,
+} from './index';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
 
@@ -1340,5 +1346,56 @@ describe('git passthrough and agents source commands', () => {
     expect(bumpReleaseVersion(releases, 'patch')).toBe('2.0.1');
     expect(bumpReleaseVersion(releases, 'minor')).toBe('2.1.0');
     expect(bumpReleaseVersion(releases, 'major')).toBe('3.0.0');
+  });
+});
+
+describe('retrySyncRequest', () => {
+  const zeroDelay = { delayMs: () => 0 };
+
+  test('retries gateway 503s and resolves once the request succeeds', async () => {
+    let calls = 0;
+    await retrySyncRequest(async () => {
+      calls++;
+      if (calls <= 2) throw new ApiError(503, { error: 'unavailable' });
+    }, zeroDelay);
+
+    expect(calls).toBe(3);
+  });
+
+  test('does not retry a non-gateway status like 401', async () => {
+    let calls = 0;
+    await expect(
+      retrySyncRequest(async () => {
+        calls++;
+        throw new ApiError(401, { error: 'unauthorized' });
+      }, zeroDelay)
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(calls).toBe(1);
+  });
+
+  test('does not retry a plain 500 — only 502/503/504 are gateway statuses', async () => {
+    let calls = 0;
+    await expect(
+      retrySyncRequest(async () => {
+        calls++;
+        throw new ApiError(500, { error: 'boom' });
+      }, zeroDelay)
+    ).rejects.toMatchObject({ status: 500 });
+
+    expect(calls).toBe(1);
+  });
+
+  test('gives up after the default attempt budget when 503s never stop', async () => {
+    let calls = 0;
+    await expect(
+      retrySyncRequest(async () => {
+        calls++;
+        throw new ApiError(503, { error: 'unavailable' });
+      }, zeroDelay)
+    ).rejects.toMatchObject({ status: 503 });
+
+    // Default budget is 4 attempts: 3 retries after the first failure.
+    expect(calls).toBe(4);
   });
 });

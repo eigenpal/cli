@@ -26,7 +26,7 @@ async function withRunServer(
 
 function runCli(
   args: string[],
-  opts: { baseUrl?: string } = {}
+  opts: { baseUrl?: string; env?: Record<string, string> } = {}
 ): Promise<{ status: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn('bun', [CLI, ...args], {
@@ -34,6 +34,7 @@ function runCli(
         ...process.env,
         EIGENPAL_API_KEY: 'eig_test_key',
         ...(opts.baseUrl ? { EIGENPAL_BASE_URL: opts.baseUrl } : {}),
+        ...opts.env,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -245,6 +246,211 @@ describe('root run commands', () => {
           },
         ]);
         expect(JSON.parse(result.stdout)).toMatchObject({ review: { verdict: 'incorrect' } });
+      }
+    );
+  });
+});
+
+describe('runs trace JSONL output', () => {
+  function traceHandler(payload: unknown) {
+    return (request: Request): Response => {
+      const url = new URL(request.url);
+      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_1/trace') {
+        return json(payload);
+      }
+      return new Response('not found', { status: 404 });
+    };
+  }
+
+  test('re-emits trace events as one JSON line each, newline-terminated', async () => {
+    await withRunServer(traceHandler({ events: [{ a: 1 }, { b: 2 }] }), async (baseUrl) => {
+      const result = await runCli(['runs', 'trace', 'run_1', '--base-url', baseUrl], { baseUrl });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('{"a":1}\n{"b":2}\n');
+      expect(result.stderr).not.toContain('No trace events');
+    });
+  });
+
+  test('empty events → empty stdout plus a stderr warning', async () => {
+    await withRunServer(traceHandler({ events: [] }), async (baseUrl) => {
+      const result = await runCli(['runs', 'trace', 'run_1', '--base-url', baseUrl], { baseUrl });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('No trace events');
+    });
+  });
+
+  test('a payload without an events array is treated as zero events, not a crash', async () => {
+    await withRunServer(traceHandler({}), async (baseUrl) => {
+      const result = await runCli(['runs', 'trace', 'run_1', '--base-url', baseUrl], { baseUrl });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('No trace events');
+    });
+  });
+});
+
+describe('run --example agent eval gating', () => {
+  /** Minimal server for an agent example run whose evaluator rollup has landed. */
+  function agentExampleHandler(options: {
+    eval?: { example: string; score: number | null; passed: boolean | null };
+    evaluatorsConfigured: boolean;
+  }) {
+    return (request: Request): Response => {
+      const url = new URL(request.url);
+      if (
+        request.method === 'POST' &&
+        url.pathname === '/api/v1/automations/agents.support/experiments'
+      ) {
+        return json({ id: 'batch_1', runs: [{ id: 'run_1', exampleId: 'ex-1' }] }, { status: 201 });
+      }
+      if (
+        request.method === 'GET' &&
+        url.pathname === '/api/v1/automations/agents.support/evaluators'
+      ) {
+        return json({
+          config: {
+            evaluators: options.evaluatorsConfigured ? [{ name: 'exact', type: 'exact-diff' }] : [],
+          },
+        });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_1') {
+        return json({
+          id: 'run_1',
+          type: 'agent',
+          finished: true,
+          execution: { status: 'completed', schemaValid: true },
+          ...(options.eval ? { eval: options.eval } : {}),
+        });
+      }
+      return new Response('not found', { status: 404 });
+    };
+  }
+
+  const failingEval = { example: 'ex-1', score: 0.4, passed: false };
+  const passingEval = { example: 'ex-1', score: 1, passed: true };
+
+  test('exits 1 with --fail-on-mismatch when the evaluator verdict is FAIL', async () => {
+    await withRunServer(
+      agentExampleHandler({ eval: failingEval, evaluatorsConfigured: true }),
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'run',
+            'agents.support',
+            '--example',
+            'ex-1',
+            '--wait',
+            '--fail-on-mismatch',
+            '--json',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+
+        expect(result.status).toBe(1);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          id: 'run_1',
+          eval: { score: 0.4, passed: false },
+        });
+      }
+    );
+  });
+
+  test('exits 0 with --fail-on-mismatch when the evaluator verdict is PASS', async () => {
+    await withRunServer(
+      agentExampleHandler({ eval: passingEval, evaluatorsConfigured: true }),
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'run',
+            'agents.support',
+            '--example',
+            'ex-1',
+            '--wait',
+            '--fail-on-mismatch',
+            '--json',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          id: 'run_1',
+          eval: { score: 1, passed: true },
+        });
+      }
+    );
+  });
+
+  test('warns and exits 0 when no evaluators are configured, even with --fail-on-mismatch', async () => {
+    await withRunServer(agentExampleHandler({ evaluatorsConfigured: false }), async (baseUrl) => {
+      const result = await runCli(
+        [
+          'run',
+          'agents.support',
+          '--example',
+          'ex-1',
+          '--wait',
+          '--fail-on-mismatch',
+          '--json',
+          '--base-url',
+          baseUrl,
+        ],
+        { baseUrl }
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('No evaluators configured');
+    });
+  });
+
+  test('exits 2 with --fail-on-mismatch when evaluators are configured but no rollup lands in the grace window', async () => {
+    // Evaluators ARE configured, but the run payload never carries an
+    // `eval` block, so pollEvalRollup can only time out. The grace window
+    // is shrunk via the test-only env override; without it this test would
+    // wait the real 90s.
+    await withRunServer(agentExampleHandler({ evaluatorsConfigured: true }), async (baseUrl) => {
+      const result = await runCli(
+        [
+          'run',
+          'agents.support',
+          '--example',
+          'ex-1',
+          '--wait',
+          '--fail-on-mismatch',
+          '--json',
+          '--base-url',
+          baseUrl,
+        ],
+        { baseUrl, env: { EIGENPAL_EVAL_GRACE_MS: '0' } }
+      );
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('no evaluator verdict landed');
+      // The run itself completed — the payload still prints for scripts.
+      expect(JSON.parse(result.stdout)).toMatchObject({ id: 'run_1' });
+    });
+  }, 15000); // Worst case one 2s eval poll sleep on top of the run poll; leave slack.
+
+  test('prints the eval verdict in human output; a FAIL without --fail-on-mismatch keeps exit 0', async () => {
+    await withRunServer(
+      agentExampleHandler({ eval: failingEval, evaluatorsConfigured: true }),
+      async (baseUrl) => {
+        const result = await runCli(
+          ['run', 'agents.support', '--example', 'ex-1', '--wait', '--base-url', baseUrl],
+          { baseUrl }
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain('eval: score 0.40');
+        expect(result.stderr).toContain('FAIL');
       }
     );
   });

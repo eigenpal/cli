@@ -16,6 +16,10 @@ export const env = createEnv({
     /** Per-shell profile override. See `eigenpal auth use <name>` for the
      *  persisted equivalent. */
     EIGENPAL_PROFILE: z.string().optional(),
+    /** Test-only override (milliseconds) for the evaluator-rollup grace
+     *  window. Lets integration tests exercise the rollup-timeout path
+     *  without waiting the real 90s. Not documented for end users. */
+    EIGENPAL_EVAL_GRACE_MS: z.string().optional(),
 
     // Standard Node vars — declared for consistency.
     DEBUG: z.string().optional(),

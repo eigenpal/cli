@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -17,6 +17,69 @@ import {
 } from './index';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
+
+// -- End-to-end helpers (same pattern as ../run.test.ts): a throwaway local
+// HTTP server plays the API while the CLI runs as a child process. Commands
+// that hit the network cannot use spawnSync — it would block the event loop
+// the mock server runs on.
+
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(body), {
+    ...init,
+    headers: { 'content-type': 'application/json', ...init?.headers },
+  });
+}
+
+async function withApiServer(
+  handler: (request: Request) => Response | Promise<Response>,
+  fn: (baseUrl: string) => void | Promise<void>
+): Promise<void> {
+  const server = Bun.serve({ port: 0, fetch: handler });
+  try {
+    await fn(`http://127.0.0.1:${server.port}`);
+  } finally {
+    await server.stop(true);
+  }
+}
+
+function runCli(
+  args: string[],
+  baseUrl: string
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('bun', [CLI, ...args], {
+      env: {
+        ...process.env,
+        EIGENPAL_API_KEY: 'eig_test_key',
+        EIGENPAL_BASE_URL: baseUrl,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (status) => {
+      resolvePromise({ status, stdout, stderr });
+    });
+  });
+}
+
+/** Answers the `wf_` id-resolution GET every server-backed workflow command makes first. */
+function resolveWorkflowRoute(request: Request, workflowId: string): Response | null {
+  const url = new URL(request.url);
+  if (request.method === 'GET' && url.pathname === `/api/workflows/${workflowId}`) {
+    return jsonResponse({ id: workflowId });
+  }
+  return null;
+}
 
 describe('command aliases', () => {
   test('applies global list and compare aliases across the CLI', () => {
@@ -355,3 +418,145 @@ function captureStdio(fn: () => void): { stdout: string; stderr: string } {
   }
   return { stdout, stderr };
 }
+
+describe('workflow experiment run (no --wait)', () => {
+  test('--json emits batchId equal to the id the server returned', async () => {
+    let posted: { pathname: string; body: unknown } | null = null;
+    await withApiServer(
+      async (request) => {
+        const resolved = resolveWorkflowRoute(request, 'wf_exp1');
+        if (resolved) return resolved;
+        const url = new URL(request.url);
+        if (
+          request.method === 'POST' &&
+          url.pathname === '/api/v1/automations/wf_exp1/experiments'
+        ) {
+          posted = { pathname: url.pathname, body: await request.json() };
+          return jsonResponse({ id: 'evb_x', runs: [], total: 0 }, { status: 201 });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          ['workflow', 'experiment', 'run', 'wf_exp1', '--json', '--base-url', baseUrl],
+          baseUrl
+        );
+
+        expect(result.status).toBe(0);
+        expect(posted).toMatchObject({ pathname: '/api/v1/automations/wf_exp1/experiments' });
+        // The server answers `{ id, runs, total }`; the documented scripting
+        // contract is `--json | jq '.batchId'`, so both spellings must appear.
+        const payload = JSON.parse(result.stdout);
+        expect(payload.batchId).toBe('evb_x');
+        expect(payload.id).toBe('evb_x');
+        expect(payload.total).toBe(0);
+      }
+    );
+  });
+});
+
+describe('workflow experiment status (spot check, no --watch)', () => {
+  test('a batch that stays empty after retries exits 1 with a "no executions" error', async () => {
+    let statusGets = 0;
+    await withApiServer(
+      (request) => {
+        const resolved = resolveWorkflowRoute(request, 'wf_exp1');
+        if (resolved) return resolved;
+        const url = new URL(request.url);
+        if (
+          request.method === 'GET' &&
+          url.pathname === '/api/v1/automations/wf_exp1/experiments/evb_empty'
+        ) {
+          statusGets++;
+          return jsonResponse({ executions: [] });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          ['workflow', 'experiment', 'status', 'wf_exp1', 'evb_empty', '--base-url', baseUrl],
+          baseUrl
+        );
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('no executions');
+        // The empty-batch guard retries the fetch before giving up.
+        expect(statusGets).toBe(3);
+      }
+    );
+  }, 20000); // Two 2s retry pauses put the happy path around 4-5s.
+
+  test('a batch with a completed execution reports terminal and exits 0', async () => {
+    await withApiServer(
+      (request) => {
+        const resolved = resolveWorkflowRoute(request, 'wf_exp1');
+        if (resolved) return resolved;
+        const url = new URL(request.url);
+        if (
+          request.method === 'GET' &&
+          url.pathname === '/api/v1/automations/wf_exp1/experiments/evb_ok'
+        ) {
+          return jsonResponse({ executions: [{ status: 'completed' }] });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          ['workflow', 'experiment', 'status', 'wf_exp1', 'evb_ok', '--base-url', baseUrl],
+          baseUrl
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('1/1 terminal');
+      }
+    );
+  });
+});
+
+describe('workflow pull', () => {
+  function pullServer(workflowBody: Record<string, unknown>) {
+    return (request: Request): Response => {
+      const url = new URL(request.url);
+      // Both the id-resolution GET and the pull GET hit the same route; the
+      // body must carry `id` for the former and the YAML fields for the latter.
+      if (request.method === 'GET' && url.pathname === '/api/workflows/wf_pull1') {
+        return jsonResponse({ id: 'wf_pull1', ...workflowBody });
+      }
+      return new Response('not found', { status: 404 });
+    };
+  }
+
+  test('prints the currentVersion YAML to stdout', async () => {
+    await withApiServer(
+      pullServer({ currentVersion: { yamlContent: 'kind: workflow' } }),
+      async (baseUrl) => {
+        const result = await runCli(
+          ['workflow', 'pull', 'wf_pull1', '--base-url', baseUrl],
+          baseUrl
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe('kind: workflow');
+      }
+    );
+  });
+
+  test('falls back to the legacy top-level yamlContent spelling', async () => {
+    await withApiServer(pullServer({ yamlContent: 'kind: legacy' }), async (baseUrl) => {
+      const result = await runCli(['workflow', 'pull', 'wf_pull1', '--base-url', baseUrl], baseUrl);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('kind: legacy');
+    });
+  });
+
+  test('fails loudly when there is no published version instead of writing nothing', async () => {
+    await withApiServer(pullServer({ currentVersion: { yamlContent: null } }), async (baseUrl) => {
+      const result = await runCli(['workflow', 'pull', 'wf_pull1', '--base-url', baseUrl], baseUrl);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('no published version');
+    });
+  });
+});

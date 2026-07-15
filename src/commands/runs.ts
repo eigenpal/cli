@@ -37,6 +37,7 @@ import {
   setExitCodeForFailedTerminalRun,
 } from './agents/shared';
 import { parseAgentTarget } from './agents/target';
+import { EVAL_GRACE_MS, fetchHasEvaluators, pollEvalRollup } from './workflow/eval-example';
 
 export function registerRunsCommands(program: Command): void {
   const runs = program
@@ -256,6 +257,8 @@ export async function runExample(
     example: string;
     sourceRef?: string;
     wait?: boolean;
+    /** Exit 1 when the evaluator rollup lands with passed === false. */
+    failOnMismatch?: boolean;
     interval: number;
     maxWait: number;
   }
@@ -269,10 +272,47 @@ export async function runExample(
     }
   )) as { id?: string; batchId?: string; runs?: Array<{ id?: string; exampleId?: string }> };
   const runId = started.runs?.[0]?.id;
+  if (opts.failOnMismatch && !opts.wait) {
+    warn('--fail-on-mismatch has no effect without --wait; the evaluator verdict is not awaited.');
+  }
   if (opts.wait && runId) {
-    const payload = await pollRun(client, runId, opts.interval, opts.maxWait);
+    let payload = await pollRun(client, runId, opts.interval, opts.maxWait);
+    const status = (payload as { execution?: { status?: string } }).execution?.status;
+    let wait: EvalRollupWait = { kind: 'no-evaluators' };
+    if (status === 'completed') {
+      wait = await waitForExampleEvalRollup(client, agentId, runId);
+      if (wait.kind === 'landed') {
+        // Re-fetch so the payload (and `--json` output) carries the eval block
+        // written by the post-execution evaluators.
+        payload = (await client.get(
+          `/api/v1/runs/${encodeURIComponent(runId)}?expand=usage,execution`
+        )) as typeof payload;
+      }
+    }
     renderRunPayload(payload, opts);
+    if (!opts.json && wait.kind === 'landed') {
+      const score = typeof wait.rollup.score === 'number' ? wait.rollup.score.toFixed(2) : 'n/a';
+      const verdict = wait.rollup.passed === true ? ui.ok('PASS') : ui.err('FAIL');
+      process.stderr.write(`  eval: score ${score}  ${verdict}\n`);
+    }
     setExitCodeForFailedTerminalRun(payload);
+    if (opts.failOnMismatch && status === 'completed') {
+      // An explicit failing verdict fails the command (exit 1). A verdict that
+      // never landed inside the grace window must NOT pass silently — CI acts
+      // on exit codes, not stderr warnings — so it exits 2 (recoverable:
+      // re-run or extend the evaluator budget). Only "no evaluators
+      // configured" is genuinely ungradable and keeps exit 0, with a warning.
+      if (wait.kind === 'landed' && wait.rollup.passed !== true) {
+        process.exitCode = 1;
+      } else if (wait.kind === 'timeout') {
+        error(
+          `--fail-on-mismatch: no evaluator verdict landed within ${EVAL_GRACE_MS / 1000}s; refusing to report success without a verdict.`
+        );
+        process.exitCode = 2;
+      } else if (wait.kind === 'no-evaluators') {
+        warn('--fail-on-mismatch cannot gate this run: no evaluators are configured.');
+      }
+    }
     return;
   }
   const payload = {
@@ -283,6 +323,42 @@ export async function runExample(
   };
   if (opts.json) return printJson(payload);
   success(`Run ${runId ?? ''} queued for example ${opts.example}`);
+}
+
+type EvalRollupWait =
+  | { kind: 'no-evaluators' }
+  | { kind: 'timeout' }
+  | { kind: 'landed'; rollup: { score: number | null; passed: boolean | null } };
+
+/**
+ * Wait (bounded, same grace window as the workflow eval path) for the
+ * post-execution evaluator rollup of an example run. Evaluators run AFTER the
+ * execution flips terminal, so the rollup can land seconds after `completed`.
+ * The three outcomes are distinct because `--fail-on-mismatch` treats them
+ * differently: a landed verdict gates, a timeout refuses to pass, and a run
+ * with no evaluators configured is ungradable.
+ */
+async function waitForExampleEvalRollup(
+  client: ApiClient,
+  agentId: string,
+  runId: string
+): Promise<EvalRollupWait> {
+  let hasEvaluators = true;
+  try {
+    hasEvaluators = await fetchHasEvaluators(client, agentAutomationId(agentId));
+  } catch {
+    // Cannot tell — poll anyway so a written verdict is never missed.
+  }
+  if (!hasEvaluators) {
+    warn('No evaluators configured for this automation; run not graded.');
+    return { kind: 'no-evaluators' };
+  }
+  const rollup = await pollEvalRollup(client, runId);
+  if (!rollup) {
+    warn(`No evaluator verdict for this run after ${EVAL_GRACE_MS / 1000}s.`);
+    return { kind: 'timeout' };
+  }
+  return { kind: 'landed', rollup };
 }
 
 /**
@@ -861,6 +937,11 @@ async function writeRunArtifact(
 async function traceRun(executionId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
   const text = await downloadTraceText(client, executionId);
+  if (text.length === 0) {
+    // Distinguish "trace downloaded" from "run recorded nothing" — scripts
+    // piping into analysis should not treat an empty file as a full trace.
+    warn(`No trace events recorded for run ${executionId}.`);
+  }
   if (!opts.out) {
     process.stdout.write(text);
     return;
@@ -1451,10 +1532,16 @@ async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }
 }
 
 async function downloadTraceText(client: ApiClient, executionId: string): Promise<string> {
-  const response = await client.getStream(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/trace.jsonl`
-  );
-  return Buffer.from(await response.arrayBuffer()).toString('utf-8');
+  // GET /runs/{id}/trace serves both run kinds — agent runs return parsed
+  // trace.jsonl events, workflow runs return observability phases / step
+  // records. (The old artifacts/trace.jsonl download 404'd for workflow runs,
+  // which only ever have the synthesized trace.) Re-emit as JSONL so the
+  // command's output stays line-parseable either way.
+  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}/trace`)) as {
+    events?: unknown[];
+  };
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  return events.map((event) => JSON.stringify(event)).join('\n') + (events.length > 0 ? '\n' : '');
 }
 
 export function diffJson(

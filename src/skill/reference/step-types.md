@@ -400,8 +400,8 @@ Extract structured data from text using AI with a JSON schema
 | `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
 | `model` | string | no |  | Model override |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
-| `grounded` | boolean | no |  | Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY. Values stay the reliable schema-typed ones. |
-| `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM; grounding runs against OpenAI, so pick an OpenAI-compatible model. |
+| `grounded` | boolean | no |  | Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding is OpenAI-only: the pass always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY on the worker. If the key is missing or the grounding model resolves to a non-OpenAI provider, the step fails instead of silently skipping grounding. Values stay the reliable schema-typed ones. |
+| `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM. Grounding is OpenAI-only, so this must resolve to an OpenAI model; a non-OpenAI model fails the step at runtime. |
 | `groundingExamples` | array<object> | no |  | Optional few-shot examples pinning grounding to verbatim source text per field. |
 | `reviewOn` | `"medium_or_low"` \| `"low_only"` | no |  | Which grounding confidences flag a field for review. Default: medium_or_low. |
 

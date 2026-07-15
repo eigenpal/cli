@@ -77,6 +77,60 @@ const CATEGORICAL_NAMES = new Set([
 const SEPARATOR_LIST_RE =
   /(?:^|[\s(])((?:[A-Za-z0-9_-]{1,20})(?:\s*[|,/]\s*[A-Za-z0-9_-]{1,20}){1,7})(?:$|[\s).])/;
 
+/**
+ * Field names that denote unbounded identifiers or free text — these are
+ * never closed sets, no matter how listy their description looks
+ * (`invoiceNumber: "e.g. INV-2024, INV-2025"` is examples, not an enum).
+ * Suffix match on the name; exact CATEGORICAL_NAMES membership wins over
+ * this (e.g. `reference` alone is a known coded field, `poReference` is an
+ * unbounded id).
+ */
+const IDENTIFIER_NAME_RE =
+  /(number|num|id|identifier|reference|ref|sku|key|uuid|guid|iban|email|phone|url|uri|path|filename|name|date|address)$/i;
+
+/** Exact free-text field names the enum nudge should never fire on. */
+const FREEFORM_NAMES = new Set([
+  'terms',
+  'notes',
+  'note',
+  'comment',
+  'comments',
+  'remarks',
+  'description',
+  'summary',
+  'text',
+  'title',
+]);
+
+/**
+ * Description prose that introduces *examples* of an open set rather than an
+ * exhaustive list of allowed values. The "e.g." form requires at least the
+ * first dot (or trailing dot for "eg.") so ordinary words starting with "eg"
+ * ("Egress", "egg") do not count.
+ */
+const EXAMPLE_MARKER_RE = /\b(e\.\s?g\.?|eg\.|for example|for instance|such as|examples?[:\s])/i;
+
+/** Token that looks like an example identifier (INV-2024, PO123, DEF-456). */
+const ID_LIKE_TOKEN_RE = /^[A-Za-z]{1,8}[-_]?\d{2,}$/;
+
+/**
+ * True when the separator list in `description` reads as a closed value set
+ * rather than a handful of example identifiers.
+ */
+function descriptionLooksCategorical(description: string): boolean {
+  if (description.length === 0) return false;
+  if (EXAMPLE_MARKER_RE.test(description)) return false;
+  const match = SEPARATOR_LIST_RE.exec(description);
+  if (!match?.[1]) return false;
+  const tokens = match[1]
+    .split(/\s*[|,/]\s*/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const idLike = tokens.filter((t) => ID_LIKE_TOKEN_RE.test(t)).length;
+  // Majority id-shaped tokens ⇒ the list is illustrative ids, not an enum.
+  return idLike * 2 < tokens.length;
+}
+
 export function validateSchemaQuality(workflow: WorkflowDefinition): SchemaQualityWarning[] {
   const warnings: SchemaQualityWarning[] = [];
   for (let i = 0; i < workflow.steps.length; i++) {
@@ -405,8 +459,14 @@ function walkSchema(
       const lower = name.toLowerCase();
       const description = typeof prop.description === 'string' ? prop.description : '';
       const looksCategoricalByName = CATEGORICAL_NAMES.has(lower);
+      // Unbounded identifiers (invoiceNumber, poReference, sku) and free-text
+      // fields (terms, notes) are never closed sets — suppress the nudge even
+      // when their description happens to contain a comma-separated list of
+      // example values. An exact CATEGORICAL_NAMES hit still fires.
+      const looksLikeIdentifier =
+        !looksCategoricalByName && (IDENTIFIER_NAME_RE.test(lower) || FREEFORM_NAMES.has(lower));
       const looksCategoricalByDescription =
-        description.length > 0 && SEPARATOR_LIST_RE.test(description);
+        !looksLikeIdentifier && descriptionLooksCategorical(description);
       if (
         propType === 'string' &&
         !propEnum &&
