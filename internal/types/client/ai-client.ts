@@ -86,6 +86,19 @@ export interface ExtractOptions {
 }
 
 /**
+ * Options for raw completions
+ *
+ * `temperature` is intentionally NOT here — same deterministic-framework
+ * rationale as ExtractOptions: every call uses `DETERMINISTIC_TEMPERATURE`.
+ */
+export interface CompleteOptions {
+  /** Model to use (overrides default) */
+  model?: string;
+  /** Cancels the in-flight LLM request when aborted. */
+  signal?: AbortSignal;
+}
+
+/**
  * AI Client interface
  *
  * Simplified interface focused on document processing use cases.
@@ -121,6 +134,15 @@ export interface AIClient {
     content: string | { text: string; images?: ImageInput[] },
     options: ExtractOptions
   ): Promise<ExtractResponse>;
+
+  /**
+   * Raw text completion — send a single prompt, get the model's text back.
+   *
+   * Used where the caller owns the full prompt and parses the response
+   * itself (e.g. the extract grounding pass hands langextract-generated
+   * prompts to the workspace model).
+   */
+  complete(prompt: string, options?: CompleteOptions): Promise<AIResponse>;
 
   /**
    * Check if this client supports vision (image inputs)

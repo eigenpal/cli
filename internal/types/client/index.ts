@@ -6,6 +6,7 @@
 export type {
   AIClient,
   AIResponse,
+  CompleteOptions,
   ExtractOptions,
   ExtractResponse,
   ImageInput,

@@ -20,6 +20,16 @@ export {
   type TracingContext,
 } from './processor';
 
+// Extract input normalization (shared with the app's grounding viewer)
+export {
+  extractSourceTextFromResolvedConfig,
+  normalizeExtractInputToText,
+} from './normalize-extract-input';
+
+// Grounding result types (produced by the worker, consumed by the app)
+export { stripGroundingMetadata } from './grounding';
+export type { FieldGrounding, GroundingConfidence, GroundingResult } from './grounding';
+
 // Execution status
 export {
   // Execution types (mode: prod/eval/playground)

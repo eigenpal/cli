@@ -148,6 +148,7 @@ export {
   XlsxToJsonInputSchema,
   XlsxToJsonOutputSchema,
   extractFieldMetadata,
+  extractSourceTextFromResolvedConfig,
   getAllProcessorJsonSchemas,
   getConfigDefaults,
   getConfigFieldMetadata,
@@ -156,6 +157,8 @@ export {
   isFilePathDescriptor,
   listProcessorIds,
   noopTracingContext,
+  normalizeExtractInputToText,
+  stripGroundingMetadata,
   validateConfig,
   type ClassifyConfig,
   type ClassifyInput,
@@ -168,8 +171,11 @@ export {
   type ExtractConfig,
   type ExtractInput,
   type ExtractOutput,
+  type FieldGrounding,
   type FieldMetadata,
   type FilePathDescriptor,
+  type GroundingConfidence,
+  type GroundingResult,
   type MergeConfig,
   type MergeInput,
   type MergeOutput,
@@ -250,6 +256,7 @@ export {
 export type {
   AIClient,
   AIResponse,
+  CompleteOptions,
   ExtractOptions,
   ExtractResponse,
   ImageInput,
@@ -367,6 +374,9 @@ export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/s
 
 // Organization-managed outbound webhook contracts
 export * from './webhooks';
+
+// Public OCR API wire contracts (ParsedDocument v3, jobs, errors)
+export * from './ocr';
 
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';

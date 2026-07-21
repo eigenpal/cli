@@ -400,14 +400,14 @@ Extract structured data from text using AI with a JSON schema
 | `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
 | `model` | string | no |  | Model override |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
-| `grounded` | boolean | no |  | Optional. When true, adds a grounding pass: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a `_grounding` key, and ungrounded/fuzzy fields are flagged for human review. Grounding is OpenAI-only: the pass always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY on the worker. If the key is missing or the grounding model resolves to a non-OpenAI provider, the step fails instead of silently skipping grounding. Values stay the reliable schema-typed ones. |
-| `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM. Grounding is OpenAI-only, so this must resolve to an OpenAI model; a non-OpenAI model fails the step at runtime. |
+| `grounded` | boolean | no |  | Grounding is ON by default: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a reserved `_grounding` output key, and fields whose value cannot be located in the source are flagged for human review. Values stay the reliable schema-typed ones. The pass runs through the workspace LLM (any provider) and chunks long documents automatically. Tri-state: unset (default) = on, degrading gracefully to deterministic text alignment (`_grounding._degraded: true`) if no grounding model is available; `true` = strict, the step fails when the grounding model cannot be resolved; `false` = off, no `_grounding` key at all. |
+| `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM. Any configured provider works; the pass only fails the step when `grounded: true` is set explicitly and no model resolves. |
 | `groundingExamples` | array<object> | no |  | Optional few-shot examples pinning grounding to verbatim source text per field. |
-| `reviewOn` | `"medium_or_low"` \| `"low_only"` | no |  | Which grounding confidences flag a field for review. Default: medium_or_low. |
+| `reviewOn` | `"medium_or_low"` \| `"low_only"` | no |  | Which grounding confidences set needsReview on a field. Default: low_only (only fields whose value could not be located in the source). Use medium_or_low to also flag approximate and derived matches. |
 
 **Output:** `record<string, unknown>`
 
-> Extracted structured data matching the provided schema
+> Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run.
 
 #### `ai.split` — Split Document
 

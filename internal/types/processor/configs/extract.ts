@@ -28,7 +28,9 @@ export const ExtractInputSchema = z
 
 export const ExtractOutputSchema = z
   .record(z.string(), z.unknown())
-  .describe('Extracted structured data matching the provided schema');
+  .describe(
+    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run.'
+  );
 
 /**
  * `temperature` is intentionally NOT exposed here — Eigenpal is a
@@ -53,18 +55,18 @@ export const ExtractConfigSchema = z.object({
     .describe(
       'Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit.'
     ),
-  // --- Optional langextract grounding (opt-in) ---
+  // --- Grounding (on by default) ---
   grounded: z
     .boolean()
     .optional()
     .describe(
-      'When true, run a grounding pass over the schema fields and attach per-field source spans + confidence under a `_grounding` key, flagging ungrounded/fuzzy fields for human review. Grounding is OpenAI-only: the pass (langextract) always calls OpenAI directly (independent of the extract provider) and requires OPENAI_API_KEY on the worker. If the key is missing or the grounding model resolves to a non-OpenAI provider, the step fails at runtime instead of silently skipping grounding.'
+      'Grounding is ON by default: a grounding pass runs over the schema fields and attaches per-field source spans + confidence under a reserved `_grounding` output key, flagging fields whose value cannot be located in the source for human review. The pass runs through the workspace LLM (any provider) and chunks long documents automatically. Tri-state: unset (default) = on, degrading gracefully to deterministic text alignment (`_grounding._degraded: true`) if no grounding model is available; `true` = strict, the step fails when the grounding model cannot be resolved; `false` = off, no `_grounding` key at all.'
     ),
   groundingModel: z
     .string()
     .optional()
     .describe(
-      'Provider/model for the grounding pass. Defaults to the workspace default LLM. Grounding is OpenAI-only, so this must resolve to an OpenAI model; a non-OpenAI model fails the step at runtime.'
+      'Provider/model for the grounding pass. Defaults to the workspace default LLM. Any configured provider works; the pass only fails the step when `grounded: true` is set explicitly and no model resolves.'
     ),
   groundingExamples: z
     .array(
@@ -78,7 +80,9 @@ export const ExtractConfigSchema = z.object({
   reviewOn: z
     .enum(['medium_or_low', 'low_only'])
     .optional()
-    .describe('Which grounding confidences flag a field for review. Default: medium_or_low.'),
+    .describe(
+      'Which grounding confidences set needsReview on a field. Default: low_only (only fields whose value could not be located in the source). Use medium_or_low to also flag approximate and derived matches.'
+    ),
 });
 
 export type ExtractInput = z.infer<typeof ExtractInputSchema>;

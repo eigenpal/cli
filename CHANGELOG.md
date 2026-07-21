@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.26
+
+### Patch Changes
+
+- f72e9e8: The step catalog now documents grounded extraction as the default: extract steps ship per-field confidence and source spans under the `_grounding` output key unless `grounded: false` is set.
+
 ## 0.10.24
 
 ### Patch Changes
