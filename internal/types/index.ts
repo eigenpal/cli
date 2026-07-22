@@ -5,6 +5,8 @@
  * Uses Zod for runtime validation + TypeScript types.
  */
 
+export { PROVIDER_LOGO_DATA, type ProviderLogoName } from './provider-logo-data.generated';
+
 // Core utilities (ID generation, timestamps, pagination, JSON Schema)
 export {
   BaseEntitySchema,

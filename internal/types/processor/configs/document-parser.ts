@@ -83,6 +83,18 @@ export const DocumentParserConfigSchema = z
       .optional()
       .describe('Use native text extraction for PDFs with embedded text (no OCR/VLM)'),
 
+    // Figure description (orthogonal vision caption pass)
+    describeFigures: z
+      .boolean()
+      .optional()
+      .describe(
+        'Opt-in (default off). After text extraction, detect figure pages with a layout model and caption them with a vision model, appending `<figure>description</figure>` to their text. Skipped for plaintext. The caption vision calls are billed.'
+      ),
+    figureInstructions: z
+      .string()
+      .optional()
+      .describe('Custom instruction for the figure-description pass.'),
+
     // OCR options
     languages: z.array(z.string()).optional().describe('OCR language hints (e.g., ["en", "de"])'),
 

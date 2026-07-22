@@ -84,72 +84,77 @@ const ConfidenceLevelSchema = z
     'LLM confidence as a coarse enum. Numeric (0..1) confidences cluster at 0.85–0.95 and gradations are noise; low/medium/high is reliable.'
   );
 
-export const SplitOutputSchema = z.object({
-  splits: z.array(
-    z.object({
-      name: z.string(),
-      page_range: z.tuple([z.number().int(), z.number().int()]),
-      confidence: ConfidenceLevelSchema.describe(
-        'LLM confidence at the start anchor: low | medium | high.'
-      ),
-      notes: z.string(),
-      evidence: z
-        .object({
-          // .nullable() is defensive — mergeAnchors strips nulls before this
-          // validator runs, but if one slips through we accept it rather than
-          // abort the run. LLMs sometimes emit null leaves for unanchorable
-          // sections despite the prompt saying to omit.
-          start_heading_text: z
-            .string()
-            .nullable()
-            .optional()
-            .describe('Verbatim heading text the LLM cited as the section start'),
-          start_page: z
-            .number()
-            .int()
-            .nullable()
-            .optional()
-            .describe('Page where start_heading_text appears'),
-        })
-        .optional()
-        .describe(
-          'Structured start-anchor evidence the LLM cited — for downstream parsing without regex over `notes`.'
-        ),
-      end_evidence: z
-        .object({
-          end_page: z.number().int().describe('LAST page of the section (inclusive)'),
-          confidence: ConfidenceLevelSchema,
-          notes: z
-            .string()
-            .describe(
-              'LLM justification for the end. Pairs with start-anchor `notes` so a reconciliation pass can judge whether the section is correctly bounded.'
-            ),
-        })
-        .optional()
-        .describe(
-          'Set when the LLM flagged a section close (matched against `endHints` or detected end-of-section markers). Absent when the section was closed by deterministic continuity-fill (next section start - 1).'
-        ),
-      text: z.string().describe('Joined per-page text for this section, ready for ai.extract'),
-      pages: z
-        .array(
-          z.object({
-            pageIndex: z.number().int(),
-            text: z.string(),
-            pageName: z.string().optional(),
-            source: z
-              .enum(['anchored', 'inferred'])
-              .describe(
-                'Whether this page was the LLM anchor (direct evidence) or filled in by continuity'
-              ),
-          })
-        )
-        .describe(
-          'Raw per-page records covered by this split (in page order). Use when downstream needs to iterate page-by-page rather than treating the section as one blob.'
-        ),
-      pages_anchored: z.array(z.number().int()),
-      pages_inferred: z.array(z.number().int()),
-    })
+const SplitSectionSchema = z.object({
+  name: z.string(),
+  page_range: z.tuple([z.number().int(), z.number().int()]),
+  confidence: ConfidenceLevelSchema.describe(
+    'LLM confidence at the start anchor: low | medium | high.'
   ),
+  notes: z.string(),
+  evidence: z
+    .object({
+      // .nullable() is defensive — mergeAnchors strips nulls before this
+      // validator runs, but if one slips through we accept it rather than
+      // abort the run. LLMs sometimes emit null leaves for unanchorable
+      // sections despite the prompt saying to omit.
+      start_heading_text: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Verbatim heading text the LLM cited as the section start'),
+      start_page: z
+        .number()
+        .int()
+        .nullable()
+        .optional()
+        .describe('Page where start_heading_text appears'),
+    })
+    .optional()
+    .describe(
+      'Structured start-anchor evidence the LLM cited — for downstream parsing without regex over `notes`.'
+    ),
+  end_evidence: z
+    .object({
+      end_page: z.number().int().describe('LAST page of the section (inclusive)'),
+      confidence: ConfidenceLevelSchema,
+      notes: z
+        .string()
+        .describe(
+          'LLM justification for the end. Pairs with start-anchor `notes` so a reconciliation pass can judge whether the section is correctly bounded.'
+        ),
+    })
+    .optional()
+    .describe(
+      'Set when the LLM flagged a section close (matched against `endHints` or detected end-of-section markers). Absent when the section was closed by deterministic continuity-fill (next section start - 1).'
+    ),
+  text: z.string().describe('Joined per-page text for this section, ready for ai.extract'),
+  pages: z
+    .array(
+      z.object({
+        pageIndex: z.number().int(),
+        text: z.string(),
+        pageName: z.string().optional(),
+        source: z
+          .enum(['anchored', 'inferred'])
+          .describe(
+            'Whether this page was the LLM anchor (direct evidence) or filled in by continuity'
+          ),
+      })
+    )
+    .describe(
+      'Raw per-page records covered by this split (in page order). Use when downstream needs to iterate page-by-page rather than treating the section as one blob.'
+    ),
+  pages_anchored: z.array(z.number().int()),
+  pages_inferred: z.array(z.number().int()),
+});
+
+export const SplitOutputSchema = z.object({
+  splits: z.array(SplitSectionSchema),
+  sections: z
+    .record(z.string(), SplitSectionSchema)
+    .describe(
+      'The same sections keyed by their config name, for direct reference: `steps.<split>.output.sections.<name>.page_range`. On the rare duplicate name, the last section wins; use `splits` for the full ordered list.'
+    ),
 });
 
 export type SplitInput = z.infer<typeof SplitInputSchema>;

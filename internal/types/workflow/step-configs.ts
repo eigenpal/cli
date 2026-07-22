@@ -81,6 +81,18 @@ export const AiParseConfigSchema = z.object({
     .describe(
       'Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text.'
     ),
+  describeFigures: z
+    .boolean()
+    .optional()
+    .describe(
+      'Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext.'
+    ),
+  figureInstructions: z
+    .string()
+    .optional()
+    .describe(
+      'Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs.'
+    ),
 });
 
 export const AiParseOutputSchema = z.object({
@@ -173,6 +185,90 @@ export const AiExtractOutputSchema = z
   );
 
 /**
+ * ai.vision - Inspect rendered page images with a vision model.
+ *
+ * The visual counterpart to ai.extract: instead of reasoning over parsed text,
+ * it rasterizes a page range of the input document (PDF, image, or Office/Word)
+ * and sends the page images to a vision-capable LLM, returning JSON that matches
+ * the user-defined `schema`. The `prompt` is optional — the schema drives the
+ * extraction; the prompt only refines it. Use it for conclusions that live in
+ * the pixels, not the text (signatures present? photo quality? stamp/logo?).
+ */
+const VisionPageRangeSchema = z
+  .tuple([z.number().int().min(0), z.number().int().min(0)])
+  .describe('Inclusive 0-based [start, end] page range, matching ai.split page_range.');
+
+export const AiVisionConfigSchema = z.object({
+  document: z
+    .string()
+    .describe('Template expression resolving to the input file (PDF, image, or Office document).'),
+  pageFrom: z
+    .union([z.number().int().min(0), z.string()])
+    .optional()
+    .describe(
+      'First page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, starts from the first page.'
+    ),
+  pageTo: z
+    .union([z.number().int().min(0), z.string()])
+    .optional()
+    .describe(
+      'Last page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, runs to the last page. When BOTH pageFrom and pageTo are omitted, the whole document is inspected in chunks of maxPages (divide-and-conquer, results merged).'
+    ),
+  pages: z
+    .union([z.literal('all'), VisionPageRangeSchema, z.array(VisionPageRangeSchema), z.string()])
+    .optional()
+    .describe(
+      'DEPRECATED — prefer pageFrom/pageTo. Which pages to inspect: "all", a single [start,end] range, a list of ranges, or a template expression resolving to one of those.'
+    ),
+  schema: z
+    .object({
+      type: z.literal('object'),
+      properties: z.record(z.string(), z.unknown()),
+      required: z.array(z.string()).optional(),
+    })
+    .refine((schema) => Object.keys(schema.properties).length > 0, {
+      message: 'Vision schema must define at least one field',
+    })
+    .describe('JSON Schema defining the structure the vision model should return.'),
+  prompt: z
+    .string()
+    .optional()
+    .describe('Optional instruction refining the extraction. The schema drives it when omitted.'),
+  provider: z.string().optional().describe('Provider ID (must support vision).'),
+  model: z.string().optional().describe('Model override (must support vision).'),
+  renderScale: z
+    .number()
+    .positive()
+    .max(6)
+    .optional()
+    .describe(
+      'PDF render scale (1.0 = 72 DPI). Raise for small text or weak VLM OCR. Capped at 6 to avoid oversized page rasters.'
+    ),
+  imageQuality: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('JPEG quality for rendered pages (default 85).'),
+  maxPages: z
+    .number()
+    .int()
+    .positive()
+    .max(100)
+    .optional()
+    .describe(
+      'Chunk size: the maximum pages sent to the vision model in a single call. When the inspected range (or the whole document) is larger, it is split into chunks of this size and the per-chunk results are merged by a reduce pass. The reduce follows each field\'s DESCRIPTION: a boolean described as "present on any page" is OR-ed, one described as "true for every page" is AND-ed, and list fields are concatenated. The merge is most reliable for boolean/scalar claims; for schemas that AGGREGATE long lists across chunks it can still drop or reorder items, so prefer a bounded page range for large list extraction. Default 20, capped at 100.'
+    ),
+});
+
+export const AiVisionOutputSchema = z
+  .record(z.string(), z.unknown())
+  .describe(
+    'Structured data matching the provided schema. The output also carries a reserved `_vision` key recording the inspected source document ref and the page indices that were rendered, so the UI can re-rasterize exactly those pages client-side. `_vision` is excluded from user-schema validation.'
+  );
+
+/**
  * ai.split - Split a parsed document into named sections using an LLM.
  *
  * Consumes the output of ai.parse (per-page text). Pages are chunked into
@@ -235,82 +331,83 @@ export const AiSplitConfigSchema = z.object({
     ),
 });
 
-export const AiSplitOutputSchema = z.object({
-  splits: z
+const AiSplitSectionSchema = z.object({
+  name: z.string().describe('Section name from the config'),
+  page_range: z
+    .tuple([z.number().int(), z.number().int()])
+    .describe('[startIndex, endIndex] inclusive, 0-based page indices'),
+  confidence: z
+    .enum(['low', 'medium', 'high'])
+    .describe(
+      'LLM confidence at the anchor page. Coarse enum (low | medium | high) — numeric scores cluster meaninglessly at 0.85-0.95.'
+    ),
+  notes: z.string().describe("LLM's justification for the anchor — useful for debugging"),
+  evidence: z
+    .object({
+      // .nullable() is defensive — the operator strips nulls in
+      // mergeAnchors, but if one slips through we accept it rather
+      // than abort the run. LLMs sometimes emit `null` here for
+      // sections they can't anchor (despite prompt saying to omit).
+      start_heading_text: z
+        .string()
+        .nullable()
+        .optional()
+        .describe('Verbatim heading text the LLM cited as the section start'),
+      start_page: z
+        .number()
+        .int()
+        .nullable()
+        .optional()
+        .describe('Page where start_heading_text appears'),
+    })
+    .optional()
+    .describe('Structured start-anchor evidence — parse this instead of regexing over `notes`.'),
+  end_evidence: z
+    .object({
+      end_page: z.number().int().describe('LAST page of the section (inclusive)'),
+      confidence: z.enum(['low', 'medium', 'high']),
+      notes: z
+        .string()
+        .describe("LLM's justification for the end. Pair with start `notes` for reconciliation."),
+    })
+    .optional()
+    .describe(
+      "Set when the LLM detected an end-of-section cue (matched against the section's `endHints` or an explicit closing marker). Absent when the section was closed by continuity-fill alone."
+    ),
+  text: z
+    .string()
+    .describe('Joined per-page content for this section, ready for downstream ai.extract'),
+  pages: z
     .array(
       z.object({
-        name: z.string().describe('Section name from the config'),
-        page_range: z
-          .tuple([z.number().int(), z.number().int()])
-          .describe('[startIndex, endIndex] inclusive, 0-based page indices'),
-        confidence: z
-          .enum(['low', 'medium', 'high'])
+        pageIndex: z.number().int(),
+        text: z.string(),
+        pageName: z.string().optional(),
+        source: z
+          .enum(['anchored', 'inferred'])
           .describe(
-            'LLM confidence at the anchor page. Coarse enum (low | medium | high) — numeric scores cluster meaninglessly at 0.85-0.95.'
+            'Whether this page is direct LLM evidence (anchored) or continuity-filled (inferred)'
           ),
-        notes: z.string().describe("LLM's justification for the anchor — useful for debugging"),
-        evidence: z
-          .object({
-            // .nullable() is defensive — the operator strips nulls in
-            // mergeAnchors, but if one slips through we accept it rather
-            // than abort the run. LLMs sometimes emit `null` here for
-            // sections they can't anchor (despite prompt saying to omit).
-            start_heading_text: z
-              .string()
-              .nullable()
-              .optional()
-              .describe('Verbatim heading text the LLM cited as the section start'),
-            start_page: z
-              .number()
-              .int()
-              .nullable()
-              .optional()
-              .describe('Page where start_heading_text appears'),
-          })
-          .optional()
-          .describe(
-            'Structured start-anchor evidence — parse this instead of regexing over `notes`.'
-          ),
-        end_evidence: z
-          .object({
-            end_page: z.number().int().describe('LAST page of the section (inclusive)'),
-            confidence: z.enum(['low', 'medium', 'high']),
-            notes: z
-              .string()
-              .describe(
-                "LLM's justification for the end. Pair with start `notes` for reconciliation."
-              ),
-          })
-          .optional()
-          .describe(
-            "Set when the LLM detected an end-of-section cue (matched against the section's `endHints` or an explicit closing marker). Absent when the section was closed by continuity-fill alone."
-          ),
-        text: z
-          .string()
-          .describe('Joined per-page content for this section, ready for downstream ai.extract'),
-        pages: z
-          .array(
-            z.object({
-              pageIndex: z.number().int(),
-              text: z.string(),
-              pageName: z.string().optional(),
-              source: z
-                .enum(['anchored', 'inferred'])
-                .describe(
-                  'Whether this page is direct LLM evidence (anchored) or continuity-filled (inferred)'
-                ),
-            })
-          )
-          .describe(
-            'Raw per-page records covered by this split (in page order). Iterate when downstream needs per-page context (e.g. control.parallel_map over section pages).'
-          ),
-        pages_anchored: z.array(z.number().int()).describe('Pages with direct LLM evidence'),
-        pages_inferred: z
-          .array(z.number().int())
-          .describe('Pages assigned by deterministic continuity fill'),
       })
     )
+    .describe(
+      'Raw per-page records covered by this split (in page order). Iterate when downstream needs per-page context (e.g. control.parallel_map over section pages).'
+    ),
+  pages_anchored: z.array(z.number().int()).describe('Pages with direct LLM evidence'),
+  pages_inferred: z
+    .array(z.number().int())
+    .describe('Pages assigned by deterministic continuity fill'),
+});
+
+export const AiSplitOutputSchema = z.object({
+  splits: z
+    .array(AiSplitSectionSchema)
     .describe('Sections found in the document, in page order. Absent sections are omitted.'),
+  sections: z
+    .record(z.string(), AiSplitSectionSchema)
+    .describe(
+      'The same sections keyed by config name, so a downstream step can reference one directly: `{{ steps.<split>.output.sections.<name>.page_range }}`. Prefer this over filtering `splits`. On a duplicate name the last wins.'
+    ),
 });
 
 /**
@@ -1348,6 +1445,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'ai.split': AI_RETRY_CAPABILITY,
   'ai.segment': AI_RETRY_CAPABILITY,
   'ai.classify': AI_RETRY_CAPABILITY,
+  'ai.vision': AI_RETRY_CAPABILITY,
   'transform.set': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.remove': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.combine': DETERMINISTIC_RETRY_CAPABILITY,
@@ -1432,6 +1530,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.',
     configSchema: AiClassifyConfigSchema,
     outputSchema: AiClassifyOutputSchema,
+    configInWith: true,
+  },
+  'ai.vision': {
+    type: 'ai.vision',
+    category: 'ai',
+    name: 'Inspect Pages (Vision)',
+    description:
+      'Inspect rendered page images with a vision model and return structured JSON matching a schema. The visual counterpart to Extract Data: use it for conclusions that live in the pixels rather than the text (is the document signed? are the photos usable?). Renders PDF, image, or Office/Word inputs; route to specific pages with an ai.split page range to keep it cheap.',
+    configSchema: AiVisionConfigSchema,
+    outputSchema: AiVisionOutputSchema,
     configInWith: true,
   },
 
@@ -1788,6 +1896,8 @@ export type AiSegmentConfig = z.infer<typeof AiSegmentConfigSchema>;
 export type AiSegmentOutput = z.infer<typeof AiSegmentOutputSchema>;
 export type AiClassifyConfig = z.infer<typeof AiClassifyConfigSchema>;
 export type AiClassifyOutput = z.infer<typeof AiClassifyOutputSchema>;
+export type AiVisionConfig = z.infer<typeof AiVisionConfigSchema>;
+export type AiVisionOutput = z.infer<typeof AiVisionOutputSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
 export type TransformRemoveConfig = z.infer<typeof TransformRemoveConfigSchema>;
 export type TransformCombineConfig = z.infer<typeof TransformCombineConfigSchema>;

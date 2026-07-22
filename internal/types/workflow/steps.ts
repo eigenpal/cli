@@ -18,6 +18,7 @@ export const AI_STEP_TYPES = [
   'ai.split',
   'ai.segment',
   'ai.classify',
+  'ai.vision',
 ] as const;
 
 // Transform step types
@@ -73,6 +74,7 @@ export const StepTypeValue = {
   AI_SPLIT: 'ai.split',
   AI_SEGMENT: 'ai.segment',
   AI_CLASSIFY: 'ai.classify',
+  AI_VISION: 'ai.vision',
   // Transform
   TRANSFORM_SET: 'transform.set',
   TRANSFORM_REMOVE: 'transform.remove',

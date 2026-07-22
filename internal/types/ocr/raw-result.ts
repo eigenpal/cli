@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OcrFigureAssetsModeSchema } from './model-options';
 
 export const OCR_OUTPUT_FORMATS = ['openparser@1', 'raw'] as const;
 export const OcrOutputFormatSchema = z.enum(OCR_OUTPUT_FORMATS);
@@ -10,20 +11,18 @@ export const PaddleRawProfileSchema = z
     options: z
       .object({
         format_block_content: z.literal(true),
-        use_chart_recognition: z.literal(true),
-        return_markdown_images: z.literal(false),
+        use_chart_recognition: z.boolean(),
+        use_ocr_for_image_block: z.boolean(),
+        return_markdown_images: z.boolean(),
         visualize: z.literal(false),
+        image_block_ocr: z.boolean(),
+        chart_recognition: z.boolean(),
+        figure_assets: OcrFigureAssetsModeSchema,
       })
       .strict(),
   })
   .strict();
 
-/**
- * Provider-specific parse output. `result` is the successful Paddle HPS
- * `payload.result` object, preserved without canonicalization. The outer HPS
- * transport response is intentionally excluded so errorCode/errorMsg cannot be
- * mistaken for parse data.
- */
 export const RawParseResultSchema = z
   .object({
     output_format: z.literal('raw'),

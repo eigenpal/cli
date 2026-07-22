@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ExtractionTerminalResultSchema } from './extraction';
 import { ParsedDocumentSchema } from './parsed-document';
 import { OcrOutputFormatSchema, RawParseResultSchema } from './raw-result';
+import { SuggestSchemaTerminalResultSchema } from './suggest-schema';
 
 /**
  * Public OCR job/batch/error wire envelopes.
@@ -21,7 +22,13 @@ export const OCR_JOB_STATUSES = [
 export const JobStatusSchema = z.enum(OCR_JOB_STATUSES);
 export type JobStatus = z.infer<typeof JobStatusSchema>;
 
-export const OCR_JOB_OPERATIONS = ['parse', 'extract', 'parse_batch', 'extract_batch'] as const;
+export const OCR_JOB_OPERATIONS = [
+  'parse',
+  'extract',
+  'suggest_schema',
+  'parse_batch',
+  'extract_batch',
+] as const;
 export const JobOperationSchema = z.enum(OCR_JOB_OPERATIONS);
 export type JobOperation = z.infer<typeof JobOperationSchema>;
 
@@ -42,7 +49,7 @@ export type JobFailure = z.infer<typeof JobFailureSchema>;
 export const JobAcceptedSchema = z
   .object({
     id: JobIdSchema,
-    operation: z.enum(['parse', 'extract']),
+    operation: z.enum(['parse', 'extract', 'suggest_schema']),
     status: JobStatusSchema,
     output_format: OcrOutputFormatSchema,
     created_at: z.string().datetime(),
@@ -124,7 +131,12 @@ export const JobSchema = z
     progress: JobProgressSchema.optional(),
     error: JobFailureSchema.optional(),
     result: z
-      .union([ParsedDocumentSchema, RawParseResultSchema, ExtractionTerminalResultSchema])
+      .union([
+        ParsedDocumentSchema,
+        RawParseResultSchema,
+        ExtractionTerminalResultSchema,
+        SuggestSchemaTerminalResultSchema,
+      ])
       .optional(),
     summary: BatchSummaryCountsSchema.optional(),
     children: BatchChildPageSchema.optional(),
@@ -132,6 +144,62 @@ export const JobSchema = z
   .strict();
 
 export type Job = z.infer<typeof JobSchema>;
+
+/** Default / max page size for `GET /jobs` list. */
+export const OCR_JOB_LIST_DEFAULT_LIMIT = 25;
+export const OCR_JOB_LIST_MAX_LIMIT = 100;
+
+/**
+ * Lightweight tenant-scoped job row for `GET /jobs`.
+ * Intentionally omits result bodies, idempotency material, storage keys, and costs.
+ */
+export const JobSummarySchema = z
+  .object({
+    id: JobIdSchema,
+    operation: JobOperationSchema,
+    status: JobStatusSchema,
+    output_format: OcrOutputFormatSchema,
+    ocr_model: z.string().min(1).nullable().optional(),
+    llm_model: z.string().min(1).nullable().optional(),
+    page_count: z.number().int().min(0),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    error: JobFailureSchema.optional(),
+    /** True when a terminal result is available via `GET /jobs/{id}`. */
+    has_result: z.boolean(),
+    /** Job resource URL (path-absolute) for `GET /jobs/{id}`. */
+    url: z.string().min(1),
+  })
+  .strict();
+
+export type JobSummary = z.infer<typeof JobSummarySchema>;
+
+export const JobListResponseSchema = z
+  .object({
+    data: z.array(JobSummarySchema),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
+
+export type JobListResponse = z.infer<typeof JobListResponseSchema>;
+
+/** Query string for `GET /jobs` (validated after parsing). */
+export const JobListQuerySchema = z
+  .object({
+    cursor: z.string().min(1).optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(OCR_JOB_LIST_MAX_LIMIT)
+      .optional()
+      .default(OCR_JOB_LIST_DEFAULT_LIMIT),
+    status: JobStatusSchema.optional(),
+    operation: JobOperationSchema.optional(),
+  })
+  .strict();
+
+export type JobListQuery = z.infer<typeof JobListQuerySchema>;
 
 export const ErrorBodySchema = z
   .object({

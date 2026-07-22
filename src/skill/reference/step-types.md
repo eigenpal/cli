@@ -375,6 +375,8 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 | `languages` | array<string> | no |  | OCR language hints |
 | `outputFormat` | `"plain"` \| `"markdown"` \| `"djot"` \| `"html"` | no | `"markdown"` | Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown. |
 | `nativeText` | boolean | no | `false` | Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text. |
+| `describeFigures` | boolean | no |  | Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext. |
+| `figureInstructions` | string | no |  | Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs. |
 
 **Output:** `object`
 
@@ -430,6 +432,7 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `splits` | array<object> | yes |  | Sections found in the document, in page order. Absent sections are omitted. |
+| `sections` | record<string, object> | yes |  | The same sections keyed by config name, so a downstream step can reference one directly: `{{ steps.<split>.output.sections.<name>.page_range }}`. Prefer this over filtering `splits`. On a duplicate name the last wins. |
 
 #### `ai.segment` — Separate Documents
 
@@ -478,6 +481,31 @@ Classify a document or text into one of a fixed label set using an LLM. Output e
 | `label` | string | yes |  | The selected label name (one of the configured labels). Compare against literal strings to gate downstream steps. |
 | `confidence` | `"low"` \| `"medium"` \| `"high"` | yes |  | LLM confidence in the classification. Coarse enum — numeric scores cluster meaninglessly at 0.85-0.95. |
 | `reason` | string | yes |  | Short justification for the chosen label — useful for debugging. |
+
+#### `ai.vision` — Inspect Pages (Vision)
+
+Inspect rendered page images with a vision model and return structured JSON matching a schema. The visual counterpart to Extract Data: use it for conclusions that live in the pixels rather than the text (is the document signed? are the photos usable?). Renders PDF, image, or Office/Word inputs; route to specific pages with an ai.split page range to keep it cheap.
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `document` | string | yes |  | Template expression resolving to the input file (PDF, image, or Office document). |
+| `pageFrom` | integer \| string | no |  | First page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, starts from the first page. |
+| `pageTo` | integer \| string | no |  | Last page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, runs to the last page. When BOTH pageFrom and pageTo are omitted, the whole document is inspected in chunks of maxPages (divide-and-conquer, results merged). |
+| `schema` | object | yes |  | JSON Schema defining the structure the vision model should return. |
+| `prompt` | string | no |  | Optional instruction refining the extraction. The schema drives it when omitted. |
+| `provider` | string | no |  | Provider ID (must support vision). |
+| `model` | string | no |  | Model override (must support vision). |
+| `renderScale` | number | no |  | PDF render scale (1.0 = 72 DPI). Raise for small text or weak VLM OCR. Capped at 6 to avoid oversized page rasters. |
+| `imageQuality` | integer | no |  | JPEG quality for rendered pages (default 85). |
+| `maxPages` | integer | no |  | Chunk size: the maximum pages sent to the vision model in a single call. When the inspected range (or the whole document) is larger, it is split into chunks of this size and the per-chunk results are merged by a reduce pass. The reduce follows each field's DESCRIPTION: a boolean described as "present on any page" is OR-ed, one described as "true for every page" is AND-ed, and list fields are concatenated. The merge is most reliable for boolean/scalar claims; for schemas that AGGREGATE long lists across chunks it can still drop or reorder items, so prefer a bounded page range for large list extraction. Default 20, capped at 100. |
+
+**Output:** `record<string, unknown>`
+
+> Structured data matching the provided schema. The output also carries a reserved `_vision` key recording the inspected source document ref and the page indices that were rendered, so the UI can re-rasterize exactly those pages client-side. `_vision` is excluded from user-schema validation.
 
 ### Transform steps — deterministic data transforms
 
