@@ -380,6 +380,8 @@ type ResponseTarget =
         | 'InsufficientCredits'
         | 'IdempotencyConflict'
         | 'PipelineNameConflict'
+        | 'JobNotTerminal'
+        | 'ParseResultUnavailable'
         | 'LimitExceeded'
         | 'UnsupportedMediaType'
         | 'UnprocessableConfig'
@@ -418,6 +420,7 @@ type OpenParserRouteDefinition = {
     | 'JobListLimit'
     | 'JobListStatus'
     | 'JobListOperation'
+    | 'ParseResultFormat'
     | 'LlmModelsMode'
     | 'LlmModelsQuery'
     | 'LlmModelsPage'
@@ -591,6 +594,24 @@ export const OPENPARSER_ROUTE_MANIFEST = [
       403: { component: 'Forbidden' },
       404: { component: 'JobNotFound' },
       429: { component: 'RateLimited' },
+    },
+  },
+  {
+    operationId: 'getJobResult',
+    method: 'get',
+    path: '/jobs/{id}/result',
+    tag: 'jobs',
+    parameters: ['JobId', 'ParseResultFormat'],
+    responses: {
+      200: { schema: 'ParseResult' },
+      400: { component: 'MalformedRequest' },
+      401: { component: 'Unauthorized' },
+      403: { component: 'Forbidden' },
+      404: { component: 'JobNotFound' },
+      409: { component: 'JobNotTerminal' },
+      422: { component: 'ParseResultUnavailable' },
+      429: { component: 'RateLimited' },
+      504: { component: 'SyncTerminalIndeterminate' },
     },
   },
   {

@@ -54,6 +54,7 @@ export const OcrModelCatalogEntrySchema = z
       .object({
         image_block_ocr: z.boolean(),
         chart_recognition: z.boolean(),
+        merge_layout_blocks: z.boolean(),
       })
       .strict(),
     pricing: OcrModelPricingSchema,
@@ -70,6 +71,7 @@ export type OcrModelsResponse = z.infer<typeof OcrModelsResponseSchema>;
 const PADDLE_OPTION_CAPABILITIES = {
   image_block_ocr: true,
   chart_recognition: true,
+  merge_layout_blocks: true,
 } as const satisfies OcrModelOptionCapability;
 
 export const OCR_MODEL_CATALOG = [

@@ -16,6 +16,8 @@ export const PaddleRawProfileSchema = z
         visualize: z.literal(false),
         image_block_ocr: z.boolean(),
         chart_recognition: z.boolean(),
+        /** Absent on raw jobs created before this request option was introduced. */
+        merge_layout_blocks: z.boolean().optional(),
       })
       .strict(),
   })
