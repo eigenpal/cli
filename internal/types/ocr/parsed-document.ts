@@ -77,13 +77,8 @@ export const PageBlockSchema = z
         path: ['table_html'],
       });
     }
-    if (block.kind === 'figure' && block.figure_uri == null) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'figure blocks require figure_uri',
-        path: ['figure_uri'],
-      });
-    }
+    // Figure geometry is always retained; figure_uri is optional when no bounded
+    // crop asset was materialized for this detection.
   });
 
 export type PageBlock = z.infer<typeof PageBlockSchema>;

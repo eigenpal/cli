@@ -389,6 +389,7 @@ export {
   assertS3PathSegment,
   buildS3Path,
   buildS3PathSuffix,
+  filenameFromArtifactName,
   matchS3Path,
   rootS3Path,
   s3FileArtifactName,

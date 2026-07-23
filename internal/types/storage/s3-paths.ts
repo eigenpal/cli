@@ -341,6 +341,29 @@ export function s3FileArtifactName(fileId: string, filename: string): string {
   return `${assertSegment('fileId', fileId)}-${s3PathFilename(filename)}`;
 }
 
+// Artifact names are `${fileId}-${filename}` where fileId is `file_<nanoid(21)>`
+// (see `generateId` + `ID_PREFIXES.FILE` + `s3FileArtifactName`). The nanoid
+// alphabet is URL-safe (`A-Za-z0-9_-`), so the leading `file_…-` segment is a
+// fixed 5 + 21 + 1 shape we can strip unambiguously without knowing where the
+// filename's own dashes fall.
+const FILE_ARTIFACT_PREFIX_RX = /^file_[A-Za-z0-9_-]{21}-/;
+
+/**
+ * Reverse of {@link s3FileArtifactName} for display: take an artifact name
+ * (`file_<id>-<filename>`) or a scoped `$file` path
+ * (`input/<field>/<artifactName>`) and return just the human-facing filename.
+ * Degrades to the last path segment when the input does not carry a fileId
+ * prefix, so it is always safe to call.
+ *
+ * Display-only and best-effort: never use the result as a lookup key. A user
+ * file literally named `file_<21 url-safe chars>-<rest>` would have its prefix
+ * stripped too, which is why callers keep the raw artifact name for downloads.
+ */
+export function filenameFromArtifactName(nameOrPath: string): string {
+  const base = nameOrPath.split('/').filter(Boolean).at(-1) ?? nameOrPath;
+  return base.replace(FILE_ARTIFACT_PREFIX_RX, '') || base;
+}
+
 function getDynamicEntry(node: PathObject): readonly [string, PathNode] | undefined {
   const key = Object.keys(node).find((candidate) => candidate.startsWith('$'));
   return key ? [key, node[key]] : undefined;

@@ -23,9 +23,9 @@ import {
   ErrorResponseSchema,
   JobAcceptedSchema,
   JobFailureSchema,
+  JobHistoryOperationSchema,
   JobIdSchema,
   JobListResponseSchema,
-  JobOperationSchema,
   JobSchema,
   JobStatusSchema,
   JobSummarySchema,
@@ -54,7 +54,7 @@ import {
   refineExtractPipelineXor,
 } from './pipelines';
 import { OcrOutputFormatSchema, PaddleRawProfileSchema, RawParseResultSchema } from './raw-result';
-import { SuggestSchemaRequestSchema, SuggestSchemaTerminalResultSchema } from './suggest-schema';
+import { SuggestSchemaRequestSchema, SuggestSchemaResponseSchema } from './suggest-schema';
 
 export { OCR_MODELS } from './ocr-models';
 /**
@@ -155,16 +155,18 @@ export type ExtractPipelineRequest = Extract<ExtractRequest, { pipeline_id: stri
 
 export {
   SUGGEST_SCHEMA_HINT_MAX_CHARS,
+  SUGGEST_SCHEMA_LLM_MODEL,
   SUGGEST_SCHEMA_PREVIEW_MAX_CHARS,
   SUGGEST_SCHEMA_PREVIEW_MAX_PAGES,
   SuggestSchemaHintSchema,
   SuggestSchemaPreviewMetaSchema,
   SuggestSchemaRequestSchema,
+  SuggestSchemaResponseSchema,
   SuggestSchemaTerminalResultSchema,
-  resolveSuggestSchemaLlmModel,
   type SuggestSchemaHint,
   type SuggestSchemaPreviewMeta,
   type SuggestSchemaRequest,
+  type SuggestSchemaResponse,
   type SuggestSchemaTerminalResult,
 } from './suggest-schema';
 
@@ -259,7 +261,7 @@ export type ExtractBatchItem = z.infer<typeof ExtractBatchItemSchema>;
 
 export const ParseBatchRequestSchema = z
   .object({
-    items: z.array(ParseBatchItemSchema).min(1).max(20),
+    items: z.array(ParseBatchItemSchema).min(1).max(100),
     output_format: OcrOutputFormatSchema.default('openparser@1'),
   })
   .strict();
@@ -267,7 +269,7 @@ export type ParseBatchRequest = z.infer<typeof ParseBatchRequestSchema>;
 
 export const ExtractBatchRequestSchema = z
   .object({
-    items: z.array(ExtractBatchItemSchema).min(1).max(20),
+    items: z.array(ExtractBatchItemSchema).min(1).max(100),
     output_format: OcrOutputFormatSchema.default('openparser@1'),
   })
   .strict();
@@ -317,7 +319,7 @@ export const OPENPARSER_COMPONENT_SCHEMAS = {
   RawParseResult: RawParseResultSchema,
   ParseResult: OpenParserParseResultSchema,
   JobStatus: JobStatusSchema,
-  JobOperation: JobOperationSchema,
+  JobOperation: JobHistoryOperationSchema,
   JobAccepted: JobAcceptedSchema,
   BatchJobAccepted: BatchJobAcceptedSchema,
   BoundingBox: BoundingBoxSchema,
@@ -339,12 +341,17 @@ export const OPENPARSER_COMPONENT_SCHEMAS = {
   ExtractionGroundingField: ExtractionGroundingFieldSchema,
   ExtractionGroundingResult: ExtractionGroundingResultSchema,
   ExtractionTerminalResult: ExtractionTerminalResultSchema,
-  SuggestSchemaTerminalResult: SuggestSchemaTerminalResultSchema,
+  SuggestSchemaResponse: SuggestSchemaResponseSchema,
   JobFailure: JobFailureSchema,
   BatchChildSummary: BatchChildSummarySchema,
   BatchChildPage: BatchChildPageSchema,
   BatchSummaryCounts: BatchSummaryCountsSchema,
-  Job: JobSchema,
+  Job: JobSchema.extend({
+    operation: JobHistoryOperationSchema,
+    result: z
+      .union([ParsedDocumentSchema, RawParseResultSchema, ExtractionTerminalResultSchema])
+      .optional(),
+  }),
   JobSummary: JobSummarySchema,
   JobListResponse: JobListResponseSchema,
   ErrorBody: ErrorBodySchema,
@@ -380,7 +387,10 @@ type ResponseTarget =
         | 'SyncTerminalIndeterminate'
         | 'RateLimited'
         | 'ServiceUnavailable'
-        | 'JobNotFound';
+        | 'JobNotFound'
+        | 'JobSourceUnavailable'
+        | 'PartialContent'
+        | 'RangeNotSatisfiable';
     };
 
 type OpenParserRouteDefinition = {
@@ -538,33 +548,21 @@ export const OPENPARSER_ROUTE_MANIFEST = [
     },
   },
   {
-    operationId: 'suggestSchemaSync',
+    operationId: 'suggestSchema',
     method: 'post',
     path: '/suggest-schema',
     tag: 'extract',
     requestBody: 'SuggestSchemaRequest',
-    parameters: ['IdempotencyKey'],
     responses: {
-      200: { schema: 'SuggestSchemaTerminalResult' },
-      202: { component: 'JobAccepted' },
-      ...admissionErrors,
+      200: { schema: 'SuggestSchemaResponse' },
+      400: { component: 'MalformedRequest' },
+      401: { component: 'Unauthorized' },
+      403: { component: 'Forbidden' },
       404: { component: 'JobNotFound' },
       422: { component: 'UnprocessableOrSyncFailed' },
+      429: { component: 'RateLimited' },
+      503: { component: 'ServiceUnavailable' },
       504: { component: 'SyncTerminalIndeterminate' },
-    },
-  },
-  {
-    operationId: 'suggestSchemaAsync',
-    method: 'post',
-    path: '/suggest-schema/async',
-    tag: 'extract',
-    requestBody: 'SuggestSchemaRequest',
-    parameters: ['IdempotencyKey'],
-    responses: {
-      202: { component: 'JobAccepted' },
-      ...admissionErrors,
-      404: { component: 'JobNotFound' },
-      422: { component: 'UnprocessableConfig' },
     },
   },
   {
@@ -592,6 +590,22 @@ export const OPENPARSER_ROUTE_MANIFEST = [
       401: { component: 'Unauthorized' },
       403: { component: 'Forbidden' },
       404: { component: 'JobNotFound' },
+      429: { component: 'RateLimited' },
+    },
+  },
+  {
+    operationId: 'getJobSource',
+    method: 'get',
+    path: '/jobs/{id}/source',
+    tag: 'jobs',
+    parameters: ['JobId'],
+    responses: {
+      200: { binary: true },
+      206: { component: 'PartialContent' },
+      401: { component: 'Unauthorized' },
+      403: { component: 'Forbidden' },
+      404: { component: 'JobSourceUnavailable' },
+      416: { component: 'RangeNotSatisfiable' },
       429: { component: 'RateLimited' },
     },
   },

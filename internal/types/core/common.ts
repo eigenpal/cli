@@ -60,7 +60,7 @@ export const ID_PREFIXES = {
   // Billing — prepaid paid-allowance grants (OpenParser top-ups)
   PAID_ALLOWANCE_GRANT: 'pag',
   PAID_ALLOWANCE_ADJUSTMENT: 'paa',
-  // OpenParser OCR — tenant-scoped saved extraction pipelines
+  // OpenParser API — tenant-scoped saved extraction pipelines
   OCR_EXTRACTION_PIPELINE: 'oep',
   // Token prefixes (not IDs, but follow the same registry)
   SANDBOX_WS_TOKEN: 'sws',

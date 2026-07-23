@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { OcrFigureAssetsModeSchema } from './model-options';
 
 export const OCR_OUTPUT_FORMATS = ['openparser@1', 'raw'] as const;
 export const OcrOutputFormatSchema = z.enum(OCR_OUTPUT_FORMATS);
@@ -17,7 +16,6 @@ export const PaddleRawProfileSchema = z
         visualize: z.literal(false),
         image_block_ocr: z.boolean(),
         chart_recognition: z.boolean(),
-        figure_assets: OcrFigureAssetsModeSchema,
       })
       .strict(),
   })

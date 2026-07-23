@@ -1,5 +1,5 @@
 /**
- * OpenParser OCR model catalog contracts.
+ * OpenParser API model catalog contracts.
  */
 import { z } from 'zod';
 import {
@@ -54,7 +54,6 @@ export const OcrModelCatalogEntrySchema = z
       .object({
         image_block_ocr: z.boolean(),
         chart_recognition: z.boolean(),
-        figure_assets: z.enum(['none', 'stored']),
       })
       .strict(),
     pricing: OcrModelPricingSchema,
@@ -71,7 +70,6 @@ export type OcrModelsResponse = z.infer<typeof OcrModelsResponseSchema>;
 const PADDLE_OPTION_CAPABILITIES = {
   image_block_ocr: true,
   chart_recognition: true,
-  figure_assets: true,
 } as const satisfies OcrModelOptionCapability;
 
 export const OCR_MODEL_CATALOG = [

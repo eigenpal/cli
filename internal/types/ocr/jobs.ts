@@ -32,6 +32,20 @@ export const OCR_JOB_OPERATIONS = [
 export const JobOperationSchema = z.enum(OCR_JOB_OPERATIONS);
 export type JobOperation = z.infer<typeof JobOperationSchema>;
 
+/**
+ * Operations returned by public Job History (`GET /jobs`).
+ * `suggest_schema` is retained only so historical rows remain readable by id;
+ * the direct schema helper never creates one.
+ */
+export const OCR_JOB_HISTORY_OPERATIONS = [
+  'parse',
+  'extract',
+  'parse_batch',
+  'extract_batch',
+] as const;
+export const JobHistoryOperationSchema = z.enum(OCR_JOB_HISTORY_OPERATIONS);
+export type JobHistoryOperation = z.infer<typeof JobHistoryOperationSchema>;
+
 export const JobIdSchema = z.string().uuid();
 export type JobId = z.infer<typeof JobIdSchema>;
 
@@ -49,7 +63,7 @@ export type JobFailure = z.infer<typeof JobFailureSchema>;
 export const JobAcceptedSchema = z
   .object({
     id: JobIdSchema,
-    operation: z.enum(['parse', 'extract', 'suggest_schema']),
+    operation: z.enum(['parse', 'extract']),
     status: JobStatusSchema,
     output_format: OcrOutputFormatSchema,
     created_at: z.string().datetime(),
@@ -67,7 +81,7 @@ export const BatchJobAcceptedSchema = z
     output_format: OcrOutputFormatSchema,
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
-    child_count: z.number().int().min(1).max(20),
+    child_count: z.number().int().min(1).max(100),
   })
   .strict();
 
@@ -120,6 +134,21 @@ export const JobProgressSchema = z
 
 export type JobProgress = z.infer<typeof JobProgressSchema>;
 
+/** Lightweight extract job linked to a parse via `source_parse_job_id`. */
+export const RelatedExtractionSummarySchema = z
+  .object({
+    id: JobIdSchema,
+    status: JobStatusSchema,
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    llm_model: z.string().min(1).nullable().optional(),
+    has_result: z.boolean(),
+    url: z.string().min(1),
+  })
+  .strict();
+
+export type RelatedExtractionSummary = z.infer<typeof RelatedExtractionSummarySchema>;
+
 export const JobSchema = z
   .object({
     id: JobIdSchema,
@@ -140,6 +169,26 @@ export const JobSchema = z
       .optional(),
     summary: BatchSummaryCountsSchema.optional(),
     children: BatchChildPageSchema.optional(),
+    /**
+     * True when `GET /jobs/{id}/source` can attempt to stream retained source
+     * bytes (parse upload, or extract that reuses a parse / has its own source).
+     * Does not guarantee the object still exists after cleanup.
+     */
+    has_source: z.boolean().optional(),
+    /** MIME type of the retained source when `has_source` is true. */
+    source_media_type: z.string().min(1).nullable().optional(),
+    /** Present on extract/suggest jobs that reused a tenant parse job. */
+    source_parse_job_id: JobIdSchema.nullable().optional(),
+    /**
+     * Extract jobs that reused this parse job (`source_parse_job_id`), newest first.
+     * Omitted for non-parse jobs. Never includes batch children.
+     */
+    related_extractions: z.array(RelatedExtractionSummarySchema).optional(),
+    /**
+     * Admit-time JSON Schema for extract jobs (Studio history hydration).
+     * Omitted for parse / batch / suggest_schema.
+     */
+    extraction_schema: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
@@ -156,7 +205,8 @@ export const OCR_JOB_LIST_MAX_LIMIT = 100;
 export const JobSummarySchema = z
   .object({
     id: JobIdSchema,
-    operation: JobOperationSchema,
+    /** History-visible operations only (`suggest_schema` is never listed). */
+    operation: JobHistoryOperationSchema,
     status: JobStatusSchema,
     output_format: OcrOutputFormatSchema,
     ocr_model: z.string().min(1).nullable().optional(),
@@ -169,6 +219,8 @@ export const JobSummarySchema = z
     has_result: z.boolean(),
     /** Job resource URL (path-absolute) for `GET /jobs/{id}`. */
     url: z.string().min(1),
+    /** True when retained source bytes may be fetched via `GET /jobs/{id}/source`. */
+    has_source: z.boolean().optional(),
   })
   .strict();
 
@@ -195,7 +247,8 @@ export const JobListQuerySchema = z
       .optional()
       .default(OCR_JOB_LIST_DEFAULT_LIMIT),
     status: JobStatusSchema.optional(),
-    operation: JobOperationSchema.optional(),
+    /** History-visible operations only; `suggest_schema` is not a valid list filter. */
+    operation: JobHistoryOperationSchema.optional(),
   })
   .strict();
 
