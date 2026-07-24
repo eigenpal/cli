@@ -214,11 +214,17 @@ export const AiVisionConfigSchema = z.object({
     .describe(
       'Last page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, runs to the last page. When BOTH pageFrom and pageTo are omitted, the whole document is inspected in chunks of maxPages (divide-and-conquer, results merged).'
     ),
+  pageIndices: z
+    .union([z.array(z.number().int().min(0)).min(1), z.string()])
+    .optional()
+    .describe(
+      'Explicit list of 0-based page indices to inspect — supports NON-contiguous selections, e.g. [4, 11, 19], or a template resolving to a number[] such as "{{ steps.label_pages.output.byLabel.photo }}". Highest priority: when set, pageFrom/pageTo and pages are ignored.'
+    ),
   pages: z
     .union([z.literal('all'), VisionPageRangeSchema, z.array(VisionPageRangeSchema), z.string()])
     .optional()
     .describe(
-      'DEPRECATED — prefer pageFrom/pageTo. Which pages to inspect: "all", a single [start,end] range, a list of ranges, or a template expression resolving to one of those.'
+      'DEPRECATED — prefer pageIndices (scattered) or pageFrom/pageTo (contiguous). Which pages to inspect: "all", a single [start,end] range, a list of ranges, or a template expression resolving to one of those.'
     ),
   schema: z
     .object({
@@ -605,6 +611,111 @@ export const AiClassifyOutputSchema = z.object({
       'LLM confidence in the classification. Coarse enum — numeric scores cluster meaninglessly at 0.85-0.95.'
     ),
   reason: z.string().describe('Short justification for the chosen label — useful for debugging.'),
+});
+
+/**
+ * ai.classify-pages - Assign ZERO or MORE labels to EACH page independently
+ * (multi-label). Where ai.classify picks one label for one text blob, and
+ * ai.split / ai.segment detect CONTIGUOUS boundaries, this tags pages
+ * independently — so a NON-contiguous set (e.g. every signature/stamp/photo
+ * page, wherever it sits) can be collected and routed downstream. The
+ * `byLabel` map pairs directly with ai.vision's `pageIndices`.
+ */
+
+/** A label is either a bare name (sugar) or `{ name, description }`. */
+const ClassifyPagesLabelSchema = z.union([
+  z.string().min(1),
+  z.object({
+    name: z
+      .string()
+      .min(1)
+      .describe('Label value — the key in output.byLabel and an entry in pages[].labels.'),
+    description: z
+      .string()
+      .optional()
+      .describe('What a page must show to earn this label. Fed to the LLM as guidance.'),
+  }),
+]);
+
+export const AiClassifyPagesConfigSchema = z
+  .object({
+    input: z
+      .string()
+      .describe(
+        'The ai.parse output to label, e.g. "{{ steps.parse.output }}". Each page is labelled independently.'
+      ),
+    labels: z
+      .array(ClassifyPagesLabelSchema)
+      .min(1)
+      .describe(
+        'Labels a page can carry. A page may match ZERO, ONE, or MANY of them. Each entry is a bare name (e.g. "photo") or { name, description }. Names must be unique.'
+      ),
+    prompt: z
+      .string()
+      .optional()
+      .describe('Extra classification guidance appended to the system prompt.'),
+    provider: z
+      .string()
+      .optional()
+      .describe('Provider ID from eigenpal.config.yaml. Falls back to the tenant default.'),
+    model: z.string().optional().describe('Model override (advanced).'),
+    windowTokenBudget: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Per-window token ceiling. Pages are packed into windows under this budget; one LLM call per window. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET (20000).'
+      ),
+  })
+  .superRefine((cfg, ctx) => {
+    // Label names become object keys in `byLabel` AND template dot-paths
+    // (`byLabel.<label>`), so they must be template-safe identifiers and must
+    // not be reserved object keys (a label named "__proto__" would otherwise
+    // mutate the map's prototype instead of adding a key).
+    const RESERVED = new Set(['__proto__', 'prototype', 'constructor']);
+    const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    const names = cfg.labels.map((l) => (typeof l === 'string' ? l : l.name));
+    const seen = new Set<string>();
+    names.forEach((name, i) => {
+      if (!IDENTIFIER.test(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `label name "${name}" must be a template-safe identifier (letters, digits, underscore; no dots or spaces)`,
+          path: ['labels', i],
+        });
+      } else if (RESERVED.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `label name "${name}" is reserved`,
+          path: ['labels', i],
+        });
+      }
+      if (seen.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate label name "${name}"`,
+          path: ['labels', i],
+        });
+      }
+      seen.add(name);
+    });
+  });
+
+export const AiClassifyPagesOutputSchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        pageIndex: z.number().int(),
+        labels: z.array(z.string()).describe('Labels assigned to this page (possibly empty).'),
+      })
+    )
+    .describe('Every input page, in order, with the labels the model assigned to it.'),
+  byLabel: z
+    .record(z.string(), z.array(z.number().int()))
+    .describe(
+      'Label name -> ascending page indices carrying it. Every configured label is present (empty array when no page matched), so dot access is always safe: `{{ steps.<step>.output.byLabel.<label> }}` resolves to a number[] ready for ai.vision `pageIndices`.'
+    ),
 });
 
 // ============================================================================
@@ -1445,6 +1556,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'ai.split': AI_RETRY_CAPABILITY,
   'ai.segment': AI_RETRY_CAPABILITY,
   'ai.classify': AI_RETRY_CAPABILITY,
+  'ai.classify-pages': AI_RETRY_CAPABILITY,
   'ai.vision': AI_RETRY_CAPABILITY,
   'transform.set': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.remove': DETERMINISTIC_RETRY_CAPABILITY,
@@ -1530,6 +1642,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.',
     configSchema: AiClassifyConfigSchema,
     outputSchema: AiClassifyOutputSchema,
+    configInWith: true,
+  },
+  'ai.classify-pages': {
+    type: 'ai.classify-pages',
+    category: 'ai',
+    name: 'Label Pages',
+    description:
+      'Assign zero or more labels to each page independently (multi-label) using an LLM. Consumes ai.parse output; emits per-page labels and a byLabel map (label -> page indices) that supports NON-contiguous selections. Feed byLabel.<label> straight into ai.vision `pageIndices` to inspect scattered pages of a type (e.g. every signature or property-photo page).',
+    configSchema: AiClassifyPagesConfigSchema,
+    outputSchema: AiClassifyPagesOutputSchema,
     configInWith: true,
   },
   'ai.vision': {
@@ -1896,6 +2018,8 @@ export type AiSegmentConfig = z.infer<typeof AiSegmentConfigSchema>;
 export type AiSegmentOutput = z.infer<typeof AiSegmentOutputSchema>;
 export type AiClassifyConfig = z.infer<typeof AiClassifyConfigSchema>;
 export type AiClassifyOutput = z.infer<typeof AiClassifyOutputSchema>;
+export type AiClassifyPagesConfig = z.infer<typeof AiClassifyPagesConfigSchema>;
+export type AiClassifyPagesOutput = z.infer<typeof AiClassifyPagesOutputSchema>;
 export type AiVisionConfig = z.infer<typeof AiVisionConfigSchema>;
 export type AiVisionOutput = z.infer<typeof AiVisionOutputSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;

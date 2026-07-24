@@ -15,6 +15,7 @@ export const PROCESSOR_IDS = {
   SPLIT: 'builtin/split',
   SEGMENT: 'builtin/segment',
   CLASSIFY: 'builtin/classify',
+  CLASSIFY_PAGES: 'builtin/classify-pages',
   VISION: 'builtin/vision',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',

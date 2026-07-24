@@ -16,6 +16,7 @@ import { PROCESSOR_IDS } from '../../core/ids';
 
 // Re-export individual processor schemas
 export * from './classify';
+export * from './classify-pages';
 export * from './document-parser';
 export * from './extract';
 export * from './merge';
@@ -27,6 +28,11 @@ export * from './xlsx-to-json';
 
 // Import for registry
 import { ClassifyConfigSchema, ClassifyInputSchema, ClassifyOutputSchema } from './classify';
+import {
+  ClassifyPagesConfigSchema,
+  ClassifyPagesInputSchema,
+  ClassifyPagesOutputSchema,
+} from './classify-pages';
 import {
   DocumentParserConfigSchema,
   DocumentParserInputSchema,
@@ -109,6 +115,12 @@ export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
     inputSchema: ClassifyInputSchema,
     outputSchema: ClassifyOutputSchema,
     configSchema: ClassifyConfigSchema,
+  },
+  [PROCESSOR_IDS.CLASSIFY_PAGES]: {
+    id: PROCESSOR_IDS.CLASSIFY_PAGES,
+    inputSchema: ClassifyPagesInputSchema,
+    outputSchema: ClassifyPagesOutputSchema,
+    configSchema: ClassifyPagesConfigSchema,
   },
   [PROCESSOR_IDS.XLSX_TO_JSON]: {
     id: PROCESSOR_IDS.XLSX_TO_JSON,

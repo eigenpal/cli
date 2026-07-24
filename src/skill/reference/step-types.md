@@ -482,6 +482,30 @@ Classify a document or text into one of a fixed label set using an LLM. Output e
 | `confidence` | `"low"` \| `"medium"` \| `"high"` | yes |  | LLM confidence in the classification. Coarse enum — numeric scores cluster meaninglessly at 0.85-0.95. |
 | `reason` | string | yes |  | Short justification for the chosen label — useful for debugging. |
 
+#### `ai.classify-pages` — Label Pages
+
+Assign zero or more labels to each page independently (multi-label) using an LLM. Consumes ai.parse output; emits per-page labels and a byLabel map (label -> page indices) that supports NON-contiguous selections. Feed byLabel.<label> straight into ai.vision `pageIndices` to inspect scattered pages of a type (e.g. every signature or property-photo page).
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | The ai.parse output to label, e.g. "{{ steps.parse.output }}". Each page is labelled independently. |
+| `labels` | array<string \| object> | yes |  | Labels a page can carry. A page may match ZERO, ONE, or MANY of them. Each entry is a bare name (e.g. "photo") or { name, description }. Names must be unique. |
+| `prompt` | string | no |  | Extra classification guidance appended to the system prompt. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml. Falls back to the tenant default. |
+| `model` | string | no |  | Model override (advanced). |
+| `windowTokenBudget` | integer | no |  | Per-window token ceiling. Pages are packed into windows under this budget; one LLM call per window. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET (20000). |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `pages` | array<object> | yes |  | Every input page, in order, with the labels the model assigned to it. |
+| `byLabel` | record<string, array<integer>> | yes |  | Label name -> ascending page indices carrying it. Every configured label is present (empty array when no page matched), so dot access is always safe: `{{ steps.<step>.output.byLabel.<label> }}` resolves to a number[] ready for ai.vision `pageIndices`. |
+
 #### `ai.vision` — Inspect Pages (Vision)
 
 Inspect rendered page images with a vision model and return structured JSON matching a schema. The visual counterpart to Extract Data: use it for conclusions that live in the pixels rather than the text (is the document signed? are the photos usable?). Renders PDF, image, or Office/Word inputs; route to specific pages with an ai.split page range to keep it cheap.
@@ -495,6 +519,7 @@ Inspect rendered page images with a vision model and return structured JSON matc
 | `document` | string | yes |  | Template expression resolving to the input file (PDF, image, or Office document). |
 | `pageFrom` | integer \| string | no |  | First page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, starts from the first page. |
 | `pageTo` | integer \| string | no |  | Last page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, runs to the last page. When BOTH pageFrom and pageTo are omitted, the whole document is inspected in chunks of maxPages (divide-and-conquer, results merged). |
+| `pageIndices` | array<integer> \| string | no |  | Explicit list of 0-based page indices to inspect — supports NON-contiguous selections, e.g. [4, 11, 19], or a template resolving to a number[] such as "{{ steps.label_pages.output.byLabel.photo }}". Highest priority: when set, pageFrom/pageTo and pages are ignored. |
 | `schema` | object | yes |  | JSON Schema defining the structure the vision model should return. |
 | `prompt` | string | no |  | Optional instruction refining the extraction. The schema drives it when omitted. |
 | `provider` | string | no |  | Provider ID (must support vision). |
