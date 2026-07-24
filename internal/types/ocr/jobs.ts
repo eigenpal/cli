@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { ExtractionTerminalResultSchema } from './extraction';
+import { JobIdSchema } from './job-id';
 import { ParsedDocumentSchema } from './parsed-document';
+import { ExtractionPipelineIdSchema } from './pipelines';
 import { OcrOutputFormatSchema, RawParseResultSchema } from './raw-result';
 import { SuggestSchemaTerminalResultSchema } from './suggest-schema';
+
+export { JobIdSchema, OCR_JOB_ID_PATTERN, OCR_JOB_ID_PREFIX, type JobId } from './job-id';
 
 /**
  * Public OCR job/batch/error wire envelopes.
@@ -45,9 +49,6 @@ export const OCR_JOB_HISTORY_OPERATIONS = [
 ] as const;
 export const JobHistoryOperationSchema = z.enum(OCR_JOB_HISTORY_OPERATIONS);
 export type JobHistoryOperation = z.infer<typeof JobHistoryOperationSchema>;
-
-export const JobIdSchema = z.string().uuid();
-export type JobId = z.infer<typeof JobIdSchema>;
 
 export const JobFailureSchema = z
   .object({
@@ -189,6 +190,18 @@ export const JobSchema = z
      * Omitted for parse / batch / suggest_schema.
      */
     extraction_schema: z.record(z.string(), z.unknown()).optional(),
+    /** OCR model used at admit time when recorded; omitted when unknown. */
+    ocr_model: z.string().min(1).nullable().optional(),
+    /**
+     * Snapshot of the saved extraction pipeline id at admit time.
+     * `null` for parse jobs, inline extract config, and other non-pipeline work.
+     */
+    pipeline_id: ExtractionPipelineIdSchema.nullable(),
+    /**
+     * Snapshot of the saved extraction pipeline version at admit time.
+     * `null` when `pipeline_id` is `null`.
+     */
+    pipeline_version: z.number().int().min(1).nullable(),
   })
   .strict();
 
@@ -221,6 +234,16 @@ export const JobSummarySchema = z
     url: z.string().min(1),
     /** True when retained source bytes may be fetched via `GET /jobs/{id}/source`. */
     has_source: z.boolean().optional(),
+    /**
+     * Snapshot of the saved extraction pipeline id at admit time.
+     * `null` for parse jobs, inline extract config, and other non-pipeline work.
+     */
+    pipeline_id: ExtractionPipelineIdSchema.nullable(),
+    /**
+     * Snapshot of the saved extraction pipeline version at admit time.
+     * `null` when `pipeline_id` is `null`.
+     */
+    pipeline_version: z.number().int().min(1).nullable(),
   })
   .strict();
 

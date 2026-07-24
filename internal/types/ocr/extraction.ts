@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ExtractionGroundingResultSchema } from './grounding';
+import { JobIdSchema } from './job-id';
 import { OcrLlmReasoningEffortSchema } from './llm-models';
 import { ParsedDocumentSchema } from './parsed-document';
 
@@ -53,7 +54,7 @@ export const ExtractionTerminalResultSchema = z
      * Present when this extract reused a tenant-owned succeeded parse job
      * (`parse_job_id` admission) instead of re-running OCR.
      */
-    parse_job_id: z.string().uuid().optional(),
+    parse_job_id: JobIdSchema.optional(),
     /** Resolved reasoning effort applied to the provider call, when any. */
     reasoning_effort: OcrLlmReasoningEffortSchema.nullable().optional(),
     attempts: z.array(ExtractionAttemptSchema).min(1),

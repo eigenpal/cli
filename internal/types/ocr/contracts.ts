@@ -14,6 +14,7 @@ import {
   ExtractionGroundingModeSchema,
   ExtractionGroundingResultSchema,
 } from './grounding';
+import { ExtractionPipelineIdInputSchema, JobIdInputSchema } from './id-compat';
 import {
   BatchChildPageSchema,
   BatchChildSummarySchema,
@@ -92,7 +93,7 @@ export type ParseRequest = z.infer<typeof ParseRequestSchema>;
  */
 export const ExtractRequestSchema = z
   .object({
-    pipeline_id: ExtractionPipelineIdSchema.optional(),
+    pipeline_id: ExtractionPipelineIdInputSchema.optional(),
     ocr_model: OcrModelSchema.optional(),
     ocr_options: OcrOptionsRequestSchema.optional(),
     llm_model: LlmModelSchema.optional(),
@@ -101,7 +102,7 @@ export const ExtractRequestSchema = z
     repair_attempts: z.number().int().min(0).max(2).optional(),
     grounding: ExtractionGroundingModeSchema.optional(),
     file_id: OcrFileIdSchema.optional(),
-    parse_job_id: z.string().uuid().optional(),
+    parse_job_id: JobIdInputSchema.optional(),
     output_format: OcrOutputFormatSchema.default('openparser@1'),
   })
   .strict()
@@ -179,6 +180,7 @@ export {
   ExtractionPipelineNameSchema,
   ExtractionPipelineSchema,
   ExtractionPipelineSlugSchema,
+  PipelineExtractionSchemaObjectSchema,
   UpdateExtractionPipelineRequestSchema,
   refineExtractPipelineXor,
   type CreateExtractionPipelineRequest,
@@ -190,6 +192,13 @@ export {
   type ExtractionPipelineSlug,
   type UpdateExtractionPipelineRequest,
 } from './pipelines';
+
+export {
+  PIPELINE_EXTRACTION_SCHEMA_EMPTY_PROPERTIES_MESSAGE,
+  hasPipelineExtractionSchemaProperties,
+  pipelineExtractionSchemaRootPropertyCount,
+  refinePipelineExtractionSchema,
+} from './pipeline-extraction-schema';
 
 function requireExactlyOneSource(
   item: { file_index?: number; file_id?: string },
@@ -223,7 +232,7 @@ export const ExtractBatchItemSchema = z
     client_item_id: z.string().min(1).max(128),
     file_index: z.number().int().min(0).optional(),
     file_id: OcrFileIdSchema.optional(),
-    pipeline_id: ExtractionPipelineIdSchema.optional(),
+    pipeline_id: ExtractionPipelineIdInputSchema.optional(),
     ocr_model: OcrModelSchema.optional(),
     ocr_options: OcrOptionsRequestSchema.optional(),
     llm_model: LlmModelSchema.optional(),

@@ -98,6 +98,26 @@ export interface CompleteOptions {
   signal?: AbortSignal;
 }
 
+export interface VisionOptions {
+  /** Model to use (overrides default) */
+  model?: string;
+  /** Cancels the in-flight LLM request when aborted. */
+  signal?: AbortSignal;
+  /**
+   * Whether a request *timeout* should be retried by the client.
+   *
+   * Defaults to `true` (a timeout retries per the client's configured
+   * `maxRetries`, like every other transient error). The LLM-vision parser sets
+   * this to `false` on multi-page batches: re-sending the identical hung
+   * multi-page request wastes another full request timeout, so instead the
+   * parser lets the timeout propagate and bisects the batch into smaller
+   * requests. Single-page leaves keep the default (`true`) so an isolated page
+   * still gets its retry budget. Only *timeout* retries are affected — 429s,
+   * 5xx, and connection resets still retry regardless of this flag.
+   */
+  retryTimeouts?: boolean;
+}
+
 /**
  * AI Client interface
  *
@@ -118,11 +138,7 @@ export interface AIClient {
    * @param images - Array of images to process
    * @param options - Optional model override
    */
-  vision(
-    prompt: string,
-    images: ImageInput[],
-    options?: { model?: string; signal?: AbortSignal }
-  ): Promise<AIResponse>;
+  vision(prompt: string, images: ImageInput[], options?: VisionOptions): Promise<AIResponse>;
 
   /**
    * Extract structured data from content

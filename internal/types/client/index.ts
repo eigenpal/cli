@@ -11,6 +11,7 @@ export type {
   ExtractResponse,
   ImageInput,
   TokenUsage,
+  VisionOptions,
 } from './ai-client';
 
 // OCR Client

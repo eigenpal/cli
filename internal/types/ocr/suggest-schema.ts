@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { ExtractionAttemptSchema, ExtractionUsageTotalsSchema, LlmModelSchema } from './extraction';
+import { JobIdInputSchema } from './id-compat';
+import { JobIdSchema } from './job-id';
 import { OcrLlmReasoningEffortSchema } from './llm-models';
 
 export const SUGGEST_SCHEMA_HINT_MAX_CHARS = 500;
@@ -12,7 +14,7 @@ export type SuggestSchemaHint = z.infer<typeof SuggestSchemaHintSchema>;
 
 export const SuggestSchemaRequestSchema = z
   .object({
-    parse_job_id: z.string().uuid(),
+    parse_job_id: JobIdInputSchema,
     hint: SuggestSchemaHintSchema.optional(),
   })
   .strict();
@@ -40,7 +42,7 @@ export const SuggestSchemaTerminalResultSchema = z
   .object({
     name: z.string().min(1).max(200),
     schema: z.record(z.string(), z.unknown()),
-    parse_job_id: z.string().uuid(),
+    parse_job_id: JobIdSchema,
     llm_model: LlmModelSchema,
     reasoning_effort: OcrLlmReasoningEffortSchema.nullable().optional(),
     hint: SuggestSchemaHintSchema.optional(),

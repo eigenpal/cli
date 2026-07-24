@@ -284,6 +284,7 @@ export type {
   OCRWord,
   ParagraphRole,
   TokenUsage,
+  VisionOptions,
 } from './client';
 
 // OTEL Semantic Conventions (browser-safe)

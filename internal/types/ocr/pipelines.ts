@@ -7,15 +7,21 @@ import {
   OcrOptionsEffectiveSchema,
   OcrOptionsRequestSchema,
 } from './model-options';
+import { refinePipelineExtractionSchema } from './pipeline-extraction-schema';
 
 /**
  * Tenant-scoped saved extraction pipelines for the OpenParser public OCR API.
  * Distinct from Eigenpal workflows / automations / templates.
  */
 
+/**
+ * Preferred public pipeline id (`oppl_…`). Response / OpenAPI stay strict.
+ * Request ingress may accept legacy `oep_…` via `ExtractionPipelineIdInputSchema`
+ * during the 0046 expand window — see `id-compat.ts`.
+ */
 export const ExtractionPipelineIdSchema = z
   .string()
-  .regex(/^oep_[A-Za-z0-9_-]+$/, 'pipeline_id must be an oep_… id')
+  .regex(/^oppl_[A-Za-z0-9_-]+$/, 'pipeline_id must be an oppl_… id')
   .max(128);
 export type ExtractionPipelineId = z.infer<typeof ExtractionPipelineIdSchema>;
 
@@ -30,12 +36,16 @@ export const ExtractionPipelineSlugSchema = z
   .regex(/^[a-z0-9][a-z0-9_-]*$/, 'slug must be lowercase alphanumeric with _ or -');
 export type ExtractionPipelineSlug = z.infer<typeof ExtractionPipelineSlugSchema>;
 
+export const PipelineExtractionSchemaObjectSchema = z
+  .record(z.string(), z.unknown())
+  .superRefine((schema, ctx) => refinePipelineExtractionSchema(schema, ctx));
+
 const PipelineConfigFields = {
   ocr_model: z.string().min(1).max(128),
   ocr_options: OcrOptionsRequestSchema.optional(),
   llm_model: LlmModelSchema,
   llm_options: LlmOptionsRequestSchema.optional(),
-  schema: z.record(z.string(), z.unknown()),
+  schema: PipelineExtractionSchemaObjectSchema,
   repair_attempts: z.number().int().min(0).max(2).optional(),
   grounding: ExtractionGroundingModeSchema.optional(),
 } as const;
@@ -57,7 +67,7 @@ export const UpdateExtractionPipelineRequestSchema = z
     ocr_options: OcrOptionsRequestSchema.nullable().optional(),
     llm_model: PipelineConfigFields.llm_model.optional(),
     llm_options: LlmOptionsRequestSchema.nullable().optional(),
-    schema: PipelineConfigFields.schema.optional(),
+    schema: PipelineExtractionSchemaObjectSchema.optional(),
     repair_attempts: z.number().int().min(0).max(2).optional(),
     grounding: ExtractionGroundingModeSchema.optional(),
   })
@@ -82,7 +92,7 @@ export const ExtractionPipelineSchema = z
     ocr_options: OcrOptionsEffectiveSchema,
     llm_model: LlmModelSchema,
     llm_options: LlmOptionsStoredSchema,
-    schema: z.record(z.string(), z.unknown()),
+    schema: PipelineExtractionSchemaObjectSchema,
     repair_attempts: z.number().int().min(0).max(2),
     grounding: ExtractionGroundingModeSchema,
     created_at: z.string().datetime(),
