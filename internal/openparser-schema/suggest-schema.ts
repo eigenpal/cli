@@ -7,7 +7,6 @@ import { OcrLlmReasoningEffortSchema } from './llm-models';
 export const SUGGEST_SCHEMA_HINT_MAX_CHARS = 500;
 export const SUGGEST_SCHEMA_PREVIEW_MAX_PAGES = 2;
 export const SUGGEST_SCHEMA_PREVIEW_MAX_CHARS = 24_000;
-export const SUGGEST_SCHEMA_LLM_MODEL = 'anthropic/claude-haiku-4.5';
 
 export const SuggestSchemaHintSchema = z.string().min(1).max(SUGGEST_SCHEMA_HINT_MAX_CHARS);
 export type SuggestSchemaHint = z.infer<typeof SuggestSchemaHintSchema>;

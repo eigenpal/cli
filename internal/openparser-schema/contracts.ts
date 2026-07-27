@@ -65,12 +65,12 @@ export { OCR_MODELS } from './ocr-models';
 export const OcrModelSchema = z.string().min(1).max(128);
 export type OcrModel = z.infer<typeof OcrModelSchema>;
 
-/** Eigenpal reusable file-pool id (`POST /files`). */
+/** OpenParser reusable file-pool id (`POST /files`). */
 export const OcrFileIdSchema = z
   .string()
   .min(1)
   .max(128)
-  .regex(/^[A-Za-z0-9_-]+$/, 'file_id must be a valid Eigenpal file id');
+  .regex(/^[A-Za-z0-9_-]+$/, 'file_id must be a valid OpenParser file id');
 export type OcrFileId = z.infer<typeof OcrFileIdSchema>;
 
 export const RepairAttemptsSchema = z.number().int().min(0).max(2).default(0);
@@ -156,7 +156,6 @@ export type ExtractPipelineRequest = Extract<ExtractRequest, { pipeline_id: stri
 
 export {
   SUGGEST_SCHEMA_HINT_MAX_CHARS,
-  SUGGEST_SCHEMA_LLM_MODEL,
   SUGGEST_SCHEMA_PREVIEW_MAX_CHARS,
   SUGGEST_SCHEMA_PREVIEW_MAX_PAGES,
   SuggestSchemaHintSchema,

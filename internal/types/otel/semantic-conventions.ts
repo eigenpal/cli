@@ -97,6 +97,33 @@ export const Eigenpal = {
   OCR_PAGES_PROCESSED: 'eigenpal.ocr.pages_processed',
   /** Page index for multi-page processing */
   PAGE_INDEX: 'eigenpal.page_index',
+
+  // -- LLM attempts -------------------------------------------------------
+  // A retried request used to be invisible: the retry loop lives under the
+  // caller's single `llm.*` span, so N attempts collapsed into one bar whose
+  // duration was `attempts x requestTimeout` with nothing saying why.
+
+  /** 1-based attempt number on an `llm.attempt` span */
+  LLM_ATTEMPT: 'eigenpal.llm.attempt',
+  /** Attempts this request is allowed (maxRetries + 1) */
+  LLM_MAX_ATTEMPTS: 'eigenpal.llm.max_attempts',
+  /** How it ended: 'ok' | 'timeout' | 'error' */
+  LLM_OUTCOME: 'eigenpal.llm.outcome',
+  /** Per-request deadline in ms (provider `requestTimeout`) */
+  LLM_TIMEOUT_MS: 'eigenpal.llm.timeout_ms',
+  /** Time spent waiting for a concurrency slot before the request was sent */
+  LLM_QUEUE_WAIT_MS: 'eigenpal.llm.queue_wait_ms',
+  /** Concurrency lane admitted through: 'low' (first try) | 'high' (retry) */
+  LLM_LANE: 'eigenpal.llm.lane',
+
+  // -- Page batches -------------------------------------------------------
+
+  /** 1-based page numbers in this request's batch */
+  PAGE_NUMBERS: 'eigenpal.page_numbers',
+  /** Pages in this request's batch */
+  PAGE_COUNT: 'eigenpal.page_count',
+  /** Bisect recursion depth; 0 is the original batch */
+  BISECT_DEPTH: 'eigenpal.bisect.depth',
 } as const;
 
 export const OpenInferenceSpanKinds = {

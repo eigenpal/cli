@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Public OpenParser OCR job IDs use `opj_` (OpenParser Job), parallel to public
  * pipeline ids (`oppl_`). Internal OCR rows use `opi` / `opa` / `opc`.
- * Do not reuse Eigenpal `job_` (workflow queue).
+ * Do not reuse workflow-queue `job_` ids.
  *
  * Response / OpenAPI shapes stay `opj_`-only. Request ingress may accept legacy
  * UUID forms via {@link JobIdInputSchema} / `normalizeOcrJobIdInput` during the

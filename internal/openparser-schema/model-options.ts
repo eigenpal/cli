@@ -4,13 +4,6 @@
 import { z } from 'zod';
 import { OcrLlmReasoningEffortRequestSchema } from './llm-models';
 
-/**
- * Internal figure-crop persistence mode used by the HPS adapter / storage path.
- * Not part of the public `ocr_options` contract.
- */
-export const OcrFigureAssetsModeSchema = z.enum(['none', 'stored']);
-export type OcrFigureAssetsMode = z.infer<typeof OcrFigureAssetsModeSchema>;
-
 export const PaddleOcrOptionsRequestSchema = z
   .object({
     image_block_ocr: z.boolean().optional(),

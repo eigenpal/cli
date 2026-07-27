@@ -11,7 +11,7 @@ import { refinePipelineExtractionSchema } from './pipeline-extraction-schema';
 
 /**
  * Tenant-scoped saved extraction pipelines for the OpenParser public OCR API.
- * Distinct from Eigenpal workflows / automations / templates.
+ * Distinct from workflow / automation authoring surfaces.
  */
 
 /**
