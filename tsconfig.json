@@ -30,21 +30,6 @@
       ],
       "@eigenpal/workflow-yaml/*": [
         "./internal/workflow-yaml/*"
-      ],
-      "@openparser/schema": [
-        "./internal/openparser-schema/index.ts"
-      ],
-      "@openparser/schema/document": [
-        "./internal/openparser-schema/document/index.ts"
-      ],
-      "@openparser/schema/http": [
-        "./internal/openparser-schema/http/index.ts"
-      ],
-      "@openparser/schema/openapi-server": [
-        "./internal/openparser-schema/openapi-generate.ts"
-      ],
-      "@openparser/schema/*": [
-        "./internal/openparser-schema/*"
       ]
     }
   },

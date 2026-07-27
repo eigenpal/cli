@@ -33,9 +33,9 @@ node dist/cli.js --help
 ```
 
 The CLI bundles its dependencies into a single `dist/cli.js` via
-`bun build`. Source files import internal helpers via `@eigenpal/types`,
-`@eigenpal/workflow-yaml`, and `@openparser/schema` aliases that resolve
-to vendored copies under `internal/` (see `tsconfig.json` paths).
+`bun build`. Source files import internal helpers via `@eigenpal/types` and
+`@eigenpal/workflow-yaml` aliases that resolve to vendored copies under
+`internal/` (see `tsconfig.json` paths).
 
 ## Code of conduct
 

@@ -386,9 +386,6 @@ export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/s
 // Organization-managed outbound webhook contracts
 export * from './webhooks';
 
-// Public OCR API wire contracts (ParsedDocument v3, jobs, errors)
-export * from './ocr';
-
 // Typed-TS function compile pipeline (transform.script + custom-script eval)
 export * from './typed-script';
 
