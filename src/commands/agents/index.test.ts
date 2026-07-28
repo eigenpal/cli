@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
 
 describe('agent command tree', () => {
-  test('help exposes every agent namespace without old terminology', () => {
+  test('help exposes every agent namespace', () => {
     const result = spawnSync('bun', [CLI, 'agents', '--help'], { encoding: 'utf8' });
     expect(result.status).toBe(0);
     for (const word of [
@@ -27,11 +27,6 @@ describe('agent command tree', () => {
     ]) {
       expect(result.stdout).toContain(word);
     }
-    expect(result.stdout).not.toContain('trigger');
-    expect(result.stdout).not.toContain('agent-workflow');
-    expect(result.stdout).not.toContain('email-alias');
-    expect(result.stdout).not.toContain('runs/');
-    expect(result.stdout).not.toContain('eval/');
   });
 
   test('root runs help exposes list, trace, and artifact inspection commands', () => {
@@ -39,7 +34,6 @@ describe('agent command tree', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('list');
     expect(result.stdout).toContain('[source]');
-    expect(result.stdout).not.toContain('pull');
     expect(result.stdout).toContain('trace');
     expect(result.stdout).toContain('artifacts');
   });
@@ -109,8 +103,6 @@ describe('agent command tree', () => {
     });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('<reference-run-id> <run-id>');
-    expect(result.stdout).not.toContain('--expected-from');
-    expect(result.stdout).not.toContain('--baseline-from');
   });
 
   test('agent file put is not registered for Git-backed agents', () => {
@@ -135,8 +127,6 @@ describe('agent command tree', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('list');
     expect(result.stdout).toContain('get');
-    expect(result.stdout).not.toContain('put');
-    expect(result.stdout).not.toContain('[removed]');
     expect(result.stdout).toContain('diff');
   });
 

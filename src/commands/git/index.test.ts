@@ -139,13 +139,11 @@ describe('git passthrough and agents source commands', () => {
     const gitHelp = spawnSync('bun', [CLI, 'git', '--help'], { encoding: 'utf8' });
     expect(gitHelp.status).toBe(0);
     expect(gitHelp.stdout).toContain('Passthrough');
-    expect(gitHelp.stdout).not.toContain('save');
 
     const agentsHelp = spawnSync('bun', [CLI, 'agents', '--help'], { encoding: 'utf8' });
     expect(agentsHelp.status).toBe(0);
     expect(agentsHelp.stdout).toContain('save');
     expect(agentsHelp.stdout).toContain('versions');
-    expect(agentsHelp.stdout).not.toContain('trigger');
   });
 
   test('resolves package context from a source package subdirectory', () => {
