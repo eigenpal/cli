@@ -43,8 +43,16 @@ export const DocumentParserOutputSchema = ParseResultSchema;
 export const DocumentParserConfigSchema = z
   .object({
     // Model selection for PDF/image parsing
+    parseMode: z
+      .enum(['ocr', 'vision'])
+      .optional()
+      .describe('Base parser for PDF/image inputs. OCR is the default.'),
     ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
     llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
+    figureModel: z
+      .string()
+      .optional()
+      .describe('Vision model used only for the optional figure-description pass'),
 
     // VLM options
     maxConcurrency: z

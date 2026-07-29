@@ -99,6 +99,10 @@ export const ParseUsageSchema = z.object({
 
 export type ParseUsage = z.infer<typeof ParseUsageSchema>;
 
+/** Provider-owned structured document validated at the parser integration boundary. */
+export const StructuredDocumentSchema: z.ZodType<object> = z.record(z.string(), z.unknown());
+export type StructuredDocument = z.infer<typeof StructuredDocumentSchema>;
+
 /**
  * Coordinate unit for bounding regions
  *
@@ -259,6 +263,10 @@ export const ParseResultSchema = z.object({
   parserType: ParserTypeSchema,
   parserVersion: z.string().optional(),
   model: z.string().optional().describe('Model used (for LLM/OCR parsers)'),
+
+  structured: StructuredDocumentSchema.optional().describe(
+    'Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser'
+  ),
 
   // Optional: raw response for debugging
   rawResponse: z.unknown().optional(),

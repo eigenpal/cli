@@ -365,8 +365,10 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `input` | string | yes |  | Storage reference or template expression for the document |
+| `parseMode` | `"ocr"` \| `"vision"` | no |  | Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. Text and Office files always use native parsing. |
 | `ocrModel` | string | no |  | OCR provider ID for PDF/image parsing |
 | `llmModel` | string | no |  | LLM provider ID for vision-based parsing |
+| `figureModel` | string | no |  | Vision model used only for the optional figure-description pass |
 | `maxConcurrency` | number | no | `3` | Max concurrent VLM batch requests |
 | `pagesPerBatch` | number | no | `5` | Number of page images per VLM request |
 | `pdfRenderScale` | number | no | `1` | Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes. |
@@ -382,9 +384,14 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `text` | string | yes |  | Extracted text content (combined from all pages) |
-| `pages` | array<object> | no |  | Per-page content |
-| `metadata` | record<string, unknown> | no |  | Document metadata |
+| `document` | object | yes |  |  |
+| `usage` | object | yes |  |  |
+| `pages` | array<object> | yes |  |  |
+| `text` | string | yes |  | Combined text from all pages |
+| `parserType` | `"plaintext"` \| `"office"` \| `"llm-vision"` \| `"ocr"` | yes |  |  |
+| `parserVersion` | string | no |  |  |
+| `model` | string | no |  | Model used (for LLM/OCR parsers) |
+| `structured` | record<string, unknown> | no |  | Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser |
 
 #### `ai.extract` — Extract Data
 

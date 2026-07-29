@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.10.45
+
+### Patch Changes
+
+- b44c2fb: The workflow authoring reference now covers explicit OCR and Vision AI parse modes, optional figure-caption models, and structured layout output.
+
 ## 0.10.26
 
 ### Patch Changes

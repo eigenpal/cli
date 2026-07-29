@@ -129,6 +129,8 @@ export const ProcessorExecutionContextSchema = z.object({
   automationId: z.string().optional(),
   workflowId: z.string(),
   workerId: z.string().optional(),
+  /** Scope-aware durable step identity; stable across retries of the same logical step. */
+  stepExecutionId: z.string().optional(),
 });
 
 /**

@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import { toJsonSchema, type JsonSchema7Type } from '../core/common';
+import { ParseResultSchema } from '../parser/parser';
 import { compileTypedScript } from '../typed-script';
 import type { StepRetryCapability } from './retry';
 import { SCRIPT_FN_MAX_BYTES } from './script-function';
@@ -30,8 +31,18 @@ import { STEP_TYPES } from './steps';
  */
 export const AiParseConfigSchema = z.object({
   input: z.string().describe('Storage reference or template expression for the document'),
+  parseMode: z
+    .enum(['ocr', 'vision'])
+    .optional()
+    .describe(
+      'Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. Text and Office files always use native parsing.'
+    ),
   ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
   llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
+  figureModel: z
+    .string()
+    .optional()
+    .describe('Vision model used only for the optional figure-description pass'),
   maxConcurrency: z
     .number()
     .min(1)
@@ -95,26 +106,7 @@ export const AiParseConfigSchema = z.object({
     ),
 });
 
-export const AiParseOutputSchema = z.object({
-  text: z.string().describe('Extracted text content (combined from all pages)'),
-  pages: z
-    .array(
-      z.object({
-        pageIndex: z.number().describe('0-based page index'),
-        // Field is `text`, NOT `content` — matches the runtime PageResult
-        // shape produced by the worker. The earlier `content` declaration
-        // was a long-standing lie: workflows using
-        // `{{ steps.parse.output.pages[0].content }}` always got undefined
-        // because the actual data is on `.text`.
-        text: z.string().describe('Extracted text for this page'),
-        pageName: z.string().optional().describe('Page/sheet name (e.g., Excel sheet name)'),
-        confidence: z.number().optional().describe('Overall page confidence'),
-      })
-    )
-    .optional()
-    .describe('Per-page content'),
-  metadata: z.record(z.string(), z.unknown()).optional().describe('Document metadata'),
-});
+export const AiParseOutputSchema = ParseResultSchema.omit({ rawResponse: true });
 
 /**
  * ai.extract - Extract structured data using LLM

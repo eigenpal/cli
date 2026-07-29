@@ -1,4 +1,4 @@
-import type { BoundingRegion, CoordinateUnit, Point } from '../parser/parser';
+import type { BoundingRegion, CoordinateUnit, Point, StructuredDocument } from '../parser/parser';
 
 /**
  * OCR Client Types
@@ -160,6 +160,9 @@ export interface OCRResult {
 
   /** Detected languages */
   languages?: string[];
+
+  /** Canonical structured document when the provider exposes openparser@1 layout data. */
+  structured?: StructuredDocument;
 }
 
 /**
@@ -192,6 +195,9 @@ export interface OCROptions {
 
   /** Abort the provider request/poll when the caller cancels the step */
   signal?: AbortSignal;
+
+  /** Stable admission identity for providers that support idempotent retries. */
+  idempotencyKey?: string;
 }
 
 /**
@@ -206,6 +212,9 @@ export interface OCRClient {
 
   /** Model/version string */
   readonly model: string;
+
+  /** Vendor page price discovered from a provider catalog, when available. */
+  readonly vendorUsdPerPage?: number;
 
   /**
    * Analyze a document and extract text, tables, and structure
@@ -237,7 +246,7 @@ export interface OCRClient {
  * OCR Client configuration
  */
 export interface OCRClientConfig {
-  provider: 'azure' | 'google' | 'aws' | 'tesseract';
+  provider: 'azure' | 'google' | 'aws' | 'tesseract' | 'openparser';
   apiKey?: string;
   endpoint?: string;
   region?: string;
