@@ -19,6 +19,7 @@ import {
   retrySyncRequest,
   sortReleasesNewestFirst,
 } from './index';
+import { checkoutOriginalBranch } from './source-state';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
 
@@ -859,6 +860,50 @@ describe('git passthrough and agents source commands', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  test('restores the builder branch after a release merge conflict', () => {
+    const { root } = makeSourceRepo();
+    try {
+      git(['config', 'user.email', 'test@example.com'], root);
+      git(['config', 'user.name', 'Test User'], root);
+      git(['add', '.'], root);
+      git(['commit', '-m', 'Initial source'], root);
+
+      git(['checkout', '-b', 'builder/invoice-agent/conflict-session'], root);
+      writeFileSync(join(root, 'agents/invoice-agent/new-file.txt'), 'builder draft\n');
+      git(['add', '.'], root);
+      git(['commit', '-m', 'Add builder draft'], root);
+
+      git(['checkout', 'main'], root);
+      writeFileSync(join(root, 'agents/invoice-agent/new-file.txt'), 'main repair\n');
+      git(['add', '.'], root);
+      git(['commit', '-m', 'Repair source on main'], root);
+
+      const merge = spawnSync(
+        'git',
+        ['merge', '--no-edit', 'builder/invoice-agent/conflict-session'],
+        { cwd: root, encoding: 'utf8' }
+      );
+      expect(merge.status).not.toBe(0);
+
+      checkoutOriginalBranch(root, 'builder/invoice-agent/conflict-session');
+
+      expect(
+        spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).stdout.trim()
+      ).toBe('builder/invoice-agent/conflict-session');
+      expect(
+        spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).stdout
+      ).toBe('');
+      expect(readFileSync(join(root, 'agents/invoice-agent/new-file.txt'), 'utf8')).toBe(
+        'builder draft\n'
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

@@ -374,6 +374,9 @@ export async function requirePushedMain(gitRoot: string, config: CliConfig): Pro
 
 export function checkoutOriginalBranch(gitRoot: string, branch: string): void {
   if (gitOutput(['rev-parse', '--abbrev-ref', 'HEAD'], gitRoot) === branch) return;
+  if (gitOutput(['rev-parse', '--verify', 'MERGE_HEAD'], gitRoot)) {
+    runGit(['merge', '--abort'], { cwd: gitRoot });
+  }
   runGitStrict(['checkout', branch], { cwd: gitRoot });
 }
 
