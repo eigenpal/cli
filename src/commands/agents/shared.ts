@@ -28,7 +28,7 @@ export function collectRepeated(value: string, previous: string[] = []): string[
 
 /**
  * Normalize a user-supplied agent reference into an automation id the public
- * `/api/v1/automations/...` routes accept. Bare slugs are rooted at `agents.`;
+ * `/v1/automations/...` routes accept. Bare slugs are rooted at `agents.`;
  * already-qualified aliases (`agents.`/`workflows.`) and raw ids (containing an
  * underscore, e.g. `wf_…`/`auto_…`) pass through untouched.
  */
@@ -78,7 +78,7 @@ export async function pollRun(
   maxWait: number
 ) {
   const started = Date.now();
-  const base = `/api/v1/runs/${encodeURIComponent(executionId)}`;
+  const base = `/v1/runs/${encodeURIComponent(executionId)}`;
   for (;;) {
     // Poll the cheap summary; only fetch the heavy expansions (agent output
     // is an S3 read server-side) once the run reaches a terminal state.
@@ -112,7 +112,7 @@ export async function pollExperiment(
   const started = Date.now();
   for (;;) {
     const payload = (await client.get(
-      `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
+      `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
     )) as { status?: string };
     if (payload.status === 'completed') return payload;
     if (Date.now() - started > maxWait * 1000) {

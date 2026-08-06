@@ -15,7 +15,7 @@ import {
   renderRunPayload,
   setExitCodeForFailedTerminalRun,
 } from './agents/shared';
-import { buildRunFormData } from './run-form-data';
+import { buildPreparedRunRequest } from './run-form-data';
 import { rerunRun, runExample } from './runs';
 import { runSavedWorkflowExamples } from './workflow/execution';
 
@@ -25,7 +25,7 @@ export function registerRunCommands(program: Command): void {
     .option('--input-json <json>', 'JSON input object')
     .option(
       '--input-file <field=path>',
-      'Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file".',
+      'Input file to upload. Files exceeding EIGENPAL_MULTIPART_MAX_BYTES (default 4.5 MiB; "none" disables) are pre-uploaded; smaller files stay on multipart. Repeat for multiple files; bare paths use field "file".',
       collectRepeated,
       []
     )
@@ -115,12 +115,21 @@ async function runTarget(
   const runPath = runTargetApiPath(target);
   const pathTarget = runStartMultipartTarget(target);
   if (opts.inputFile && opts.inputFile.length > 0) {
-    const form = await buildRunFormData({
+    const prepared = await buildPreparedRunRequest(client, {
       target: pathTarget,
       inputFile: opts.inputFile,
       inputJson: opts.inputJson,
     });
-    payload = await client.postFormData(runPath, form);
+    if (prepared.hasMultipartFiles) {
+      payload = await client.postFormData(runPath, prepared.form);
+    } else {
+      // All files were pre-uploaded as `$fileId` refs — send JSON only.
+      const input = JSON.parse(String(prepared.form.get('input') ?? '{}')) as Record<
+        string,
+        unknown
+      >;
+      payload = await client.post(runPath, runStartJsonBody(target, input));
+    }
   } else {
     payload = await client.post(
       runPath,

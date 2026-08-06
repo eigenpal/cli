@@ -60,7 +60,7 @@ describe('source git setup', () => {
       port: 0,
       fetch(request) {
         const url = new URL(request.url);
-        if (url.pathname === '/api/v1/auth/check') {
+        if (url.pathname === '/v1/auth/check') {
           return Response.json({
             ok: true,
             email: 'author@example.com',
@@ -96,7 +96,7 @@ describe('source git setup', () => {
       port: 0,
       fetch(request) {
         const url = new URL(request.url);
-        if (url.pathname === '/api/v1/auth/check') {
+        if (url.pathname === '/v1/auth/check') {
           return Response.json({
             ok: true,
             email: 'author@example.com',

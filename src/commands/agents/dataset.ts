@@ -93,7 +93,7 @@ export function registerDatasetCommands(agent: Command): void {
 async function listDataset(agentId: string, opts: BaseOpts & PaginationOpts) {
   const client = buildClient(opts);
   const payload = (await client.get(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/examples`,
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/examples`,
     compactParams(opts)
   )) as { data?: Array<{ id?: string; name?: string }>; total: number };
   const examples = payload.data ?? [];
@@ -136,7 +136,7 @@ async function pushDataset(
   form.set('mode', opts.mode);
   const client = buildClient(opts);
   const payload = await client.postFormData(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/import`,
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/import`,
     form
   );
   if (opts.json) return printJson(payload);
@@ -146,7 +146,7 @@ async function pushDataset(
 async function pullDataset(agentId: string, opts: BaseOpts & { out?: string }) {
   const client = buildClient(opts);
   const res = await client.getStream(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/export`
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/dataset/export`
   );
   const archive = Buffer.from(await res.arrayBuffer());
   const out = path.resolve(opts.out ?? DATASET_DIR);

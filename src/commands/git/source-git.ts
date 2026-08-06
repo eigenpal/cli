@@ -110,7 +110,7 @@ export async function resolveGitAuthorIdentity(config: CliConfig): Promise<GitAu
     };
   }
 
-  const auth = AuthCheckSchema.parse(await new ApiClient(config).get('/api/v1/auth/check'));
+  const auth = AuthCheckSchema.parse(await new ApiClient(config).get('/v1/auth/check'));
   const email = auth.email ?? `${auth.keyId}@api-keys.eigenpal.local`;
   const name = auth.name?.trim() || auth.email || `Eigenpal API Key ${auth.keyId}`;
   return { name, email };

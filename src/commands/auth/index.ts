@@ -88,7 +88,7 @@ export function normalizeBaseUrl(
 
   // Reject query/hash and any non-trivial path. Trailing slashes alone
   // (one or many) are user-pasting noise — strip them and proceed. A real
-  // path like `/api/v1` would silently break every API call (which
+  // path like `/v1` would silently break every API call (which
   // appends its own path), so reject those. Show the user the corrected
   // origin form so they know what to paste instead — most people pasted
   // their browser's address bar URL and just need to trim the path.
@@ -303,7 +303,7 @@ export async function authLogin(flagBaseUrl?: string): Promise<void> {
   s.start('Validating key with the server');
   let authCheck: { ok: boolean; tenantName: string | null; tenantId: string };
   try {
-    authCheck = (await client.get('/api/v1/auth/check')) as typeof authCheck;
+    authCheck = (await client.get('/v1/auth/check')) as typeof authCheck;
   } catch (err) {
     s.error('API key validation failed');
     error(err instanceof Error ? err.message : String(err));

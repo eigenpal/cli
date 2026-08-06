@@ -1,6 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { ApiClient } from '../lib/client';
 import { guessMimeType } from '../lib/fs-helpers';
+import { indicesRequiringPreUpload } from '../lib/upload-limits';
+import { newIdempotencyKey, uploadReusableFile } from '../lib/upload-reusable-file';
 
 const RESERVED_FIELD_NAMES = new Set([
   '_json',
@@ -19,6 +22,106 @@ export type RunFormFile = {
   mimeType?: string;
 };
 
+type LocalRunFile = {
+  fieldName: string;
+  content: Buffer;
+  filename: string;
+  mimeType: string;
+};
+
+export type PreparedRunInputFiles = {
+  /** Remaining small files that stay on the multipart round-trip. */
+  form: FormData;
+  /** True when at least one file part remains on the form. */
+  hasMultipartFiles: boolean;
+};
+
+/**
+ * Build a run-start request, pre-uploading files that would exceed the
+ * configured aggregate multipart budget through the Files API with
+ * `purpose=run-input`. A disabled budget leaves every file on multipart.
+ */
+export async function buildPreparedRunRequest(
+  client: ApiClient,
+  input: {
+    target: string;
+    inputJson?: string;
+    input?: Record<string, unknown>;
+    inputFile?: string | string[];
+    overrides?: Record<string, unknown> | null;
+    metadata?: Record<string, unknown>;
+    files?: RunFormFile[];
+  }
+): Promise<PreparedRunInputFiles> {
+  const inputObj: Record<string, unknown> = {
+    ...(input.input ?? (input.inputJson ? JSON.parse(input.inputJson) : {})),
+  };
+
+  const localFiles: LocalRunFile[] = [];
+
+  for (const spec of parseInputFileSpecs(input.inputFile ?? [])) {
+    const data = await fs.readFile(spec.filePath);
+    localFiles.push({
+      fieldName: spec.fieldName,
+      content: data,
+      filename: path.basename(spec.filePath),
+      mimeType: guessMimeType(path.basename(spec.filePath)) ?? 'application/octet-stream',
+    });
+  }
+
+  for (const file of input.files ?? []) {
+    const content = Buffer.isBuffer(file.content)
+      ? file.content
+      : Buffer.from(file.content as ArrayBuffer);
+    localFiles.push({
+      fieldName: file.fieldName,
+      content,
+      filename: file.filename,
+      mimeType: file.mimeType ?? guessMimeType(file.filename) ?? 'application/octet-stream',
+    });
+  }
+
+  const preUploadIndices = indicesRequiringPreUpload(
+    localFiles.map((file) => ({ size: file.content.byteLength }))
+  );
+  upgradeMixedFieldPreUpload(localFiles, preUploadIndices);
+
+  const preUploadRefsByField = new Map<string, Array<{ $fileId: string }>>();
+  const preUploadIdempotencyKeys = localFiles.map(() => newIdempotencyKey());
+  for (let index = 0; index < localFiles.length; index++) {
+    const file = localFiles[index]!;
+    if (!preUploadIndices.has(index)) continue;
+    const uploaded = await uploadReusableFile(client, {
+      content: file.content,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      purpose: 'run-input',
+      idempotencyKey: preUploadIdempotencyKeys[index],
+    });
+    const refs = preUploadRefsByField.get(file.fieldName) ?? [];
+    refs.push({ $fileId: uploaded.id });
+    preUploadRefsByField.set(file.fieldName, refs);
+  }
+
+  for (const [fieldName, refs] of preUploadRefsByField) {
+    inputObj[fieldName] = refs.length === 1 ? refs[0] : refs;
+  }
+
+  const remaining = localFiles.filter((_, index) => !preUploadIndices.has(index));
+  const form = new FormData();
+  form.append('target', input.target);
+  form.append('input', JSON.stringify(inputObj));
+  if (input.overrides) form.append('overrides', JSON.stringify(input.overrides));
+  if (input.metadata) form.append('metadata', JSON.stringify(input.metadata));
+
+  for (const file of remaining) {
+    appendFilePart(form, file.fieldName, file.content, file.filename, file.mimeType);
+  }
+
+  return { form, hasMultipartFiles: remaining.length > 0 };
+}
+
+/** @deprecated Prefer {@link buildPreparedRunRequest} which applies aggregate pre-upload. */
 export async function buildRunFormData(input: {
   target: string;
   inputJson?: string;
@@ -28,6 +131,7 @@ export async function buildRunFormData(input: {
   metadata?: Record<string, unknown>;
   files?: RunFormFile[];
 }): Promise<FormData> {
+  // Legacy helper kept for unit tests that assert form shape without a client.
   const form = new FormData();
   form.append('target', input.target);
 
@@ -51,6 +155,33 @@ export async function buildRunFormData(input: {
   }
 
   return form;
+}
+
+/**
+ * When the same field has both pre-uploaded and multipart files, the canonical
+ * run-start envelope rejects `files.<field>` if that field already appears in
+ * `input`. Upgrade every file for that field to pre-upload so order is preserved
+ * without dropping or overwriting values.
+ */
+function upgradeMixedFieldPreUpload(
+  localFiles: ReadonlyArray<LocalRunFile>,
+  preUploadIndices: Set<number>
+): void {
+  const fieldHasPreUpload = new Set<string>();
+  const fieldHasMultipart = new Set<string>();
+
+  for (let index = 0; index < localFiles.length; index++) {
+    const { fieldName } = localFiles[index]!;
+    if (preUploadIndices.has(index)) fieldHasPreUpload.add(fieldName);
+    else fieldHasMultipart.add(fieldName);
+  }
+
+  for (const fieldName of fieldHasPreUpload) {
+    if (!fieldHasMultipart.has(fieldName)) continue;
+    for (let index = 0; index < localFiles.length; index++) {
+      if (localFiles[index]!.fieldName === fieldName) preUploadIndices.add(index);
+    }
+  }
 }
 
 function appendFilePart(

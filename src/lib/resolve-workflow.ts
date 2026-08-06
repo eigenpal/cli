@@ -13,7 +13,7 @@
  * Usage:
  *
  *   const workflowId = await resolveWorkflowId(client, idOrSlug);
- *   await client.post('/api/v1/runs', runStartJsonBody(`workflows.${workflowId}`, input));
+ *   await client.post('/v1/runs', runStartJsonBody(`workflows.${workflowId}`, input));
  */
 
 import type { ApiClient } from './client';

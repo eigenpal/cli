@@ -136,7 +136,7 @@ describe('workflow schema command', () => {
 });
 
 describe('datasetExportPath', () => {
-  const base = '/api/v1/automations/wf_abc123/dataset/export';
+  const base = '/v1/automations/wf_abc123/dataset/export';
 
   test('returns the bare export path when no examples are requested', () => {
     expect(datasetExportPath('wf_abc123')).toBe(base);
@@ -427,10 +427,7 @@ describe('workflow experiment run (no --wait)', () => {
         const resolved = resolveWorkflowRoute(request, 'wf_exp1');
         if (resolved) return resolved;
         const url = new URL(request.url);
-        if (
-          request.method === 'POST' &&
-          url.pathname === '/api/v1/automations/wf_exp1/experiments'
-        ) {
+        if (request.method === 'POST' && url.pathname === '/v1/automations/wf_exp1/experiments') {
           posted = { pathname: url.pathname, body: await request.json() };
           return jsonResponse({ id: 'evb_x', runs: [], total: 0 }, { status: 201 });
         }
@@ -443,7 +440,7 @@ describe('workflow experiment run (no --wait)', () => {
         );
 
         expect(result.status).toBe(0);
-        expect(posted).toMatchObject({ pathname: '/api/v1/automations/wf_exp1/experiments' });
+        expect(posted).toMatchObject({ pathname: '/v1/automations/wf_exp1/experiments' });
         // The server answers `{ id, runs, total }`; the documented scripting
         // contract is `--json | jq '.batchId'`, so both spellings must appear.
         const payload = JSON.parse(result.stdout);
@@ -465,7 +462,7 @@ describe('workflow experiment status (spot check, no --watch)', () => {
         const url = new URL(request.url);
         if (
           request.method === 'GET' &&
-          url.pathname === '/api/v1/automations/wf_exp1/experiments/evb_empty'
+          url.pathname === '/v1/automations/wf_exp1/experiments/evb_empty'
         ) {
           statusGets++;
           return jsonResponse({ executions: [] });
@@ -494,7 +491,7 @@ describe('workflow experiment status (spot check, no --watch)', () => {
         const url = new URL(request.url);
         if (
           request.method === 'GET' &&
-          url.pathname === '/api/v1/automations/wf_exp1/experiments/evb_ok'
+          url.pathname === '/v1/automations/wf_exp1/experiments/evb_ok'
         ) {
           return jsonResponse({ executions: [{ status: 'completed' }] });
         }

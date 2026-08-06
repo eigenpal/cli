@@ -93,7 +93,7 @@ async function runExperiment(
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
   let payload = (await client.post(
-    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments`,
+    `/v1/automations/${encodeURIComponent(automationId)}/experiments`,
     {
       ...(opts.exampleId ? { examples: [opts.exampleId] } : {}),
     }
@@ -115,7 +115,7 @@ async function experimentStatus(
   const payload = opts.watch
     ? await pollExperiment(client, automationId, batchId, opts.interval, opts.maxWait)
     : await client.get(
-        `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
+        `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
       );
   renderGeneric(payload, opts, `Experiment ${batchId}`);
 }
@@ -131,7 +131,7 @@ async function experimentResults(
     batchId ??
     String(
       (
-        (await client.get(`/api/v1/automations/${encodeURIComponent(automationId)}/experiments`, {
+        (await client.get(`/v1/automations/${encodeURIComponent(automationId)}/experiments`, {
           limit: '1',
           offset: '0',
         })) as { data?: Array<{ id?: string }> }
@@ -139,7 +139,7 @@ async function experimentResults(
     );
   if (!selected) throw new Error('No experiment batch found');
   const payload = (await client.get(
-    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
+    `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
   )) as { runs: Record<string, unknown>[] };
   const content =
     opts.format === 'json'
@@ -160,7 +160,7 @@ async function listExperiments(
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
   const payload = (await client.get(
-    `/api/v1/automations/${encodeURIComponent(automationId)}/experiments`,
+    `/v1/automations/${encodeURIComponent(automationId)}/experiments`,
     compactParams(opts)
   )) as { data?: Record<string, unknown>[] };
   const experiments = payload.data ?? [];
@@ -188,7 +188,7 @@ async function compareExperiments(
   if (!Number.isFinite(threshold) || threshold < 0) {
     throw new Error('--regression-threshold must be a non-negative number');
   }
-  // The internal `/api/v1/agents/experiments/compare` endpoint was removed from
+  // The internal `/v1/agents/experiments/compare` endpoint was removed from
   // the public surface. Rebuild the side-by-side diff entirely from public
   // routes (runs?batchId + per-run eval-results) so workflow and agent compare
   // share one code path.
@@ -218,7 +218,7 @@ async function cancelExperiment(
     throw new Error('Pass --yes to cancel in non-interactive mode');
   const client = buildClient(opts);
   const payload = await client.post(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments/${encodeURIComponent(batchId)}/cancel`
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments/${encodeURIComponent(batchId)}/cancel`
   );
   renderGeneric(payload, opts, `Cancelled experiment ${batchId}`);
 }

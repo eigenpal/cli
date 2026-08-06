@@ -29,7 +29,7 @@ describe('ApiClient HTML detection', () => {
         apiKey: 'k',
         dir: '.',
       });
-      await expect(client.get('/api/v1/auth/check')).rejects.toBeInstanceOf(HtmlResponseError);
+      await expect(client.get('/v1/auth/check')).rejects.toBeInstanceOf(HtmlResponseError);
     } finally {
       global.fetch = origFetch;
     }
@@ -45,11 +45,11 @@ describe('ApiClient HTML detection', () => {
         dir: '.',
       });
       try {
-        await client.get('/api/v1/auth/check');
+        await client.get('/v1/auth/check');
       } catch (err) {
         expect(err).toBeInstanceOf(HtmlResponseError);
         const e = err as HtmlResponseError;
-        expect(e.resolvedUrl).toBe('http://localhost:9999/api/v1/auth/check');
+        expect(e.resolvedUrl).toBe('http://localhost:9999/v1/auth/check');
         // Acceptance: <100 chars; no body dump.
         expect(e.message.length).toBeLessThan(150);
         expect(e.message).not.toContain('<!DOCTYPE');
@@ -68,7 +68,7 @@ describe('ApiClient HTML detection', () => {
         apiKey: 'k',
         dir: '.',
       });
-      const result = await client.get('/api/v1/auth/check');
+      const result = await client.get('/v1/auth/check');
       expect(result).toEqual({ ok: true });
     } finally {
       global.fetch = origFetch;
@@ -84,9 +84,27 @@ describe('ApiClient HTML detection', () => {
         apiKey: 'k',
         dir: '.',
       });
-      await expect(client.getStream('/api/v1/foo/export')).rejects.toBeInstanceOf(
-        HtmlResponseError
-      );
+      await expect(client.getStream('/v1/foo/export')).rejects.toBeInstanceOf(HtmlResponseError);
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
+
+  test('projects legacy /api/v1 call sites onto canonical /v1', async () => {
+    const origFetch = global.fetch;
+    let requested: string | undefined;
+    global.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+      requested = String(input);
+      return jsonResponse({ ok: true });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new ApiClient({
+        baseUrl: 'http://localhost:9999',
+        apiKey: 'k',
+        dir: '.',
+      });
+      await client.get('/api/v1/auth/check');
+      expect(requested).toBe('http://localhost:9999/v1/auth/check');
     } finally {
       global.fetch = origFetch;
     }

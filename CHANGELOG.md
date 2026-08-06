@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.11.0
+
+### Minor Changes
+
+- ac3c115: The CLI now uses `api.eigenpal.com` as the default cloud API origin and automatically pre-uploads run files that exceed the multipart request limit. Self-hosted users can keep custom API origins and set `EIGENPAL_MULTIPART_MAX_BYTES` to their proxy limit, or `none` to keep all files on multipart.
+
 ## 0.10.45
 
 ### Patch Changes

@@ -265,7 +265,7 @@ export async function runExample(
 ) {
   const client = buildClient(opts);
   const started = (await client.post(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments`,
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments`,
     {
       examples: [opts.example],
       ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
@@ -285,7 +285,7 @@ export async function runExample(
         // Re-fetch so the payload (and `--json` output) carries the eval block
         // written by the post-execution evaluators.
         payload = (await client.get(
-          `/api/v1/runs/${encodeURIComponent(runId)}?expand=usage,execution`
+          `/v1/runs/${encodeURIComponent(runId)}?expand=usage,execution`
         )) as typeof payload;
       }
     }
@@ -444,7 +444,7 @@ async function getRun(
 ) {
   const client = buildClient(opts);
   const run = toLegacyRunView(
-    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    (await client.get(`/v1/runs/${encodeURIComponent(executionId)}`, {
       expand: serverExpandParam({ expand: opts.expand, include: opts.include }),
     })) as Record<string, unknown>
   );
@@ -698,7 +698,7 @@ export async function rerunRun(
     params.set('version', version);
   }
   const query = params.toString();
-  const path = `/api/v1/runs/${encodeURIComponent(executionId)}/rerun${query ? `?${query}` : ''}`;
+  const path = `/v1/runs/${encodeURIComponent(executionId)}/rerun${query ? `?${query}` : ''}`;
   let payload: unknown = await client.post(path);
   const rerunId = String((payload as { id?: string }).id ?? '');
   if (opts.wait && rerunId) {
@@ -721,7 +721,7 @@ async function promoteRun(
   const body: Record<string, unknown> = {};
   if (opts.name) body.name = opts.name;
   const payload = (await client.post(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/promote`,
+    `/v1/runs/${encodeURIComponent(executionId)}/promote`,
     body
   )) as {
     automationId?: string;
@@ -742,7 +742,7 @@ async function fetchRunArtifacts(
 ) {
   const client = buildClient(opts);
   const baseRun = toLegacyRunView(
-    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    (await client.get(`/v1/runs/${encodeURIComponent(executionId)}`, {
       expand: 'input,execution',
     })) as Record<string, unknown>
   );
@@ -806,9 +806,7 @@ async function listCanonicalRunArtifacts(
   client: ApiClient,
   executionId: string
 ): Promise<ArtifactInventoryRow[]> {
-  const payload = (await client.get(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts`
-  )) as {
+  const payload = (await client.get(`/v1/runs/${encodeURIComponent(executionId)}/artifacts`)) as {
     artifacts?: Array<{ name?: string; path?: string }>;
   };
   return (payload.artifacts ?? []).map((artifact) => {
@@ -897,7 +895,7 @@ async function writeDownloadedRunArtifact(
   // served by the public download route keyed on the same path `artifacts list`
   // returns — no separate internal `/expected/:name` route needed.
   const response = await client.getStream(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodeRunArtifactPath(artifactPath)}`
+    `/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodeRunArtifactPath(artifactPath)}`
   );
   const outPath = path.join(out, artifactPath);
   await fs.mkdir(path.dirname(outPath), { recursive: true });
@@ -965,14 +963,14 @@ async function compareRun(
 ) {
   const client = buildClient(opts);
   const target = toLegacyRunView(
-    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    (await client.get(`/v1/runs/${encodeURIComponent(executionId)}`, {
       expand: 'execution',
     })) as Record<string, unknown>
   );
 
   const mode = opts.baseline ? 'baseline' : 'expected';
   const reference = toLegacyRunView(
-    (await client.get(`/api/v1/runs/${encodeURIComponent(referenceId)}`, {
+    (await client.get(`/v1/runs/${encodeURIComponent(referenceId)}`, {
       expand: 'execution',
     })) as Record<string, unknown>
   );
@@ -1228,7 +1226,7 @@ async function listRuns(
           : {}),
     ...(parsedAgentTarget?.sourceRef ? { sourceRef: parsedAgentTarget.sourceRef } : {}),
   };
-  const payload = (await client.get('/api/v1/runs', params)) as {
+  const payload = (await client.get('/v1/runs', params)) as {
     runs: Record<string, unknown>[];
     total?: number;
     nextCursor?: string | null;
@@ -1316,7 +1314,7 @@ async function updateRunReview(
     body.correctedOutput = JSON.parse(await fs.readFile(opts.correctedJsonFile, 'utf-8'));
   if (opts.correctedJson !== undefined) body.correctedOutput = JSON.parse(opts.correctedJson);
   if (opts.clearCorrectedJson) body.correctedOutput = null;
-  const payload = await client.put(`/api/v1/runs/${encodeURIComponent(executionId)}/reviews`, body);
+  const payload = await client.put(`/v1/runs/${encodeURIComponent(executionId)}/reviews`, body);
   renderGeneric(payload, opts, `Updated review for ${executionId}`);
 }
 
@@ -1328,10 +1326,7 @@ async function closeRunReview(
   const body: Record<string, unknown> = { status: opts.status ?? 'closed' };
   if (opts.noteFile) body.note = await fs.readFile(opts.noteFile, 'utf-8');
   if (opts.note !== undefined) body.note = opts.note;
-  const payload = await client.patch(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews`,
-    body
-  );
+  const payload = await client.patch(`/v1/runs/${encodeURIComponent(executionId)}/reviews`, body);
   renderGeneric(payload, opts, `Closed review for ${executionId}`);
 }
 
@@ -1361,7 +1356,7 @@ async function clearRunReview(executionId: string, opts: BaseOpts & { yes?: bool
     throw new Error('Clear cancelled');
   }
   const client = buildClient(opts);
-  const payload = await client.delete(`/api/v1/runs/${encodeURIComponent(executionId)}/reviews`);
+  const payload = await client.delete(`/v1/runs/${encodeURIComponent(executionId)}/reviews`);
   renderGeneric(payload, opts, `Cleared review for ${executionId}`);
 }
 
@@ -1373,7 +1368,7 @@ async function readRunExpected(
   executionId: string
 ): Promise<{ expected: unknown; files: Record<string, unknown>[] }> {
   const run = toLegacyRunView(
-    (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+    (await client.get(`/v1/runs/${encodeURIComponent(executionId)}`, {
       expand: 'execution',
     })) as Record<string, unknown>
   );
@@ -1415,7 +1410,7 @@ async function downloadExpectedFiles(
       const name = String((file as { name?: unknown }).name ?? '');
       if (!name || name.includes('/') || name.includes('..')) return null;
       const response = await client.getStream(
-        `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/expected/${encodeURIComponent(name)}`
+        `/v1/runs/${encodeURIComponent(executionId)}/artifacts/expected/${encodeURIComponent(name)}`
       );
       await fs.mkdir(out, { recursive: true });
       await fs.writeFile(path.join(out, name), Buffer.from(await response.arrayBuffer()));
@@ -1426,7 +1421,7 @@ async function downloadExpectedFiles(
 }
 
 // Public run review expected-artifact mutations. Keep these pointed at the
-// documented `/api/v1/runs/:id/reviews/expected*` routes so CLI expected-file
+// documented `/v1/runs/:id/reviews/expected*` routes so CLI expected-file
 // editing dogfoods the same surface as SDK users.
 async function uploadRunExpected(
   executionId: string,
@@ -1439,7 +1434,7 @@ async function uploadRunExpected(
   form.append('file', new Blob([data]), path.basename(file));
   if (opts.name) form.append('name', opts.name);
   const payload = await client.postFormData(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
+    `/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
     form
   );
   renderGeneric(payload, opts, `Uploaded expected file for ${executionId}`);
@@ -1452,7 +1447,7 @@ async function copyOutputToExpected(
 ) {
   const client = buildClient(opts);
   const payload = await client.post(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
+    `/v1/runs/${encodeURIComponent(executionId)}/reviews/expected`,
     {
       outputFileName: outputFile,
       ...(opts.name ? { expectedName: opts.name } : {}),
@@ -1469,7 +1464,7 @@ async function renameRunExpected(
 ) {
   const client = buildClient(opts);
   const payload = await client.patch(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(oldName)}`,
+    `/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(oldName)}`,
     { name: newName }
   );
   renderGeneric(payload, opts, `Renamed expected file for ${executionId}`);
@@ -1485,7 +1480,7 @@ async function deleteRunExpected(
   }
   const client = buildClient(opts);
   await client.delete(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(name)}`
+    `/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(name)}`
   );
   renderGeneric({ ok: true }, opts, `Deleted expected file ${name}`);
 }
@@ -1503,7 +1498,7 @@ async function watchRunCommand(
   }
   const result = await watchExecution({
     fetch: async () => {
-      const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}`, {
+      const payload = (await client.get(`/v1/runs/${encodeURIComponent(executionId)}`, {
         expand: 'execution',
       })) as Record<string, unknown>;
       return toExecutionSnapshot(toLegacyRunView(payload), executionId);
@@ -1527,7 +1522,7 @@ async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }
   if (!(opts.yes || process.stdin.isTTY))
     throw new Error('Pass --yes to cancel in non-interactive mode');
   const client = buildClient(opts);
-  const payload = await client.post(`/api/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
+  const payload = await client.post(`/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
   renderRunPayload(payload, opts);
 }
 
@@ -1537,7 +1532,7 @@ async function downloadTraceText(client: ApiClient, executionId: string): Promis
   // records. (The old artifacts/trace.jsonl download 404'd for workflow runs,
   // which only ever have the synthesized trace.) Re-emit as JSONL so the
   // command's output stays line-parseable either way.
-  const payload = (await client.get(`/api/v1/runs/${encodeURIComponent(executionId)}/trace`)) as {
+  const payload = (await client.get(`/v1/runs/${encodeURIComponent(executionId)}/trace`)) as {
     events?: unknown[];
   };
   const events = Array.isArray(payload?.events) ? payload.events : [];
@@ -1747,7 +1742,7 @@ function runFileUrl(side: { runId: string; kind: 'expected' | 'output' }, name: 
   // Both expected/* and output/* are canonical run artifacts served by the
   // public download route under their listed path.
   const artifactPath = side.kind === 'expected' ? `expected/${name}` : `output/${name}`;
-  return `/api/v1/runs/${runId}/artifacts/${encodeRunArtifactPath(artifactPath)}`;
+  return `/v1/runs/${runId}/artifacts/${encodeRunArtifactPath(artifactPath)}`;
 }
 
 function encodeRunArtifactPath(artifactPath: string): string {

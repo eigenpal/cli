@@ -197,7 +197,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         async (request) => {
           const url = new URL(request.url);
-          if (request.method !== 'POST' || url.pathname !== '/api/v1/source/secrets/encrypt') {
+          if (request.method !== 'POST' || url.pathname !== '/v1/source/secrets/encrypt') {
             return new Response('not found', { status: 404 });
           }
           const body = (await request.json()) as {
@@ -257,7 +257,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         async (request) => {
           const url = new URL(request.url);
-          if (request.method !== 'POST' || url.pathname !== '/api/v1/source/secrets/encrypt') {
+          if (request.method !== 'POST' || url.pathname !== '/v1/source/secrets/encrypt') {
             return new Response('not found', { status: 404 });
           }
           return Response.json({
@@ -437,7 +437,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'dev@example.com',
@@ -475,7 +475,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             authChecks += 1;
             return Response.json({ error: 'auth should not be called' }, { status: 500 });
           }
@@ -501,7 +501,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'author@example.com',
@@ -617,7 +617,7 @@ describe('git passthrough and agents source commands', () => {
     await withApiServer(
       (request) => {
         const url = new URL(request.url);
-        if (url.pathname === '/api/v1/automations' && url.searchParams.get('type') === 'agent') {
+        if (url.pathname === '/v1/automations' && url.searchParams.get('type') === 'agent') {
           return Response.json({
             data: [
               {
@@ -647,7 +647,7 @@ describe('git passthrough and agents source commands', () => {
             total: 2,
           });
         }
-        if (url.pathname === '/api/v1/automations/agents.invoice-agent') {
+        if (url.pathname === '/v1/automations/agents.invoice-agent') {
           return Response.json({
             id: 'awf_invoice',
             type: 'agent',
@@ -662,7 +662,7 @@ describe('git passthrough and agents source commands', () => {
             updatedAt: '2026-01-02T00:00:00Z',
           });
         }
-        if (url.pathname === '/api/v1/source/releases') {
+        if (url.pathname === '/v1/source/releases') {
           return Response.json({
             packagePath: 'agents/invoice-agent',
             releases: [
@@ -717,7 +717,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'releaser@example.com',
@@ -725,7 +725,7 @@ describe('git passthrough and agents source commands', () => {
               keyId: 'ak_release',
             });
           }
-          if (url.pathname === '/api/v1/source/releases' && !url.searchParams.get('version')) {
+          if (url.pathname === '/v1/source/releases' && !url.searchParams.get('version')) {
             return Response.json({
               packagePath: 'agents/invoice-agent',
               releases: [
@@ -737,12 +737,12 @@ describe('git passthrough and agents source commands', () => {
               ],
             });
           }
-          if (url.pathname === '/api/v1/source/releases') {
+          if (url.pathname === '/v1/source/releases') {
             return Response.json({ packagePath: 'agents/invoice-agent', releases: [] });
           }
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
+            url.pathname === '/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -758,7 +758,7 @@ describe('git passthrough and agents source commands', () => {
             }
           );
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/v1/automations/agents.invoice-agent/sync']);
 
           const tags = spawnSync('git', ['--git-dir', remote, 'tag'], { encoding: 'utf8' });
           expect(tags.stdout).toContain('agents.invoice-agent@1.3.0');
@@ -791,7 +791,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'releaser@example.com',
@@ -799,7 +799,7 @@ describe('git passthrough and agents source commands', () => {
               keyId: 'ak_release',
             });
           }
-          if (url.pathname === '/api/v1/source/releases' && !url.searchParams.get('version')) {
+          if (url.pathname === '/v1/source/releases' && !url.searchParams.get('version')) {
             return Response.json({
               packagePath: 'agents/invoice-agent',
               releases: [
@@ -811,12 +811,12 @@ describe('git passthrough and agents source commands', () => {
               ],
             });
           }
-          if (url.pathname === '/api/v1/source/releases') {
+          if (url.pathname === '/v1/source/releases') {
             return Response.json({ packagePath: 'agents/invoice-agent', releases: [] });
           }
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
+            url.pathname === '/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -832,7 +832,7 @@ describe('git passthrough and agents source commands', () => {
             }
           );
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/v1/automations/agents.invoice-agent/sync']);
 
           const currentBranch = spawnSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
             cwd: root,
@@ -916,7 +916,7 @@ describe('git passthrough and agents source commands', () => {
           const url = new URL(request.url);
           if (
             request.method === 'POST' &&
-            url.pathname === '/api/v1/automations/agents.invoice-agent/sync'
+            url.pathname === '/v1/automations/agents.invoice-agent/sync'
           ) {
             syncCalls.push(url.pathname);
             return Response.json({ ok: true });
@@ -928,7 +928,7 @@ describe('git passthrough and agents source commands', () => {
             baseUrl,
           });
           expect(result.status).toBe(0);
-          expect(syncCalls).toEqual(['/api/v1/automations/agents.invoice-agent/sync']);
+          expect(syncCalls).toEqual(['/v1/automations/agents.invoice-agent/sync']);
         }
       );
     } finally {
@@ -943,7 +943,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'releaser@example.com',
@@ -951,7 +951,7 @@ describe('git passthrough and agents source commands', () => {
               keyId: 'ak_release',
             });
           }
-          if (url.pathname === '/api/v1/source/releases') {
+          if (url.pathname === '/v1/source/releases') {
             return Response.json({ packagePath: 'resources/knowledge/facts', releases: [] });
           }
           if (url.pathname.includes('/sync')) {
@@ -987,7 +987,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'releaser@example.com',
@@ -995,7 +995,7 @@ describe('git passthrough and agents source commands', () => {
               keyId: 'ak_release',
             });
           }
-          if (url.pathname === '/api/v1/source/releases') {
+          if (url.pathname === '/v1/source/releases') {
             return Response.json({ packagePath: 'resources/knowledge/facts', releases: [] });
           }
           return Response.json({ error: 'not found' }, { status: 404 });
@@ -1271,7 +1271,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'author@example.com',
@@ -1327,7 +1327,7 @@ describe('git passthrough and agents source commands', () => {
       await withApiServer(
         (request) => {
           const url = new URL(request.url);
-          if (url.pathname === '/api/v1/auth/check') {
+          if (url.pathname === '/v1/auth/check') {
             return Response.json({
               ok: true,
               email: 'author@example.com',

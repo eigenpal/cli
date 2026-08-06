@@ -45,7 +45,7 @@ export async function status(opts: StatusOpts): Promise<void> {
     email?: string | null;
     name?: string | null;
     keyId?: string;
-  }>(client, '/api/v1/auth/check');
+  }>(client, '/v1/auth/check');
 
   if (!auth || !auth.ok) {
     if (opts.json) {

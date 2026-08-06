@@ -144,7 +144,7 @@ function runOutput(run: RunView): unknown {
 
 /** Whether the workflow has any evaluator configured. */
 export async function fetchHasEvaluators(client: ApiClient, workflowId: string): Promise<boolean> {
-  const cfg = (await client.get(`/api/v1/automations/${workflowId}/evaluators`)) as {
+  const cfg = (await client.get(`/v1/automations/${workflowId}/evaluators`)) as {
     config?: { evaluators?: unknown[] };
   };
   return Array.isArray(cfg.config?.evaluators) && cfg.config.evaluators.length > 0;
@@ -158,7 +158,7 @@ async function resolveExample(
 ): Promise<ExampleRow | null> {
   let offset = 0;
   for (;;) {
-    const page = (await client.get(`/api/v1/automations/${workflowId}/examples`, {
+    const page = (await client.get(`/v1/automations/${workflowId}/examples`, {
       limit: String(EXAMPLE_PAGE_SIZE),
       offset: String(offset),
     })) as { data?: Array<{ id: string; name?: string | null; expected?: unknown }> };
@@ -172,7 +172,7 @@ async function resolveExample(
 
 async function pollRunTerminal(client: ApiClient, runId: string): Promise<RunView> {
   const start = Date.now();
-  const base = `/api/v1/runs/${encodeURIComponent(runId)}`;
+  const base = `/v1/runs/${encodeURIComponent(runId)}`;
   for (;;) {
     const run = (await client.get(base)) as RunView;
     const status = run.execution?.status ?? run.status;
@@ -204,7 +204,7 @@ export async function pollEvalRollup(
 ): Promise<{ score: number | null; passed: boolean | null } | null> {
   const start = Date.now();
   for (;;) {
-    const run = (await client.get(`/api/v1/runs/${encodeURIComponent(runId)}`)) as RunView;
+    const run = (await client.get(`/v1/runs/${encodeURIComponent(runId)}`)) as RunView;
     if (run.eval && run.eval.passed != null) {
       return { score: run.eval.score ?? null, passed: run.eval.passed };
     }
@@ -220,7 +220,7 @@ async function fetchEvalRows(
   batchId: string,
   runId: string
 ): Promise<EvalResultRow[]> {
-  const detail = (await client.get(`/api/v1/automations/${workflowId}/experiments/${batchId}`)) as {
+  const detail = (await client.get(`/v1/automations/${workflowId}/experiments/${batchId}`)) as {
     resultsByRun?: Record<string, EvalResultRow[]>;
   };
   return detail.resultsByRun?.[runId] ?? [];
@@ -276,7 +276,7 @@ export async function runWorkflowExamplesWithEval(
       }
 
       const started = (await client.post(
-        `/api/v1/automations/${workflowId}/examples/${example.id}/run`,
+        `/v1/automations/${workflowId}/examples/${example.id}/run`,
         {}
       )) as { id?: string; batchId?: string | null };
       const runId = started.id;

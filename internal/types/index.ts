@@ -90,6 +90,29 @@ export {
   type ScopedFileRef,
   type ScopedFileResolver,
 } from './files/scoped-file-ref';
+export {
+  FILE_PURPOSE_BUILDER_ATTACHMENT,
+  FILE_PURPOSE_RUN_INPUT,
+  FILE_UPLOAD_PROTECTED_STATUSES,
+  FILE_UPLOAD_PURPOSES,
+  FILE_UPLOAD_STATUSES,
+  FILE_UPLOAD_TERMINAL_STATUSES,
+  FILE_UPLOAD_TRANSPORTS,
+  FileUploadPurposeSchema,
+  FileUploadStatusSchema,
+  FileUploadTransportSchema,
+  isBuilderAttachmentFilePurpose,
+  isEphemeralPoolFilePurpose,
+  isFileUploadProtectedStatus,
+  isFileUploadTerminalStatus,
+  isRunInputFilePurpose,
+  pendingFileUploadKey,
+  type FileUploadProtectedStatus,
+  type FileUploadPurpose,
+  type FileUploadStatus,
+  type FileUploadTerminalStatus,
+  type FileUploadTransport,
+} from './files/upload-session';
 
 // Processor types (definitions, execution, configs)
 export {
@@ -357,7 +380,7 @@ export {
 } from './run-expand';
 
 // Single source of truth for the LLM temperature on every model call.
-export { DETERMINISTIC_TEMPERATURE } from './llm-determinism';
+export { DETERMINISTIC_TEMPERATURE, isTemperatureRejectionMessage } from './llm-determinism';
 
 // Validation: shared AJV instance + input/output/workspace-schema helpers.
 // One module used by /run endpoints, the worker, the inference session, and

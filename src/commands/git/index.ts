@@ -140,7 +140,7 @@ async function getSourceRepository(
   const explicit = sourceRepositoryFromRemoteUrl(opts.remoteUrl);
   if (explicit) return explicit;
   const client = new ApiClient(config);
-  return parseSourceRepository(await client.get('/api/v1/source/repository'));
+  return parseSourceRepository(await client.get('/v1/source/repository'));
 }
 
 function parsePackageRef(input: string): { packagePath: SourcePackagePath; ref: SourceVersionRef } {
@@ -198,7 +198,7 @@ async function listPackageReleases(input: {
   }
   const client = new ApiClient(input.config);
   return ReleasesSchema.parse(
-    await client.get('/api/v1/source/releases', { packagePath: input.packagePath })
+    await client.get('/v1/source/releases', { packagePath: input.packagePath })
   ).releases;
 }
 
@@ -566,7 +566,7 @@ async function findAgentAutomationBySearch(
   client: ApiClient,
   target: string
 ): Promise<AutomationDetailPayload | null> {
-  const payload = (await client.get('/api/v1/automations', {
+  const payload = (await client.get('/v1/automations', {
     type: 'agent',
     search: target,
     limit: '100',
@@ -587,7 +587,7 @@ async function getPublicAgentAutomation(
   const publicTarget = publicAgentAutomationTarget(target);
   try {
     const automation = (await client.get(
-      `/api/v1/automations/${encodeURIComponent(publicTarget)}`
+      `/v1/automations/${encodeURIComponent(publicTarget)}`
     )) as AutomationDetailPayload;
     if (automation.type !== 'agent') {
       throw new Error(`Automation ${target} is not an agent.`);
@@ -680,7 +680,7 @@ async function syncLatestAutomation(
 ): Promise<void> {
   const automation = pathToDottedPackageName(packagePath);
   await retrySyncRequest(() =>
-    client.post(`/api/v1/automations/${encodeURIComponent(automation)}/sync`)
+    client.post(`/v1/automations/${encodeURIComponent(automation)}/sync`)
   );
   success(`Synced ${automation} to latest release.`);
 }
@@ -747,7 +747,7 @@ async function show(target: string, opts: BaseOpts): Promise<void> {
 async function versions(target: string, opts: BaseOpts): Promise<void> {
   const packagePath = resolvePackagePath(target);
   const client = new ApiClient(resolveConfig(opts));
-  const parsed = ReleasesSchema.parse(await client.get('/api/v1/source/releases', { packagePath }));
+  const parsed = ReleasesSchema.parse(await client.get('/v1/source/releases', { packagePath }));
   const sorted = { ...parsed, releases: sortReleasesNewestFirst(parsed.releases) };
   if (opts.json) console.log(JSON.stringify(sorted, null, 2));
   else
@@ -794,7 +794,7 @@ async function release(
   const version = ['patch', 'minor', 'major'].includes(versionOrBump)
     ? bumpReleaseVersion(
         ReleasesSchema.parse(
-          await client.get('/api/v1/source/releases', { packagePath: resolvedContext.packagePath })
+          await client.get('/v1/source/releases', { packagePath: resolvedContext.packagePath })
         ).releases,
         versionOrBump as 'patch' | 'minor' | 'major'
       )
@@ -803,7 +803,7 @@ async function release(
     throw new Error('Release version must be X.Y.Z, patch, minor, or major.');
   }
   const existing = ReleasesSchema.parse(
-    await client.get('/api/v1/source/releases', {
+    await client.get('/v1/source/releases', {
       packagePath: resolvedContext.packagePath,
       version,
     })

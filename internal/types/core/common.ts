@@ -52,6 +52,8 @@ export const ID_PREFIXES = {
   AUTOMATION_TRIGGER: 'atr',
   // External file-source resolver instance config (single-tenant)
   FILE_SOURCE_CONFIG: 'fsc',
+  // Storage-direct reusable file upload sessions (`fup_…`)
+  FILE_UPLOAD: 'fup',
   // Outbound webhooks
   WEBHOOK_ENDPOINT: 'whep',
   WEBHOOK_EVENT: 'whev',

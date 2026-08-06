@@ -80,7 +80,7 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(captured).toEqual({
-          pathname: '/api/v1/runs',
+          pathname: '/v1/runs',
           body: { target: 'workflows.invoice', input: { language: 'en' } },
         });
         expect(JSON.parse(result.stdout)).toMatchObject({ id: 'run_123', type: 'workflow' });
@@ -111,7 +111,7 @@ describe('root run commands', () => {
         // Mixed-case nanoid id in the target, version moved to the query
         // string, and the run tagged as CLI-triggered.
         expect(captured).toEqual({
-          pathname: '/api/v1/runs',
+          pathname: '/v1/runs',
           version: '1.2.3',
           trigger: 'cli',
         });
@@ -135,12 +135,141 @@ describe('root run commands', () => {
     );
   });
 
+  test('run --input-file pre-uploads oversized files via Files with purpose=run-input', async () => {
+    const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'cli-run-preupload-'));
+    const filePath = join(dir, 'big.bin');
+    await writeFile(filePath, Buffer.alloc(5 * 1024 * 1024, 1));
+
+    const calls: Array<{ method: string; pathname: string; body?: unknown }> = [];
+    try {
+      await withRunServer(
+        async (request) => {
+          const url = new URL(request.url);
+          const pathname = url.pathname;
+          if (request.method === 'POST' && pathname === '/v1/files/uploads') {
+            const body = await request.json();
+            calls.push({ method: 'POST', pathname, body });
+            return json({
+              transport: 'multipart',
+              url: '/v1/files',
+              maxFileSizeBytes: 100 * 1024 * 1024,
+            });
+          }
+          if (request.method === 'POST' && pathname === '/v1/files') {
+            const form = await request.formData();
+            calls.push({
+              method: 'POST',
+              pathname,
+              body: { purpose: form.get('purpose') },
+            });
+            return json({
+              id: 'file_cli_large',
+              filename: 'big.bin',
+              contentType: 'application/octet-stream',
+              size: 5 * 1024 * 1024,
+              purpose: 'run-input',
+              createdAt: '2026-08-04T09:00:00.000Z',
+            });
+          }
+          if (request.method === 'POST' && pathname === '/v1/runs') {
+            const body = await request.json();
+            calls.push({ method: 'POST', pathname, body });
+            return json({ id: 'run_pre', type: 'workflow', finished: false }, { status: 201 });
+          }
+          return new Response('not found', { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await runCli(
+            [
+              'run',
+              'workflows.invoice',
+              '--input-file',
+              `document=${filePath}`,
+              '--json',
+              '--base-url',
+              baseUrl,
+            ],
+            { baseUrl }
+          );
+          expect(result.status).toBe(0);
+          expect(calls).toEqual([
+            {
+              method: 'POST',
+              pathname: '/v1/files/uploads',
+              body: expect.objectContaining({
+                filename: 'big.bin',
+                purpose: 'run-input',
+              }),
+            },
+            {
+              method: 'POST',
+              pathname: '/v1/files',
+              body: { purpose: 'run-input' },
+            },
+            {
+              method: 'POST',
+              pathname: '/v1/runs',
+              body: {
+                target: 'workflows.invoice',
+                input: { document: { $fileId: 'file_cli_large' } },
+              },
+            },
+          ]);
+        }
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('EIGENPAL_MULTIPART_MAX_BYTES=none keeps oversized files on run multipart', async () => {
+    const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'cli-run-multipart-'));
+    const filePath = join(dir, 'big.bin');
+    await writeFile(filePath, Buffer.alloc(5 * 1024 * 1024, 1));
+
+    try {
+      await withRunServer(
+        async (request) => {
+          const url = new URL(request.url);
+          expect(url.pathname).toBe('/v1/runs');
+          expect(request.headers.get('content-type')).toStartWith('multipart/form-data');
+          const form = await request.formData();
+          expect(form.get('files.document')).toBeInstanceOf(File);
+          return json({ id: 'run_multipart', type: 'workflow', finished: false }, { status: 201 });
+        },
+        async (baseUrl) => {
+          const result = await runCli(
+            [
+              'run',
+              'workflows.invoice',
+              '--input-file',
+              `document=${filePath}`,
+              '--json',
+              '--base-url',
+              baseUrl,
+            ],
+            { baseUrl, env: { EIGENPAL_MULTIPART_MAX_BYTES: 'none' } }
+          );
+          expect(result.status).toBe(0);
+        }
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test('rerun --version original passes through for workflow runs', async () => {
     const calls: Array<{ pathname: string; version: string | null; body: string }> = [];
     await withRunServer(
       async (request) => {
         const url = new URL(request.url);
-        if (request.method === 'POST' && url.pathname === '/api/v1/runs/exec_1/rerun') {
+        if (request.method === 'POST' && url.pathname === '/v1/runs/exec_1/rerun') {
           calls.push({
             pathname: url.pathname,
             version: url.searchParams.get('version'),
@@ -158,7 +287,7 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(calls).toEqual([
-          { pathname: '/api/v1/runs/exec_1/rerun', version: 'original', body: '' },
+          { pathname: '/v1/runs/exec_1/rerun', version: 'original', body: '' },
         ]);
         expect(JSON.parse(result.stdout)).toMatchObject({ id: 'exec_2' });
       }
@@ -185,7 +314,7 @@ describe('root run commands', () => {
 
         expect(result.status).toBe(0);
         expect(captured).toEqual({
-          pathname: '/api/v1/runs/run_123/rerun',
+          pathname: '/v1/runs/run_123/rerun',
           version: 'abc123',
           body: '',
         });
@@ -200,10 +329,10 @@ describe('root run commands', () => {
       async (request) => {
         const url = new URL(request.url);
         calls.push({ method: request.method, pathname: url.pathname });
-        if (request.method === 'GET' && url.pathname === '/api/v1/runs/aex_1') {
+        if (request.method === 'GET' && url.pathname === '/v1/runs/aex_1') {
           return json({ id: 'aex_1', type: 'agent', finished: true });
         }
-        if (request.method === 'PUT' && url.pathname === '/api/v1/runs/aex_1/reviews') {
+        if (request.method === 'PUT' && url.pathname === '/v1/runs/aex_1/reviews') {
           calls[calls.length - 1] = {
             method: request.method,
             pathname: url.pathname,
@@ -241,7 +370,7 @@ describe('root run commands', () => {
         expect(calls).toEqual([
           {
             method: 'PUT',
-            pathname: '/api/v1/runs/aex_1/reviews',
+            pathname: '/v1/runs/aex_1/reviews',
             body: { verdict: 'incorrect', note: 'needs review' },
           },
         ]);
@@ -255,7 +384,7 @@ describe('runs trace JSONL output', () => {
   function traceHandler(payload: unknown) {
     return (request: Request): Response => {
       const url = new URL(request.url);
-      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_1/trace') {
+      if (request.method === 'GET' && url.pathname === '/v1/runs/run_1/trace') {
         return json(payload);
       }
       return new Response('not found', { status: 404 });
@@ -303,13 +432,13 @@ describe('run --example agent eval gating', () => {
       const url = new URL(request.url);
       if (
         request.method === 'POST' &&
-        url.pathname === '/api/v1/automations/agents.support/experiments'
+        url.pathname === '/v1/automations/agents.support/experiments'
       ) {
         return json({ id: 'batch_1', runs: [{ id: 'run_1', exampleId: 'ex-1' }] }, { status: 201 });
       }
       if (
         request.method === 'GET' &&
-        url.pathname === '/api/v1/automations/agents.support/evaluators'
+        url.pathname === '/v1/automations/agents.support/evaluators'
       ) {
         return json({
           config: {
@@ -317,7 +446,7 @@ describe('run --example agent eval gating', () => {
           },
         });
       }
-      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_1') {
+      if (request.method === 'GET' && url.pathname === '/v1/runs/run_1') {
         return json({
           id: 'run_1',
           type: 'agent',

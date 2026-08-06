@@ -27,7 +27,7 @@ export interface ResolvedSource {
  * `--base-url <url>` or `EIGENPAL_BASE_URL=<url>` to target a different
  * environment.
  */
-const DEFAULT_BASE_URL = 'https://studio.eigenpal.com';
+const DEFAULT_BASE_URL = 'https://api.eigenpal.com';
 
 /**
  * Resolve CLI config in priority order:

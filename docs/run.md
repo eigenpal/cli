@@ -10,15 +10,15 @@ Start a workflow or agent run, e.g. workflows.extract-invoice.
 
 ### Options
 
-| Flag                        | Required | Default | Description                                                                                          |
-| --------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `--base-url <url>`          | no       |         | Server base URL                                                                                      |
-| `--json`                    | no       |         | Output the raw server response as JSON                                                               |
-| `--input-json <json>`       | no       |         | JSON input object                                                                                    |
-| `--input-file <field=path>` | no       | `[]`    | Input file to upload as multipart form-data. Repeat for multiple files; bare paths use field "file". |
-| `--example <name>`          | no       |         | Run one persisted example by name                                                                    |
-| `--dir <dir>`               | no       |         | Local eigenpal directory for workflow examples                                                       |
-| `--fail-on-mismatch`        | no       |         | For --example runs, exit non-zero when a graded example fails (evaluator fail, or output mismatch)   |
-| `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                         |
-| `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                          |
-| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exit code 2                                                                      |
+| Flag                        | Required | Default | Description                                                                                                                                                                                                      |
+| --------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`          | no       |         | Server base URL                                                                                                                                                                                                  |
+| `--json`                    | no       |         | Output the raw server response as JSON                                                                                                                                                                           |
+| `--input-json <json>`       | no       |         | JSON input object                                                                                                                                                                                                |
+| `--input-file <field=path>` | no       | `[]`    | Input file to upload. Files exceeding EIGENPAL_MULTIPART_MAX_BYTES (default 4.5 MiB; "none" disables) are pre-uploaded; smaller files stay on multipart. Repeat for multiple files; bare paths use field "file". |
+| `--example <name>`          | no       |         | Run one persisted example by name                                                                                                                                                                                |
+| `--dir <dir>`               | no       |         | Local eigenpal directory for workflow examples                                                                                                                                                                   |
+| `--fail-on-mismatch`        | no       |         | For --example runs, exit non-zero when a graded example fails (evaluator fail, or output mismatch)                                                                                                               |
+| `--wait`                    | no       |         | Poll until the run reaches a terminal status                                                                                                                                                                     |
+| `--interval <seconds>`      | no       | `2`     | Polling interval in seconds                                                                                                                                                                                      |
+| `--max-wait <seconds>`      | no       | `1800`  | Maximum wait before exit code 2                                                                                                                                                                                  |

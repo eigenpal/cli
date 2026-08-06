@@ -58,7 +58,7 @@ async function encryptSecretsViaApi(
   client: ApiClient,
   secrets: Array<{ sourcePath: string; secretName: string; plaintext: string }>
 ): Promise<Record<string, EncryptedSecretValue>> {
-  const payload = (await client.post('/api/v1/source/secrets/encrypt', { secrets })) as {
+  const payload = (await client.post('/v1/source/secrets/encrypt', { secrets })) as {
     secrets?: Record<string, EncryptedSecretValue>;
   };
   return payload.secrets ?? {};

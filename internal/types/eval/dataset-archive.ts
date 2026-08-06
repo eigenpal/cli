@@ -179,12 +179,15 @@ export interface ValidationIssue {
  */
 export type ErrorHintKey =
   | 'dataset-too-large'
+  | 'artifacts-zip-too-large'
   | 'execution-in-flight'
   | 'download-token-expired'
   | 'legacy-dataset-format';
 
 export const ERROR_HINTS: Readonly<Record<ErrorHintKey, string>> = {
   'dataset-too-large': 'Datasets are capped at 500 MB. Split into multiple Append imports.',
+  'artifacts-zip-too-large':
+    'Download artifacts individually via GET /runs/{id}/artifacts/{path}, or select a smaller files= subset.',
   'execution-in-flight':
     'Wait for the in-flight execution to complete, or cancel it from the Experiments tab.',
   'download-token-expired': 'Re-request the resource to mint a new URL.',

@@ -13,6 +13,9 @@ export const env = createEnv({
     EIGENPAL_API_KEY: z.string().optional(),
     EIGENPAL_TENANT_ID: z.string().optional(),
     EIGENPAL_DIR: z.string().optional(),
+    /** Max aggregate multipart bytes before run files are pre-uploaded.
+     *  `none`, `null`, or `unlimited` disables pre-uploading. */
+    EIGENPAL_MULTIPART_MAX_BYTES: z.string().optional(),
     /** Per-shell profile override. See `eigenpal auth use <name>` for the
      *  persisted equivalent. */
     EIGENPAL_PROFILE: z.string().optional(),

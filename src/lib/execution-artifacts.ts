@@ -47,9 +47,9 @@ async function listResultArtifacts(
   executionId: string
 ): Promise<RunArtifactRef[]> {
   try {
-    const payload = (await client.get(
-      `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts`
-    )) as { artifacts?: RunArtifactRef[] };
+    const payload = (await client.get(`/v1/runs/${encodeURIComponent(executionId)}/artifacts`)) as {
+      artifacts?: RunArtifactRef[];
+    };
     return (payload.artifacts ?? []).filter(
       (artifact) =>
         typeof artifact.path === 'string' &&
@@ -67,9 +67,7 @@ async function downloadRunArtifact(
   artifactPath: string
 ): Promise<Response> {
   const encodedPath = artifactPath.split('/').map(encodeURIComponent).join('/');
-  return client.getStream(
-    `/api/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodedPath}`
-  );
+  return client.getStream(`/v1/runs/${encodeURIComponent(executionId)}/artifacts/${encodedPath}`);
 }
 
 /** Parse filename from Content-Disposition header (e.g. attachment; filename="report.docx") */
@@ -154,7 +152,7 @@ export async function writeExecutionArtifacts(
       const stepName = entry?.stepName ?? '';
       if (typeof fileId !== 'string') continue;
       try {
-        const res = await client.getStream(`/api/v1/files/${fileId}`);
+        const res = await client.getStream(`/v1/files/${fileId}/content`);
         const disposition = res.headers.get('Content-Disposition');
         const filename = filenameFromContentDisposition(disposition) ?? fileId;
         const safe = safeFilename(filename, `file-${i}${filename.includes('.') ? '' : '.bin'}`);

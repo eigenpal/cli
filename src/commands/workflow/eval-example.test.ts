@@ -185,14 +185,14 @@ describe('runWorkflowExamplesWithEval (orchestration)', () => {
               run_1: [{ evaluatorName: 'x', score: '0.9', passed: true, weight: '1', error: null }],
             },
           };
-        if (path === '/api/v1/runs/run_1') {
+        if (path === '/v1/runs/run_1') {
           runBaseHits += 1;
           // 1st: terminal poll. 2nd: rollup poll (eval present).
           return runBaseHits === 1
             ? { finished: true, execution: { status: 'completed' } }
             : { execution: { status: 'completed' }, eval: { score: 0.9, passed: true } };
         }
-        if (path.startsWith('/api/v1/runs/run_1?'))
+        if (path.startsWith('/v1/runs/run_1?'))
           return { execution: { status: 'completed' }, output: { a: 1 } };
         throw new Error(`unexpected GET ${path}`);
       },
@@ -214,8 +214,8 @@ describe('runWorkflowExamplesWithEval (orchestration)', () => {
       score: 0.9,
       weight: 1,
     });
-    expect(posts).toEqual([{ path: '/api/v1/automations/wf_1/examples/evx_1/run', body: {} }]);
-    expect(gets).toContain('/api/v1/automations/wf_1/experiments/batch_1');
+    expect(posts).toEqual([{ path: '/v1/automations/wf_1/examples/evx_1/run', body: {} }]);
+    expect(gets).toContain('/v1/automations/wf_1/experiments/batch_1');
   });
 
   it('falls back to a structural diff when no evaluators are configured', async () => {
@@ -224,9 +224,9 @@ describe('runWorkflowExamplesWithEval (orchestration)', () => {
         if (path.endsWith('/evaluators')) return { config: { evaluators: [] } };
         if (path.includes('/examples'))
           return { data: [{ id: 'evx_1', name: 'foo', expected: { a: 1 } }], total: 1 };
-        if (path === '/api/v1/runs/run_1')
+        if (path === '/v1/runs/run_1')
           return { finished: true, execution: { status: 'completed' } };
-        if (path.startsWith('/api/v1/runs/run_1?'))
+        if (path.startsWith('/v1/runs/run_1?'))
           return { execution: { status: 'completed' }, output: { a: 2 } };
         throw new Error(`unexpected GET ${path}`);
       },

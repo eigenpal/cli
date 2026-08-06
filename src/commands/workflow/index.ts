@@ -213,7 +213,7 @@ async function readDirAsZip(dir: string): Promise<Uint8Array> {
  * server returns just those examples. Each id is URL-encoded. Exported for tests.
  */
 export function datasetExportPath(workflowId: string, exampleIds?: string[]): string {
-  const base = `/api/v1/automations/${workflowId}/dataset/export`;
+  const base = `/v1/automations/${workflowId}/dataset/export`;
   if (!exampleIds || exampleIds.length === 0) return base;
   const query = exampleIds.map((id) => encodeURIComponent(id)).join(',');
   return `${base}?exampleIds=${query}`;
@@ -760,7 +760,7 @@ function registerEvaluatorsCommands(parent: Command): void {
   withBaseUrl(pullCmd).action(
     action(async (workflow: string, opts: WorkflowCommandConfig & { out?: string }) => {
       const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-      const result = (await client.get(`/api/v1/automations/${workflowId}/evaluators`)) as {
+      const result = (await client.get(`/v1/automations/${workflowId}/evaluators`)) as {
         yaml?: string;
       };
       await writeOrPrint(opts.out, result.yaml ?? '');
@@ -776,7 +776,7 @@ function registerEvaluatorsCommands(parent: Command): void {
       async (workflow: string, opts: WorkflowCommandConfig & { file: string; json?: boolean }) => {
         const yaml = await fs.readFile(opts.file, 'utf8');
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const result = (await client.put(`/api/v1/automations/${workflowId}/evaluators`, {
+        const result = (await client.put(`/v1/automations/${workflowId}/evaluators`, {
           yaml,
         })) as { count?: number; evaluators?: unknown[]; [k: string]: unknown };
         if (opts.json) {
@@ -818,7 +818,7 @@ function registerDatasetCommands(parent: Command): void {
         opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const raw = await client.get(`/api/v1/automations/${workflowId}/examples`, {
+        const raw = await client.get(`/v1/automations/${workflowId}/examples`, {
           limit: String(opts.limit),
           offset: String(opts.offset),
         });
@@ -965,7 +965,7 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
         // produce useful output during local cutovers.
         const res = await postMultipart(
           client,
-          `/api/v1/automations/${workflowId}/dataset/import`,
+          `/v1/automations/${workflowId}/dataset/import`,
           formData
         );
         const text = await res.text();
@@ -1195,7 +1195,7 @@ exclusive. To attach files without a dataset folder, pass ingress refs in JSON:
 
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/v1/automations/${workflowId}/examples`,
+          `/v1/automations/${workflowId}/examples`,
           body
         )) as ExampleRow;
         if (opts.json) {
@@ -1252,7 +1252,7 @@ exclusive. To attach files without a dataset folder, pass ingress refs in JSON:
 
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.patch(
-          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`,
+          `/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`,
           body
         )) as ExampleRow;
         if (opts.json) {
@@ -1292,7 +1292,7 @@ exclusive. To attach files without a dataset folder, pass ingress refs in JSON:
         // can echo a human-readable name without a pre-flight GET.
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const deleted = (await client.delete(
-          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
+          `/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
         )) as ExampleRow;
         if (opts.json) {
           printJson(deleted);
@@ -1321,7 +1321,7 @@ exclusive. To attach files without a dataset folder, pass ingress refs in JSON:
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const row = (await client.get(
-          `/api/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
+          `/v1/automations/${workflowId}/examples/${encodeURIComponent(exampleId)}`
         )) as FullExampleRow;
         if (opts.json) {
           printJson(row);
@@ -1385,7 +1385,7 @@ async function resolveExampleIds(
   const bySlug = new Map<string, string>();
   let offset = 0;
   while (true) {
-    const list = (await client.get(`/api/v1/automations/${workflowId}/examples`, {
+    const list = (await client.get(`/v1/automations/${workflowId}/examples`, {
       limit: String(PAGE_SIZE),
       offset: String(offset),
     })) as { data?: Array<{ id: string; name?: string | null }> };
@@ -1438,7 +1438,7 @@ function registerExperimentCommands(parent: Command): void {
           offset: String(opts.offset),
         };
         if (opts.batchId) params.batchId = opts.batchId;
-        const raw = await client.get(`/api/v1/automations/${workflowId}/experiments`, params);
+        const raw = await client.get(`/v1/automations/${workflowId}/experiments`, params);
         renderListResult<ExperimentRow>(
           raw,
           [
@@ -1514,7 +1514,7 @@ returns immediately with \`{ batchId, total }\`; poll
           opts.exampleId.length > 0
             ? await resolveExampleIds(client, workflowId, opts.exampleId)
             : undefined;
-        const start = (await client.post(`/api/v1/automations/${workflowId}/experiments`, {
+        const start = (await client.post(`/v1/automations/${workflowId}/experiments`, {
           examples,
         })) as { id?: string; batchId?: string; runCount?: number; total?: number };
         const experimentId = start.id ?? start.batchId;
@@ -1539,7 +1539,7 @@ returns immediately with \`{ batchId, total }\`; poll
         const intervalMs = Math.max(1, opts.interval) * 1000;
         while (true) {
           const status = (await client.get(
-            `/api/v1/automations/${workflowId}/experiments/${experimentId}`
+            `/v1/automations/${workflowId}/experiments/${experimentId}`
           )) as {
             status: string;
             passRate?: number;
@@ -1628,7 +1628,7 @@ returns immediately with \`{ batchId, total }\`; poll
         );
         const includePayload = includes.has('payload');
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const url = `/api/v1/automations/${workflowId}/experiments/${batchId}`;
+        const url = `/v1/automations/${workflowId}/experiments/${batchId}`;
 
         if (!opts.watch) {
           // A just-created batch can legitimately read as empty for a moment
@@ -1758,7 +1758,7 @@ Behavior:
         }
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/v1/automations/${workflowId}/experiments/${batchId}/cancel`
+          `/v1/automations/${workflowId}/experiments/${batchId}/cancel`
         )) as {
           batchId: string;
           total: number;
@@ -1816,8 +1816,8 @@ Behavior:
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const params = new URLSearchParams({ format: opts.format });
         const exportPath = batchId
-          ? `/api/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`
-          : `/api/v1/automations/${workflowId}/experiments/export?${params.toString()}`;
+          ? `/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`
+          : `/v1/automations/${workflowId}/experiments/export?${params.toString()}`;
         await downloadStreamToFile(client, exportPath, opts.out);
       }
     )
@@ -1973,7 +1973,7 @@ Behavior:
           process.exit(2);
         }
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const url = `/api/v1/automations/${workflowId}/experiments/${batchId}`;
+        const url = `/v1/automations/${workflowId}/experiments/${batchId}`;
         const dest = opts.pull
           ? (opts.pullOnComplete ?? `./results-${batchId}.${opts.format}`)
           : null;
@@ -2004,7 +2004,7 @@ Behavior:
               // `GET /api/v1/automations/{id}/eval-results/export` once added.
               await downloadStreamToFile(
                 client,
-                `/api/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`,
+                `/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`,
                 dest
               );
             } catch (err) {

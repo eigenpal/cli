@@ -69,7 +69,7 @@ async function pullAgentEnv(
     ? await collectEncryptedSecretsForTarget(client, target)
     : await collectEncryptedSecrets(path.resolve(opts.dir ?? '.'));
   if (requests.length === 0) return;
-  const payload = (await client.post('/api/v1/source/secrets/decrypt', {
+  const payload = (await client.post('/v1/source/secrets/decrypt', {
     secrets: requests.map(({ sourcePath, secretName, encrypted }) => ({
       sourcePath,
       secretName,
@@ -100,7 +100,7 @@ async function collectEncryptedSecretsForTarget(
 > {
   const parsed = parseAgentTarget(target);
   const packageRef = `${parsed.packageName}@${parsed.sourceRef ?? 'latest'}`;
-  const lockfile = (await client.get('/api/v1/source/lockfile', { packageRef })) as {
+  const lockfile = (await client.get('/v1/source/lockfile', { packageRef })) as {
     root: SourceLockPackage;
   };
   const requests: Awaited<ReturnType<typeof collectEncryptedSecretsForTarget>> = [];
@@ -137,7 +137,7 @@ async function readOptionalSourceFile(
   query: { ref: string; path: string }
 ): Promise<string | null> {
   try {
-    const payload = (await client.get('/api/v1/source/raw', query)) as { content?: string };
+    const payload = (await client.get('/v1/source/raw', query)) as { content?: string };
     return typeof payload.content === 'string' ? payload.content : null;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null;

@@ -42,7 +42,7 @@ export function registerSessionCommands(agent: Command): void {
 async function listSessions(agentId: string, opts: BaseOpts & PaginationOpts) {
   const client = buildClient(opts);
   const payload = (await client.get(
-    `/api/v1/agents/${encodeURIComponent(agentId)}/sessions`,
+    `/v1/agents/${encodeURIComponent(agentId)}/sessions`,
     compactParams(opts)
   )) as { sessions: Record<string, unknown>[] };
   if (opts.json) return printJson(payload);
@@ -58,7 +58,7 @@ async function listSessions(agentId: string, opts: BaseOpts & PaginationOpts) {
 async function getSession(sessionId: string, opts: BaseOpts) {
   const client = buildClient(opts);
   renderGeneric(
-    await client.get(`/api/v1/agents/sessions/${encodeURIComponent(sessionId)}`),
+    await client.get(`/v1/agents/sessions/${encodeURIComponent(sessionId)}`),
     opts,
     `Session ${sessionId}`
   );
@@ -67,7 +67,7 @@ async function getSession(sessionId: string, opts: BaseOpts) {
 async function startSession(agentId: string, opts: BaseOpts & { title?: string }) {
   const client = buildClient(opts);
   renderGeneric(
-    await client.post(`/api/v1/agents/${encodeURIComponent(agentId)}/sessions`, {
+    await client.post(`/v1/agents/${encodeURIComponent(agentId)}/sessions`, {
       ...(opts.title ? { title: opts.title } : {}),
     }),
     opts,
@@ -78,7 +78,7 @@ async function startSession(agentId: string, opts: BaseOpts & { title?: string }
 async function messageSession(sessionId: string, opts: BaseOpts & { text: string }) {
   const client = buildClient(opts);
   renderGeneric(
-    await client.post(`/api/v1/agents/sessions/${encodeURIComponent(sessionId)}`, {
+    await client.post(`/v1/agents/sessions/${encodeURIComponent(sessionId)}`, {
       text: opts.text,
     }),
     opts,
@@ -91,7 +91,7 @@ async function stopSession(sessionId: string, opts: BaseOpts & { yes?: boolean }
     throw new Error('Pass --yes to stop in non-interactive mode');
   const client = buildClient(opts);
   renderGeneric(
-    await client.delete(`/api/v1/agents/sessions/${encodeURIComponent(sessionId)}`),
+    await client.delete(`/v1/agents/sessions/${encodeURIComponent(sessionId)}`),
     opts,
     'Stopped session'
   );

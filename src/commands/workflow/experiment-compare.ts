@@ -426,11 +426,11 @@ export async function fetchEvalResults(
   client: ApiClient,
   experimentId: string
 ): Promise<EvalResultsExportPayload> {
-  const ref = (await client.get(`/api/v1/experiments/${encodeURIComponent(experimentId)}`)) as {
+  const ref = (await client.get(`/v1/experiments/${encodeURIComponent(experimentId)}`)) as {
     automationId: string;
   };
   const raw = (await client.get(
-    `/api/v1/automations/${encodeURIComponent(ref.automationId)}/experiments/${encodeURIComponent(experimentId)}/export`,
+    `/v1/automations/${encodeURIComponent(ref.automationId)}/experiments/${encodeURIComponent(experimentId)}/export`,
     { format: 'json' }
   )) as EvalResultsExportPayload;
   if (!raw || !Array.isArray(raw.results)) {

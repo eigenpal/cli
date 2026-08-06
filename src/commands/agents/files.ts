@@ -49,7 +49,7 @@ export function registerAgentFileCommands(agent: Command): void {
 async function listAgentFiles(agentId: string, opts: BaseOpts & { path?: string }): Promise<void> {
   const client = buildClient(opts);
   const packagePath = await resolveAgentPackagePath(client, agentId);
-  const payload = (await client.get('/api/v1/source/tree', {
+  const payload = (await client.get('/v1/source/tree', {
     packagePath,
     ...(opts.path ? { prefix: normalizeAgentFilePath(opts.path, { allowEmpty: true }) } : {}),
   })) as { files?: string[] };
@@ -131,7 +131,7 @@ async function resolveAgentPackagePath(
   agentId: string
 ): Promise<string> {
   const automation = (await client.get(
-    `/api/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}`
+    `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}`
   )) as AgentAutomationDetail;
   if (automation.type !== 'agent' || !automation.slug) {
     throw new Error(`Agent not found: ${agentId}`);
@@ -147,7 +147,7 @@ async function readAgentFile(
   const packagePath = await resolveAgentPackagePath(client, agentId);
   const relativePath = normalizeAgentFilePath(remotePath);
   const sourcePath = `${packagePath}/${relativePath}`;
-  const payload = (await client.get('/api/v1/source/raw', {
+  const payload = (await client.get('/v1/source/raw', {
     path: sourcePath,
   })) as SourceRawPayload;
   return {

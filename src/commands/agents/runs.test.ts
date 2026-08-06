@@ -21,10 +21,10 @@ async function withAgentRunServer(
           headers: { 'content-type': 'application/json', ...init?.headers },
         });
 
-      if (request.method === 'POST' && url.pathname === '/api/v1/runs') {
+      if (request.method === 'POST' && url.pathname === '/v1/runs') {
         return json({ id: 'run_terminal' }, { status: 201 });
       }
-      if (request.method === 'GET' && url.pathname === '/api/v1/runs/run_terminal') {
+      if (request.method === 'GET' && url.pathname === '/v1/runs/run_terminal') {
         return json({
           id: 'run_terminal',
           finished: true,
@@ -53,7 +53,7 @@ async function withRunsListServer(fn: (baseUrl: string) => void | Promise<void>)
           headers: { 'content-type': 'application/json', ...init?.headers },
         });
 
-      if (request.method === 'GET' && url.pathname === '/api/v1/runs') {
+      if (request.method === 'GET' && url.pathname === '/v1/runs') {
         return json({
           runs: [
             {
