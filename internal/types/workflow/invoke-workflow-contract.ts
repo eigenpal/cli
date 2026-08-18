@@ -1,42 +1,23 @@
+import { inputPropertyToJsonSchema } from '../validation/input';
 import type { WorkflowInputDef } from './workflow';
 
-/** Maps one declared workflow input to a JSON Schema fragment for AJV. */
+/**
+ * Maps one declared workflow input to a JSON Schema fragment for AJV. File
+ * handling is the only divergence from the run-start validator's converter:
+ * here a file arrives as a string id (external source) or a resolved
+ * descriptor object, so its shape stays unconstrained — `file` is not a JSON
+ * Schema type, and constraining it would make ajv.compile throw or reject
+ * valid file values. Every data type delegates to the shared converter so the
+ * child-run contract and run-start validation cannot drift.
+ */
 function inputToJsonSchema(input: WorkflowInputDef): Record<string, unknown> {
-  switch (input.type) {
-    case 'string':
-      return { type: 'string' };
-    case 'number':
-      return { type: 'number' };
-    case 'integer':
-      return { type: 'integer' };
-    case 'boolean':
-      return { type: 'boolean' };
-    case 'object':
-      return { type: 'object' };
-    case 'enum':
-      return input.values && input.values.length > 0
-        ? { type: 'string', enum: input.values }
-        : { type: 'string' };
-    case 'array': {
-      const itemType = input.items?.type;
-      if (itemType === 'enum' && input.items?.values?.length) {
-        return { type: 'array', items: { type: 'string', enum: input.items.values } };
-      }
-      // `file` is not a JSON Schema type, and file elements arrive as a string id
-      // or a resolved descriptor object — so leave array-of-file items unconstrained
-      // (mirrors the scalar `file` case). Constraining them would make ajv.compile
-      // throw and reject valid file values.
-      if (!itemType || itemType === 'file') return { type: 'array' };
-      return { type: 'array', items: { type: itemType } };
-    }
-    // Files arrive as a string id (external source) or a resolved descriptor object;
-    // both are valid, so do not constrain the shape.
-    case 'file':
-      return {};
-    default:
-      // Unknown/free-form types stay permissive rather than reject valid values.
-      return {};
+  if (input.type === 'file') return {};
+  if (input.type === 'array' && (!input.items?.type || input.items.type === 'file')) {
+    // Array-of-file (or itemless array) mirrors the scalar `file` case: leave
+    // the items unconstrained.
+    return { type: 'array' };
   }
+  return inputPropertyToJsonSchema(input);
 }
 
 /**
@@ -87,7 +68,10 @@ export function workflowInputAcceptsType(
       // array-of-files element as 'array'. This rejects bare literals like
       // "xd" (which resolve to 'string') that are clearly not file references.
       return resolvedType === 'file' || resolvedType === 'object' || resolvedType === 'array';
-    // Objects are free-form, so stay permissive.
+    // Objects stay permissive at build time even when the target declares
+    // nested `properties` — a mapped expression's nested shape is not reliably
+    // derivable statically, so the runtime AJV check (which does enforce the
+    // declared shape) is deliberately stricter than this gate.
     case 'object':
     default:
       return true;

@@ -171,6 +171,7 @@ export {
   WORKFLOW_NAME_PATTERN,
   WorkflowDefinitionSchema,
   WorkflowInputDefSchema,
+  WorkflowInputPropertySchema,
   WorkflowNameSchema,
   WorkflowSettingsSchema,
   // Trigger method helper functions
@@ -189,6 +190,7 @@ export {
   type TriggerType,
   type WorkflowDefinition,
   type WorkflowInputDef,
+  type WorkflowInputProperty,
   type WorkflowSettings,
 } from './workflow';
 

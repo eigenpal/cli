@@ -532,6 +532,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `default` | unknown | no |  |  |
 | `values` | array<string> | no |  |  |
 | `items` | object | no |  |  |
+| `properties` | array<unknown> | no |  |  |
 | `source` | string | no |  |  |
 | `mimeType` | string | no |  |  |
 | `extension` | string | no |  |  |

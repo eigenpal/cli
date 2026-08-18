@@ -55,6 +55,117 @@ export type TriggerType = z.infer<typeof TriggerTypeSchema>;
 export const TriggerTypeValue = ProcessorTriggerTypeValue;
 
 /**
+ * Nested property of an object-typed workflow input (or of object items in an
+ * array-typed input). A restricted, recursive subset of `WorkflowInputDef`:
+ * data types only — no `file` (file materialization and multipart uploads are
+ * keyed by top-level input names) and no external `source`.
+ */
+export interface WorkflowInputProperty {
+  /** Property name (JSON object key) */
+  name: string;
+  /** 'string' | 'enum' | 'number' | 'integer' | 'boolean' | 'array' | 'object' */
+  type: string;
+  description?: string;
+  /** Defaults to required (mirrors top-level inputs: required unless `false`). */
+  required?: boolean;
+  /** Closed set of allowed values for `type: 'enum'`. */
+  values?: string[];
+  /** For `type: 'array'`: the element type. */
+  items?: {
+    type: string;
+    values?: string[];
+    /** Element shape when `items.type: 'object'`. */
+    properties?: WorkflowInputProperty[];
+  };
+  /** Nested shape when `type: 'object'`. */
+  properties?: WorkflowInputProperty[];
+}
+
+export const WorkflowInputPropertySchema: z.ZodType<WorkflowInputProperty> = z.lazy(() =>
+  z.object({
+    // Same charset the builder's sanitizeFieldName enforces. Template paths
+    // address nested fields by dot-joining names, so a name containing dots,
+    // brackets, or spaces would validate in the shape yet be unreachable from
+    // any Liquid expression.
+    name: z
+      .string()
+      .min(1)
+      .regex(
+        /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+        'Property names must start with a letter or underscore and contain only letters, numbers, and underscores'
+      ),
+    type: z.string(),
+    description: z.string().optional(),
+    required: z.boolean().optional(),
+    values: z.array(z.string()).optional(),
+    items: z
+      .object({
+        type: z.string(),
+        values: z.array(z.string()).optional(),
+        properties: z.array(WorkflowInputPropertySchema).optional(),
+      })
+      .optional(),
+    properties: z.array(WorkflowInputPropertySchema).optional(),
+  })
+);
+
+/**
+ * Recursive structural checks for nested input properties that Zod's shape
+ * alone can't express: `properties` only on objects, no nested files, and no
+ * duplicate sibling names (duplicates would silently collide as JSON keys).
+ */
+function validateInputProperties(
+  props: WorkflowInputProperty[],
+  path: (string | number)[],
+  inputName: string,
+  ctx: z.RefinementCtx
+): void {
+  const seen = new Set<string>();
+  props.forEach((prop, i) => {
+    const propPath = [...path, i];
+    if (seen.has(prop.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...propPath, 'name'],
+        message: `Duplicate property name "${prop.name}" on input "${inputName}"`,
+      });
+    }
+    seen.add(prop.name);
+    if (prop.type === 'file' || prop.items?.type === 'file') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...propPath, 'type'],
+        message: `File-typed properties are not supported inside object inputs (property "${prop.name}" on input "${inputName}"). Declare the file as its own top-level input.`,
+      });
+    }
+    if (prop.properties && prop.type !== 'object') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...propPath, 'properties'],
+        message: `"properties" is only valid on an object property; "${prop.name}" has type "${prop.type}"`,
+      });
+    }
+    if (prop.items?.properties && prop.items.type !== 'object') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...propPath, 'items', 'properties'],
+        message: `"items.properties" is only valid with "items.type: object"; "${prop.name}" has item type "${prop.items.type}"`,
+      });
+    }
+    if (prop.properties)
+      validateInputProperties(prop.properties, [...propPath, 'properties'], inputName, ctx);
+    if (prop.items?.properties) {
+      validateInputProperties(
+        prop.items.properties,
+        [...propPath, 'items', 'properties'],
+        inputName,
+        ctx
+      );
+    }
+  });
+}
+
+/**
  * Input definition for workflow inputs
  */
 export const WorkflowInputDefSchema = z
@@ -82,8 +193,17 @@ export const WorkflowInputDefSchema = z
         type: z.string(),
         /** Closed set of allowed values for `items.type: 'enum'` (array of enum). */
         values: z.array(z.string()).optional(),
+        /** Element shape for `items.type: 'object'` (array of objects). */
+        properties: z.array(WorkflowInputPropertySchema).optional(),
       })
       .optional(),
+    /**
+     * Nested shape for `type: 'object'` inputs. Declares the object's fields so
+     * the run-start validator enforces them and downstream steps can reference
+     * `{{ input.<name>.<field> }}` with full autocomplete. Optional — an object
+     * input without `properties` stays free-form.
+     */
+    properties: z.array(WorkflowInputPropertySchema).optional(),
     /**
      * External file source (single-tenant only). When set on a `type: 'file'`
      * input, the run is started with a plain string **id** for this field and the
@@ -102,6 +222,27 @@ export const WorkflowInputDefSchema = z
     extension: z.string().min(1).optional(),
   })
   .superRefine((def, ctx) => {
+    // Nested `properties` only make sense on object shapes — anywhere else they
+    // would be silently ignored by the validator, so reject at authoring time.
+    if (def.properties && def.type !== 'object') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['properties'],
+        message: `"properties" is only valid on an object input; input "${def.name}" has type "${def.type}"`,
+      });
+    }
+    if (def.items?.properties && def.items.type !== 'object') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['items', 'properties'],
+        message: `"items.properties" is only valid with "items.type: object"; input "${def.name}" has item type "${def.items.type}"`,
+      });
+    }
+    if (def.properties) validateInputProperties(def.properties, ['properties'], def.name, ctx);
+    if (def.items?.properties) {
+      validateInputProperties(def.items.properties, ['items', 'properties'], def.name, ctx);
+    }
+
     // `source` only makes sense on a `type: 'file'` input — the worker resolves a
     // string id to a file artifact. On any other type the id would be silently
     // skipped (arrays) or overwrite a scalar with a file descriptor (strings), so

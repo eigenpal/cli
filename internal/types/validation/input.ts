@@ -32,6 +32,21 @@ export type InputValidationResult =
  * Workflow-side input definition shape (kept loose here to avoid a circular
  * import on the Zod-validated `WorkflowInputDef`).
  */
+/**
+ * Nested property of an object input (structural mirror of
+ * `WorkflowInputProperty` in `workflow/workflow.ts`, kept loose here for the
+ * same circular-import reason as `WorkflowInputDefLike`).
+ */
+export interface WorkflowInputPropertyLike {
+  name: string;
+  type: string;
+  description?: string;
+  required?: boolean;
+  values?: string[];
+  items?: { type: string; values?: string[]; properties?: WorkflowInputPropertyLike[] };
+  properties?: WorkflowInputPropertyLike[];
+}
+
 export interface WorkflowInputDefLike {
   name: string;
   type: string;
@@ -39,7 +54,9 @@ export interface WorkflowInputDefLike {
   required?: boolean;
   default?: unknown;
   values?: string[];
-  items?: { type: string; values?: string[] };
+  items?: { type: string; values?: string[]; properties?: WorkflowInputPropertyLike[] };
+  /** Nested shape for `type: 'object'` inputs. Absent = free-form object. */
+  properties?: WorkflowInputPropertyLike[];
   /**
    * External file source (single-tenant). When set on a `type: 'file'` input,
    * the run carries a plain string **id** for this field (resolved to a file
@@ -88,40 +105,89 @@ function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string
   if (def.source && def.type === 'file') {
     return { type: 'string', minLength: 1 };
   }
-  switch (def.type) {
-    case 'string':
-      return { type: 'string' };
-    case 'enum':
-      return def.values && def.values.length > 0
-        ? { type: 'string', enum: def.values }
-        : { type: 'string' };
-    case 'number':
-      return { type: 'number' };
-    case 'integer':
-      return { type: 'integer' };
-    case 'boolean':
-      return { type: 'boolean' };
-    case 'file':
-      return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
-    case 'array':
-      return { type: 'array', items: itemsToJsonSchema(def.items) };
-    case 'object':
-      return { type: 'object' };
-    default:
-      // Unknown type label: fall back to permissive object so we don't reject
-      // valid inputs just because a workflow uses a type the validator hasn't
-      // learned about yet. The catch-all keeps existing workflows working.
-      return {};
+  if (def.type === 'file') {
+    return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
   }
+  // Every data type shares the nested-property converter (a WorkflowInputDefLike
+  // is structurally a WorkflowInputPropertyLike). Unknown type labels hit its
+  // permissive `{}` catch-all so existing workflows keep working.
+  return inputPropertyToJsonSchema(def);
 }
 
-function itemsToJsonSchema(items?: { type: string; values?: string[] }): Record<string, unknown> {
+function itemsToJsonSchema(items?: {
+  type: string;
+  values?: string[];
+  properties?: WorkflowInputPropertyLike[];
+}): Record<string, unknown> {
   if (!items) return {};
   if (items.type === 'file') return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
   if (items.type === 'enum' && items.values && items.values.length > 0) {
     return { type: 'string', enum: items.values };
   }
+  if (items.type === 'object' && items.properties && items.properties.length > 0) {
+    return workflowInputPropertiesToJsonSchema(items.properties);
+  }
   return { type: items.type };
+}
+
+/**
+ * JSON Schema for a declared nested-object shape. Required mirrors top-level
+ * inputs (`required !== false` = required). Extra keys stay allowed — the
+ * declared properties constrain what callers must send, not everything they
+ * may send, matching the permissive stance of the rest of this converter.
+ */
+export function workflowInputPropertiesToJsonSchema(
+  props: WorkflowInputPropertyLike[]
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const prop of props) {
+    properties[prop.name] = inputPropertyToJsonSchema(prop);
+    if (prop.required !== false) required.push(prop.name);
+  }
+  const schema: Record<string, unknown> = { type: 'object', properties };
+  if (required.length > 0) schema.required = required;
+  return schema;
+}
+
+/**
+ * JSON Schema for one declared data-typed input or nested property. Exported
+ * so the invoke-workflow child-run contract shares this exact converter —
+ * file/source handling stays with each caller (`workflowInputTypeToJsonSchema`
+ * here; `inputToJsonSchema` in `workflow/invoke-workflow-contract.ts`).
+ */
+export function inputPropertyToJsonSchema(
+  prop: WorkflowInputPropertyLike
+): Record<string, unknown> {
+  const base = ((): Record<string, unknown> => {
+    switch (prop.type) {
+      case 'string':
+        return { type: 'string' };
+      case 'enum':
+        return prop.values && prop.values.length > 0
+          ? { type: 'string', enum: prop.values }
+          : { type: 'string' };
+      case 'number':
+        return { type: 'number' };
+      case 'integer':
+        return { type: 'integer' };
+      case 'boolean':
+        return { type: 'boolean' };
+      case 'array':
+        return { type: 'array', items: itemsToJsonSchema(prop.items) };
+      case 'object':
+        return prop.properties && prop.properties.length > 0
+          ? workflowInputPropertiesToJsonSchema(prop.properties)
+          : { type: 'object' };
+      default:
+        // Unknown type label: stay permissive so we don't reject valid inputs
+        // just because a workflow uses a type the validator hasn't learned
+        // about yet.
+        return {};
+    }
+  })();
+  if (prop.description) base.description = prop.description;
+  return base;
 }
 
 /**
