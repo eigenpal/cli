@@ -41,6 +41,8 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow experiment|exp compare|diff [options] <batchIdA> <batchIdB>`](#eigenpal-workflow-experimentexp-comparediff-options-batchida-batchidb)
   - [`eigenpal workflow experiment|exp watch [options] <workflow-id> <batchId>`](#eigenpal-workflow-experimentexp-watch-options-workflow-id-batchid)
   - [`eigenpal workflow versions list|ls [options] <workflow-id>`](#eigenpal-workflow-versions-listls-options-workflow-id)
+  - [`eigenpal workflow versions create [options] <workflow-id>`](#eigenpal-workflow-versions-create-options-workflow-id)
+  - [`eigenpal workflow versions promote [options] <workflow-id> <versionId>`](#eigenpal-workflow-versions-promote-options-workflow-id-versionid)
   - [`eigenpal workflow versions restore [options] <workflow-id> <versionId>`](#eigenpal-workflow-versions-restore-options-workflow-id-versionid)
   - [`eigenpal workflow step-type list|ls [options]`](#eigenpal-workflow-step-type-listls-options)
   - [`eigenpal workflow step-type get [options] <type>`](#eigenpal-workflow-step-type-get-options-type)
@@ -81,6 +83,8 @@ workflow
 │   └── watch <workflow-id> <batchId>
 ├── versions
 │   ├── list|ls <workflow-id>
+│   ├── create <workflow-id>
+│   ├── promote <workflow-id> <versionId>
 │   └── restore <workflow-id> <versionId>
 ├── step-type
 │   ├── list|ls
@@ -143,10 +147,12 @@ workflow
 
 ### Versions
 
-| Command                                                                  | Description                                      |
-| ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `eigenpal workflow versions list\|ls [options] <workflow-id>`            | List historical workflow versions, newest first. |
-| `eigenpal workflow versions restore [options] <workflow-id> <versionId>` | Restore the workflow to a previous version.      |
+| Command                                                                  | Description                                                                                           |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow versions list\|ls [options] <workflow-id>`            | List tagged workflow versions plus the current untagged snapshot when HEAD is untagged, newest first. |
+| `eigenpal workflow versions create [options] <workflow-id>`              | Create a tagged workflow version from YAML or by copying an existing snapshot.                        |
+| `eigenpal workflow versions promote [options] <workflow-id> <versionId>` | Make an existing tagged workflow version current without creating another snapshot.                   |
+| `eigenpal workflow versions restore [options] <workflow-id> <versionId>` | Restore a previous snapshot as a new untagged current version. Does not retag the source.             |
 
 ### Step-type
 
@@ -629,7 +635,7 @@ Poll until terminal, then auto-pull results — replaces `status --watch` + `res
 
 ### `eigenpal workflow versions list|ls [options] <workflow-id>`
 
-List historical workflow versions, newest first.
+List tagged workflow versions plus the current untagged snapshot when HEAD is untagged, newest first.
 
 ### Arguments
 
@@ -639,16 +645,37 @@ List historical workflow versions, newest first.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                                                                                   |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------------------------- |
+| `--limit <n>`      | no       | `50`    | Page size                                                                                     |
+| `--offset <n>`     | no       | `0`     | Page offset                                                                                   |
+| `--base-url <url>` | no       |         | Server base URL                                                                               |
+| `--json`           | no       |         | Print the sliced { data, total, limit, offset } envelope as JSON (not the raw server payload) |
 
-### `eigenpal workflow versions restore [options] <workflow-id> <versionId>`
+### `eigenpal workflow versions create [options] <workflow-id>`
 
-Restore the workflow to a previous version.
+Create a tagged workflow version from YAML or by copying an existing snapshot.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+
+### Options
+
+| Flag                     | Required | Default | Description                                                                                                                                                                                                    |
+| ------------------------ | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--file <yaml>`          | no       |         | Path to workflow YAML. Mutually exclusive with --from.                                                                                                                                                         |
+| `--from <version-id>`    | no       |         | Existing version id to copy into a new tagged snapshot. Leaves the source tag unchanged. Mutually exclusive with --file.                                                                                       |
+| `--set-version <semver>` | no       |         | Bare semver tag such as 1.4.0. Required when copying with --from. For --file, omit this flag if the YAML already has a top-level version: field. (Named --set-version to avoid the global -v, --version flag.) |
+| `--no-activate`          | no       |         | Keep the tagged version off live traffic until you promote it. Default is to make it current. Requires an existing current version.                                                                            |
+| `--base-url <url>`       | no       |         | Server base URL                                                                                                                                                                                                |
+| `--json`                 | no       |         | Output the raw server response as JSON                                                                                                                                                                         |
+
+### `eigenpal workflow versions promote [options] <workflow-id> <versionId>`
+
+Make an existing tagged workflow version current without creating another snapshot.
 
 ### Arguments
 
@@ -663,6 +690,25 @@ Restore the workflow to a previous version.
 | ------------------ | -------- | ------- | -------------------------------------- |
 | `--base-url <url>` | no       |         | Server base URL                        |
 | `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow versions restore [options] <workflow-id> <versionId>`
+
+Restore a previous snapshot as a new untagged current version. Does not retag the source.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+| `versionId`   | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                      |
+| ------------------ | -------- | ------- | ------------------------------------------------ |
+| `--message <text>` | no       |         | Optional restore note stored on the new snapshot |
+| `--base-url <url>` | no       |         | Server base URL                                  |
+| `--json`           | no       |         | Output the raw server response as JSON           |
 
 ### `eigenpal workflow step-type list|ls [options]`
 

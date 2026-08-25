@@ -42,6 +42,8 @@ eigenpal
 │   │   └── watch <workflow-id> <batchId>
 │   ├── versions
 │   │   ├── list|ls <workflow-id>
+│   │   ├── create <workflow-id>
+│   │   ├── promote <workflow-id> <versionId>
 │   │   └── restore <workflow-id> <versionId>
 │   ├── step-type
 │   │   ├── list|ls

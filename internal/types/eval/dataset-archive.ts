@@ -207,6 +207,8 @@ export interface ApiErrorEnvelope {
   requestId: string;
   hint?: string;
   docsUrl?: string;
+  /** Present on 409 workflow_name_conflict responses. */
+  conflictingWorkflowId?: string;
 }
 
 /**

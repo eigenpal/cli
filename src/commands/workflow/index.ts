@@ -30,6 +30,7 @@ import { action } from '../../lib/format-error';
 import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
+  dim,
   error,
   formatTimestamp,
   intArg,
@@ -159,6 +160,15 @@ interface VersionRow {
   version?: string | null;
   isCurrent?: boolean | null;
   createdAt?: string | null;
+  [k: string]: unknown;
+}
+
+interface PublicWorkflowVersion {
+  id?: string;
+  automationId?: string;
+  version?: string | null;
+  isCurrent?: boolean;
+  createdAt?: string | Date;
   [k: string]: unknown;
 }
 
@@ -724,6 +734,84 @@ export function spliceWorkflowVersion(yaml: string, next: string): string {
     return yaml.replace(/^(name:\s*\S.*)$/m, `$1\nversion: ${next}`);
   }
   return `version: ${next}\n${yaml}`;
+}
+
+/** Public versions collection for a workflow automation. */
+function automationVersionsPath(workflowId: string, suffix = ''): string {
+  return `/v1/automations/${encodeURIComponent(workflowId)}/versions${suffix}`;
+}
+
+/**
+ * Human label for a public version tag. Untagged current HEAD (for example
+ * after restore) is `null` on the wire and must render as `untagged`, not a
+ * dash or `vnull`.
+ */
+export function formatWorkflowVersionLabel(version: string | null | undefined): string {
+  return typeof version === 'string' && version.length > 0 ? version : 'untagged';
+}
+
+export type PublicVersionListEnvelope<T = Record<string, unknown>> = {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+/**
+ * Slice the public versions full list with CLI `--limit`/`--offset`.
+ * The public endpoint returns the complete set (including untagged HEAD),
+ * so pagination is client-side and `--json` prints this envelope rather
+ * than the raw server payload.
+ */
+export function paginatePublicVersionList<T>(
+  raw: unknown,
+  opts: { limit: number; offset: number }
+): PublicVersionListEnvelope<T> {
+  const payload = raw as { data?: T[] };
+  const all = Array.isArray(payload.data) ? payload.data : [];
+  const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.trunc(opts.offset)) : 0;
+  const limit = Number.isFinite(opts.limit) ? Math.max(0, Math.trunc(opts.limit)) : 0;
+  return {
+    data: all.slice(offset, offset + limit),
+    total: all.length,
+    limit,
+    offset,
+  };
+}
+
+export function resolveWorkflowVersionCreateRequest(opts: {
+  file?: string;
+  from?: string;
+  setVersion?: string;
+  yamlVersion?: string | null;
+}): { source: 'yaml' | 'history'; version: string } {
+  const hasFile = Boolean(opts.file);
+  const hasFrom = Boolean(opts.from);
+  if (hasFile && hasFrom) {
+    throw new Error('Pass either --file or --from, not both.');
+  }
+  if (!hasFile && !hasFrom) {
+    throw new Error('Pass --file <yaml> or --from <version-id> to create a tagged version.');
+  }
+  if (opts.setVersion && opts.yamlVersion) {
+    throw new Error(
+      `--set-version conflicts with the top-level \`version: ${opts.yamlVersion}\` in the YAML. Remove the YAML field, or omit the flag.`
+    );
+  }
+  const version = opts.setVersion ?? (hasFile ? (opts.yamlVersion ?? undefined) : undefined);
+  if (!version) {
+    throw new Error(
+      hasFrom
+        ? 'Pass --set-version <X.Y.Z> when copying an existing version.'
+        : 'Pass --set-version <X.Y.Z>, or add a top-level `version: X.Y.Z` to the YAML.'
+    );
+  }
+  if (!SEMVER_RE.test(version)) {
+    throw new Error(
+      `${opts.setVersion ? '--set-version' : 'YAML version'} must be bare semver X.Y.Z (got "${version}").`
+    );
+  }
+  return { source: hasFile ? 'yaml' : 'history', version };
 }
 
 function registerClearLocalCommand(parent: Command): void {
@@ -2242,62 +2330,246 @@ async function pollExperimentUntilTerminal({
 function registerVersionsCommands(parent: Command): void {
   const versions = parent
     .command('versions')
-    .description('Inspect and restore historical workflow versions.');
+    .description('Create, list, promote, and restore YAML workflow versions.')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow versions list wf_abc123
+  $ eigenpal workflow versions create wf_abc123 --file workflow.yaml --set-version 1.4.0
+  $ eigenpal workflow versions create wf_abc123 --file workflow.yaml --set-version 1.4.1 --no-activate
+  $ eigenpal workflow versions create wf_abc123 --from wh_abc --set-version 1.5.0 --no-activate
+  $ eigenpal workflow versions promote wf_abc123 wh_abc
+  $ eigenpal workflow versions restore wf_abc123 wh_old
+
+Create publishes a tagged candidate. It becomes current unless you pass
+\`--no-activate\`. Promote makes an existing tagged candidate current without
+creating another snapshot. Restore copies a snapshot into a new untagged
+current HEAD; the source tag is left unchanged and the new row cannot be
+promoted until you create a tagged copy.
+`
+    );
 
   const listCmd = versions
     .command('list <workflow-id>')
     .description(descriptionFor('workflow_list_versions'));
-  addJsonFlag(withBaseUrl(withPagination(listCmd))).action(
-    action(
-      async (
-        workflow: string,
-        opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
-      ) => {
-        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const raw = await client.get(`/api/workflows/${workflowId}/versions`, {
-          limit: String(opts.limit),
-          offset: String(opts.offset),
-        });
-        renderListResult<VersionRow>(
-          raw,
-          [
-            { key: 'version', header: 'version' },
-            { key: 'id', header: 'versionId' },
-            { key: 'isCurrent', header: 'current', format: (v) => (v ? 'yes' : '-') },
-            { key: 'createdAt', header: 'createdAt', format: formatTimestamp },
-          ],
-          { ...opts, entityLabel: 'version' }
-        );
-      }
+  withBaseUrl(withPagination(listCmd))
+    .option(
+      '--json',
+      'Print the sliced { data, total, limit, offset } envelope as JSON (not the raw server payload)'
     )
-  );
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow versions list wf_abc123
+  $ eigenpal workflow versions list wf_abc123 --json | jq '.data[] | {id, version, isCurrent}'
+  $ eigenpal workflow versions list wf_abc123 --limit 1 --offset 0 --json
 
-  const restoreCmd = versions
-    .command('restore <workflow-id> <versionId>')
-    .description(descriptionFor('workflow_restore_version'));
-  addJsonFlag(withBaseUrl(restoreCmd)).action(
+The public list includes tagged releases and, after restore, the untagged
+current snapshot (\`version: null\`, rendered as \`untagged\`). The public
+endpoint returns the full set; \`--limit\` / \`--offset\` slice it
+client-side so HEAD is never dropped unless it is off the requested page.
+\`--json\` prints \`{ data, total, limit, offset }\` after that slice —
+\`total\` is the unsliced count.
+`
+    )
+    .action(
+      action(
+        async (
+          workflow: string,
+          opts: WorkflowCommandConfig & PaginationOpts & { json?: boolean }
+        ) => {
+          const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+          const raw = await client.get(automationVersionsPath(workflowId));
+          const paged = paginatePublicVersionList<VersionRow>(raw, {
+            limit: opts.limit,
+            offset: opts.offset,
+          });
+          renderListResult<VersionRow>(
+            paged,
+            [
+              {
+                key: 'version',
+                header: 'version',
+                format: (value) =>
+                  formatWorkflowVersionLabel(typeof value === 'string' ? value : null),
+              },
+              { key: 'id', header: 'versionId' },
+              { key: 'isCurrent', header: 'current', format: (v) => (v ? 'yes' : '-') },
+              { key: 'createdAt', header: 'createdAt', format: formatTimestamp },
+            ],
+            { ...opts, entityLabel: 'version' }
+          );
+        }
+      )
+    );
+
+  const createCmd = versions
+    .command('create <workflow-id>')
+    .description(descriptionFor('workflow_create_version'))
+    .option('--file <yaml>', 'Path to workflow YAML. Mutually exclusive with --from.')
+    .option(
+      '--from <version-id>',
+      'Existing version id to copy into a new tagged snapshot. Leaves the source tag unchanged. Mutually exclusive with --file.'
+    )
+    .option(
+      '--set-version <semver>',
+      'Bare semver tag such as 1.4.0. Required when copying with --from. For --file, omit this flag if the YAML already has a top-level version: field. (Named --set-version to avoid the global -v, --version flag.)'
+    )
+    .option(
+      '--no-activate',
+      'Keep the tagged version off live traffic until you promote it. Default is to make it current. Requires an existing current version.'
+    )
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow versions create wf_abc123 --file workflow.yaml --set-version 1.4.0
+  $ eigenpal workflow versions create wf_abc123 --file workflow.yaml --set-version 1.4.1 --no-activate
+  $ eigenpal workflow versions create wf_abc123 --from wh_abc --set-version 1.5.0 --no-activate
+  $ eigenpal workflow versions create wf_abc123 --file workflow.yaml --set-version 1.4.0 --json | jq '.id'
+
+Pass exactly one of \`--file\` or \`--from\`. \`--set-version\` is the tag on
+the new row; copying never retags the source. Default is to activate the new
+version (same as the public API). \`--no-activate\` keeps a detached candidate
+off live traffic until \`workflow versions promote\`.
+`
+    );
+  addJsonFlag(withBaseUrl(createCmd)).action(
     action(
       async (
         workflow: string,
-        versionId: string,
-        opts: WorkflowCommandConfig & { json?: boolean }
+        opts: WorkflowCommandConfig & {
+          file?: string;
+          from?: string;
+          setVersion?: string;
+          activate?: boolean;
+          json?: boolean;
+        }
       ) => {
+        let yaml: string | undefined;
+        if (opts.file) {
+          yaml = await fs.readFile(opts.file, 'utf8');
+        }
+        const resolved = resolveWorkflowVersionCreateRequest({
+          file: opts.file,
+          from: opts.from,
+          setVersion: opts.setVersion,
+          yamlVersion: yaml ? extractWorkflowVersion(yaml) : null,
+        });
+        const activate = opts.activate !== false;
+        const body =
+          resolved.source === 'yaml'
+            ? { yaml, version: resolved.version, activate }
+            : { historyId: opts.from, version: resolved.version, activate };
+
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         const result = (await client.post(
-          `/api/workflows/${workflowId}/history/${versionId}/restore`,
-          {}
-        )) as { version?: string; id?: string; [k: string]: unknown };
+          automationVersionsPath(workflowId),
+          body
+        )) as PublicWorkflowVersion;
         if (opts.json) {
           printJson(result);
           return;
         }
-        const newVersion = result.version ?? '?';
-        success(
-          `Restored ${ui.bold(workflowId)} to v${newVersion} ${ui.dim(`(history ${versionId})`)}`
-        );
+        const id = typeof result.id === 'string' ? result.id : '?';
+        if (activate) {
+          success(
+            `Created v${resolved.version} as current for ${ui.bold(workflowId)} ${ui.dim(`(${id})`)}`
+          );
+        } else {
+          success(
+            `Created v${resolved.version} as a detached candidate for ${ui.bold(workflowId)} ${ui.dim(`(${id})`)}`
+          );
+          dim(`Promote it with: eigenpal workflow versions promote ${workflowId} ${id}`);
+        }
       }
     )
   );
+
+  const promoteCmd = versions
+    .command('promote <workflow-id> <versionId>')
+    .description(descriptionFor('workflow_promote_version'));
+  addJsonFlag(withBaseUrl(promoteCmd))
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow versions promote wf_abc123 wh_abc
+  $ eigenpal workflow versions promote wf_abc123 wh_abc --json | jq '{id, version, isCurrent}'
+
+Only tagged version rows can be promoted. Untagged snapshots (including
+restore HEAD) return 404 — create a tagged copy first.
+`
+    )
+    .action(
+      action(
+        async (
+          workflow: string,
+          versionId: string,
+          opts: WorkflowCommandConfig & { json?: boolean }
+        ) => {
+          const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+          const result = (await client.post(
+            automationVersionsPath(workflowId, `/${encodeURIComponent(versionId)}/promote`)
+          )) as PublicWorkflowVersion;
+          if (opts.json) {
+            printJson(result);
+            return;
+          }
+          const label = formatWorkflowVersionLabel(result.version);
+          const id = typeof result.id === 'string' ? result.id : versionId;
+          success(
+            `Promoted ${label === 'untagged' ? 'untagged version' : `v${label}`} to current for ${ui.bold(workflowId)} ${ui.dim(`(${id})`)}`
+          );
+        }
+      )
+    );
+
+  const restoreCmd = versions
+    .command('restore <workflow-id> <versionId>')
+    .description(descriptionFor('workflow_restore_version'))
+    .option('--message <text>', 'Optional restore note stored on the new snapshot');
+  addJsonFlag(withBaseUrl(restoreCmd))
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow versions restore wf_abc123 wh_old
+  $ eigenpal workflow versions restore wf_abc123 wh_old --message "roll back Friday change"
+  $ eigenpal workflow versions restore wf_abc123 wh_old --json | jq '{id, version, isCurrent}'
+
+Restore copies the selected snapshot into a new untagged current version. It
+does not retag or delete the source. The new HEAD appears in
+\`workflow versions list\` as \`untagged\` / \`version: null\` and cannot be
+promoted until you create a tagged copy.
+`
+    )
+    .action(
+      action(
+        async (
+          workflow: string,
+          versionId: string,
+          opts: WorkflowCommandConfig & { json?: boolean; message?: string }
+        ) => {
+          const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+          const body = opts.message ? { message: opts.message } : {};
+          const result = (await client.post(
+            automationVersionsPath(workflowId, `/${encodeURIComponent(versionId)}/restore`),
+            body
+          )) as PublicWorkflowVersion;
+          if (opts.json) {
+            printJson(result);
+            return;
+          }
+          const id = typeof result.id === 'string' ? result.id : '?';
+          success(
+            `Restored ${ui.bold(workflowId)} to a new untagged current version ${ui.dim(`(${id})`)} from ${versionId}`
+          );
+        }
+      )
+    );
 }
 
 // ---------------------------------------------------------------------------

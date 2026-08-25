@@ -1,5 +1,13 @@
 # @eigenpal/cli
 
+## 0.13.0
+
+### Minor Changes
+
+- aaf5a04: `eigenpal workflow versions` can now create, promote, and restore YAML workflow versions through the public API. Tag a candidate from a YAML file or an existing snapshot with an explicit semver, keep it off live traffic with `--no-activate`, then promote that exact version when it qualifies. Restoring still rolls a workflow back by copying a snapshot into a new current version — lists now show that untagged HEAD clearly instead of hiding it.
+
+  `workflow versions list --limit` and `--offset` page that full public list locally. `--json` prints the sliced `{ data, total, limit, offset }` envelope (`total` is the unsliced count), not the raw server payload.
+
 ## 0.11.0
 
 ### Minor Changes

@@ -80,6 +80,13 @@ eigenpal workflow evaluators push <workflow-id> --file ./evaluators.yaml
 eigenpal workflow experiment run <workflow-id>
 eigenpal workflow experiment watch <workflow-id> <batch-id>
 eigenpal workflow experiment results <workflow-id> <batch-id> --format csv --out results.csv
+
+# Create a tagged candidate without moving live traffic, then promote it.
+eigenpal workflow versions create <workflow-id> --file workflow.yaml --set-version 1.4.0 --no-activate
+eigenpal workflow versions list <workflow-id>
+eigenpal workflow versions promote <workflow-id> <version-id>
+# Restore copies a snapshot into a new untagged current HEAD.
+eigenpal workflow versions restore <workflow-id> <version-id>
 ```
 
 Folders are server metadata, not `workflow.yaml` content:

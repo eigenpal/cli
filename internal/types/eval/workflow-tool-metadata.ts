@@ -18,6 +18,8 @@ export type WorkflowToolName =
   | 'workflow_get_experiment_status'
   | 'workflow_get_experiment_results'
   | 'workflow_list_versions'
+  | 'workflow_create_version'
+  | 'workflow_promote_version'
   | 'workflow_restore_version'
   | 'workflow_list_step_types'
   | 'workflow_get_step_type';
@@ -77,11 +79,22 @@ export const WORKFLOW_TOOL_METADATA: Record<WorkflowToolName, WorkflowToolDescri
   },
 
   workflow_list_versions: {
-    description: 'List historical workflow versions, newest first.',
+    description:
+      'List tagged workflow versions plus the current untagged snapshot when HEAD is untagged, newest first.',
+  },
+
+  workflow_create_version: {
+    description: 'Create a tagged workflow version from YAML or by copying an existing snapshot.',
+  },
+
+  workflow_promote_version: {
+    description:
+      'Make an existing tagged workflow version current without creating another snapshot.',
   },
 
   workflow_restore_version: {
-    description: 'Restore the workflow to a previous version.',
+    description:
+      'Restore a previous snapshot as a new untagged current version. Does not retag the source.',
   },
 
   workflow_list_step_types: {
