@@ -32,6 +32,14 @@ eigenpal
 │   │   │   ├── delete <workflow-id> <exampleId>
 │   │   │   └── get <workflow-id> <exampleId>
 │   │   └── validate [path]
+│   ├── templates
+│   │   ├── upload <file>
+│   │   ├── list|ls
+│   │   ├── get|inspect <template-id>
+│   │   ├── download <template-id>
+│   │   ├── replace <template-id> <file>
+│   │   ├── delete <template-id>
+│   │   └── smoke <template>
 │   ├── experiment|exp
 │   │   ├── list|ls <workflow-id>
 │   │   ├── run <workflow-id>
@@ -104,6 +112,8 @@ eigenpal
 │   │   └── stop <session-id>
 │   └── env
 │       └── pull [target]
+├── models
+│   └── list|ls
 ├── run <target>
 ├── rerun <run-id>
 ├── runs
@@ -114,7 +124,8 @@ eigenpal
 │   ├── promote <run-id>
 │   ├── artifacts|artifact
 │   │   ├── list|ls <run-id>
-│   │   └── fetch <run-id>
+│   │   ├── fetch <run-id>
+│   │   └── inspect [run-id] [artifact-path]
 │   ├── trace <run-id>
 │   ├── reviews|rv
 │   │   ├── update <run-id>

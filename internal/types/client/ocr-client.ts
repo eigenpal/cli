@@ -201,11 +201,20 @@ export interface OCROptions {
 }
 
 /**
- * OCR Client interface
+ * Optional provider capabilities advertised by an OCR client.
  *
- * Implementations handle provider-specific APIs while exposing
- * this common interface for document analysis.
+ * Plugins that omit `capabilities` (or a given flag) are treated as unsupported
+ * for that feature. Selective OCR must not assume provider-side page filtering
+ * or reduced-byte egress unless the corresponding flag is explicitly true.
  */
+export interface OCRClientCapabilities {
+  /** Whether the provider can process/bill only OCROptions.pages. */
+  pageSelection?: boolean;
+
+  /** Whether analyze() uploads bytes containing only OCROptions.pages. */
+  subsetEgress?: boolean;
+}
+
 export interface OCRClient {
   /** Provider identifier (e.g., 'azure', 'google', 'aws', 'tesseract') */
   readonly provider: string;
@@ -215,6 +224,12 @@ export interface OCRClient {
 
   /** Vendor page price discovered from a provider catalog, when available. */
   readonly vendorUsdPerPage?: number;
+
+  /**
+   * Optional provider capabilities. Absent means unsupported (backward compatible
+   * with existing plugins that do not declare capabilities).
+   */
+  readonly capabilities?: OCRClientCapabilities;
 
   /**
    * Analyze a document and extract text, tables, and structure

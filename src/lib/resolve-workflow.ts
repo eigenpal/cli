@@ -16,7 +16,7 @@
  *   await client.post('/v1/runs', runStartJsonBody(`workflows.${workflowId}`, input));
  */
 
-import type { ApiClient } from './client';
+import { ApiError, type ApiClient } from './client';
 
 interface WorkflowSummary {
   id: string;
@@ -111,9 +111,13 @@ export async function resolveWorkflowId(client: ApiClient, idOrSlug: string): Pr
     try {
       const wf = (await client.get(`/api/workflows/${idOrSlug}`)) as WorkflowSummary;
       return wf.id;
-    } catch {
-      // Don't fuzzy-search ids — `wf_` ids are opaque, no useful neighbors.
-      throw notFound(idOrSlug, null);
+    } catch (err) {
+      // Only a genuine 404 means "workflow not pushed". Outages, auth failures,
+      // and wrong base URLs must propagate so formatCliError can surface them.
+      if (err instanceof ApiError && err.status === 404) {
+        throw notFound(idOrSlug, null);
+      }
+      throw err;
     }
   }
   // Slug path: `?name=` is an exact match against `definition.name`. Empty

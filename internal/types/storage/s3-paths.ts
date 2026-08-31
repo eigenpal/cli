@@ -188,6 +188,17 @@ export const S3_PATH_GRAMMAR = {
       },
     },
   },
+  // Workspace document templates. Every revision key is immutable; the
+  // templates DB row points at the current revision for legacy consumers.
+  templates: {
+    $templateId: {
+      revisions: {
+        $revisionId: {
+          $filename: PATH_LEAF,
+        },
+      },
+    },
+  },
   shared: {
     skills: PATH_REST,
     rules: PATH_REST,

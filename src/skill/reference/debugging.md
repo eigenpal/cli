@@ -29,6 +29,21 @@ eigenpal runs list <workflow-id> --type workflow --status failed --limit 5
 eigenpal runs get exec_…
 ```
 
+If a `transform.template` fill looks wrong (leftover `{braces}`, empty
+rows, or the wrong spreadsheet), smoke the Office file locally before
+re-pushing. Local files never contact the server:
+
+```bash
+eigenpal workflow templates smoke ./templates/roster.xlsx \
+  --data ./fixture.json --out ./filled.xlsx --json
+```
+
+XLSX prototype rows use `{table:subjects.first_name}` in the spreadsheet.
+YAML `data` mapping still uses `{{ steps.extract.output.subjects }}` —
+do not put `{{ }}` in the Office file. `tmpl_…` smoke downloads current
+bytes through `GET /v1/templates/:id/content` and fills on this machine;
+there is no private remote-render route.
+
 ## 2. Pull the full execution
 
 ```bash
@@ -160,6 +175,27 @@ eigenpal runs compare <exec-a> <exec-b>
 
 Output: per-step status / Δ duration / output diff. Useful for spotting
 regressions between revisions of a workflow.
+
+For agent runs with spreadsheet outputs, `runs compare` compares XLSX
+workbooks by structured sheet content (headers, typed rows, sheet order) —
+not raw ZIP bytes — so metadata-only rewrites still match when cell data
+matches. Comparison scans the full workbook (within CLI safety limits); the
+`--max-*` caps below apply only to `artifacts inspect`, not to `compare`.
+When a workbook exceeds compare safety limits, the file diff is reported as
+`inconclusive` and `--fail-on-diff` does not treat it as a match.
+
+Inspect a downloaded or remote XLSX artifact as machine-readable JSON:
+
+```bash
+eigenpal runs artifacts list <run-id>
+eigenpal runs artifacts inspect <run-id> output/report.xlsx --json
+eigenpal runs artifacts inspect <run-id> output/report.xlsx --sheet Summary,1 --max-rows 100 --json
+eigenpal runs artifacts inspect --file ./report.xlsx --json
+```
+
+The JSON payload includes `sheetNames`, per-sheet `dimensions`, ordered
+`headers`, typed `rows`, and `truncated` flags when `--max-*` caps apply
+(defaults: 20 sheets, 500 rows/sheet, 50 cols/sheet).
 
 For a freer-form diff, dump both and compare with `jq`:
 

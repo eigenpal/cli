@@ -23,6 +23,12 @@ import {
 } from '../lib/ui';
 import { renderFrame, watchExecution, type ExecutionSnapshot } from '../lib/watch';
 import {
+  extractXlsxComparableText,
+  parseSheetSelectionList,
+  parseXlsxWorkbook,
+  type XlsxInspectLimits,
+} from '../lib/xlsx-workbook';
+import {
   ArtifactInventoryRow,
   BaseOpts,
   agentAutomationId,
@@ -84,7 +90,7 @@ export function registerRunsCommands(program: Command): void {
 
   addJsonFlag(withBaseUrl(runs.command('compare <reference-run-id> <run-id>')))
     .description(
-      'Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks.'
+      'Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes).'
     )
     .option('--baseline', 'Compare actual outputs from both runs instead of expected artifacts')
     .option('--step <name>', 'For workflow runs, restrict comparison to one step')
@@ -151,6 +157,24 @@ Use \`eigenpal runs reviews update\` first when you need to correct output.
     )
     .option('--json', 'Output a JSON summary of written artifacts')
     .action(action(fetchRunArtifacts));
+
+  addJsonFlag(withBaseUrl(artifacts.command('inspect [run-id] [artifact-path]')))
+    .description(
+      'Inspect a run XLSX artifact as structured JSON (sheet names, headers, typed rows). Use --file for a local workbook.'
+    )
+    .option(
+      '--file <path>',
+      'Inspect a local .xlsx/.xls file instead of downloading a run artifact'
+    )
+    .option(
+      '--path <path>',
+      'Canonical artifact path from `artifacts list` (alias for positional artifact-path)'
+    )
+    .option('--sheet <names>', 'Comma-separated sheet names or zero-based indices to include')
+    .option('--max-sheets <n>', 'Maximum sheets to include (default 20)', intArg)
+    .option('--max-rows <n>', 'Maximum data rows per sheet (default 500)', intArg)
+    .option('--max-cols <n>', 'Maximum columns per sheet (default 50)', intArg)
+    .action(action(inspectRunArtifact));
 
   withBaseUrl(runs.command('trace <run-id>'))
     .description('Print raw trace.jsonl for a run, or write it with --out.')
@@ -786,6 +810,79 @@ async function fetchRunArtifacts(
       skipped.length ? `; skipped missing ${skipped.join(', ')}` : ''
     }`
   );
+}
+
+async function inspectRunArtifact(
+  runId: string | undefined,
+  artifactPathArg: string | undefined,
+  opts: BaseOpts & {
+    file?: string;
+    path?: string;
+    sheet?: string;
+    maxSheets?: number;
+    maxRows?: number;
+    maxCols?: number;
+  }
+) {
+  const limits: XlsxInspectLimits = {
+    ...(opts.maxSheets != null ? { maxSheets: opts.maxSheets } : {}),
+    ...(opts.maxRows != null ? { maxRowsPerSheet: opts.maxRows } : {}),
+    ...(opts.maxCols != null ? { maxColsPerSheet: opts.maxCols } : {}),
+  };
+  const sheets = parseSheetSelectionList(opts.sheet);
+  const artifactPath = opts.path ?? artifactPathArg;
+
+  let source:
+    | { kind: 'local'; path: string }
+    | { kind: 'run'; runId: string; artifactPath: string };
+  if (opts.file) {
+    source = { kind: 'local', path: path.resolve(opts.file) };
+  } else {
+    if (!runId) {
+      throw new Error(
+        'Provide <run-id> and <artifact-path>, or pass --file <path> for a local workbook.'
+      );
+    }
+    if (!artifactPath) {
+      throw new Error(
+        'Provide an artifact path (positional or --path). Run `eigenpal runs artifacts list <run-id>` to discover paths.'
+      );
+    }
+    const normalized = normalizeArtifactPath(artifactPath);
+    if (!normalized) throw new Error(`Invalid artifact path: ${artifactPath}`);
+    source = { kind: 'run', runId, artifactPath: normalized };
+  }
+
+  const ext = path
+    .extname(source.kind === 'local' ? source.path : source.artifactPath)
+    .toLowerCase();
+  if (ext !== '.xlsx' && ext !== '.xls') {
+    throw new Error(
+      `Artifact inspect supports XLSX/XLS files only (got ${ext || 'no extension'}).`
+    );
+  }
+
+  let buffer: Buffer;
+  if (source.kind === 'local') {
+    buffer = await fs.readFile(source.path);
+  } else {
+    const client = buildClient(opts);
+    const response = await client.getStream(
+      `/v1/runs/${encodeURIComponent(source.runId)}/artifacts/${encodeRunArtifactPath(source.artifactPath)}`
+    );
+    buffer = Buffer.from(await response.arrayBuffer());
+  }
+
+  const inspect = parseXlsxWorkbook(buffer, { limits, sheets });
+  const payload = {
+    ...(source.kind === 'local'
+      ? { file: source.path }
+      : { runId: source.runId, artifactPath: source.artifactPath }),
+    ...inspect,
+  };
+
+  if (opts.json) return printJson(payload);
+  printJson(payload);
 }
 
 async function listRunArtifacts(executionId: string, opts: BaseOpts) {
@@ -1702,6 +1799,17 @@ async function compareMatchedFileText(
     await downloadStreamToFile(client, runFileUrl(right, pair.output), outputPath);
     const expectedText = extractComparableText(expectedPath);
     const outputText = extractComparableText(outputPath);
+    if (expectedText.inconclusive || outputText.inconclusive) {
+      diffs.push({
+        ...pair,
+        status: 'inconclusive',
+        textExtraction: {
+          expected: expectedText.reason ?? null,
+          output: outputText.reason ?? null,
+        },
+      });
+      continue;
+    }
     if (expectedText.text == null || outputText.text == null) {
       const [expectedBuffer, outputBuffer] = await Promise.all([
         fs.readFile(expectedPath),
@@ -1755,10 +1863,17 @@ async function downloadStreamToFile(client: ApiClient, url: string, target: stri
   await fs.writeFile(target, Buffer.from(await response.arrayBuffer()));
 }
 
-function extractComparableText(file: string): { text: string | null; reason?: string } {
+function extractComparableText(file: string): {
+  text: string | null;
+  inconclusive?: boolean;
+  reason?: string;
+} {
   const ext = path.extname(file).toLowerCase();
   if (['.txt', '.md', '.json', '.csv', '.xml'].includes(ext)) {
     return { text: readFileSync(file, 'utf8') };
+  }
+  if (ext === '.xlsx' || ext === '.xls') {
+    return extractXlsxComparableText(file);
   }
   if (ext === '.pdf') {
     const result = spawnSync('pdftotext', [file, '-'], { encoding: 'utf8' });
@@ -1810,6 +1925,10 @@ function renderComparisonReport(report: {
         {
           item: 'Text differences',
           count: report.textDifferences.filter((diff) => diff.status === 'text-different').length,
+        },
+        {
+          item: 'Inconclusive comparisons',
+          count: report.textDifferences.filter((diff) => diff.status === 'inconclusive').length,
         },
       ],
       [

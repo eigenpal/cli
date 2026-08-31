@@ -17,7 +17,10 @@ appear in user examples, but do not prefer them.
 ## Choose A Command
 
 - `eigenpal workflow` manages YAML workflow definitions, datasets, evaluators,
-  experiments, versions, and step schemas.
+  experiments, versions, workspace templates, and step schemas.
+- `eigenpal models list` inventories text, vision, and OCR models configured
+  for the current tenant environment (`--json` for scripting). Health is
+  `configured` or `unconfigured` from local credentials — not a live provider probe.
 - `eigenpal agents` manages Git-backed agent source packages, shared resources,
   releases, sync, secrets, datasets, and live file inspection.
 - `eigenpal run` starts a single workflow or agent run from a target. This is the
@@ -30,6 +33,8 @@ appear in user examples, but do not prefer them.
 Use stable ids in scripts:
 
 - Workflow id: `wf_...`
+- Template id: `tmpl_...`
+- Template revision id: `tmpr_...`
 - Workflow execution id: `evx_...`
 - Agent execution id: `aex_...`
 - Experiment batch id: `evb_...`
@@ -49,10 +54,13 @@ eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties
 
 # Validate and push.
 eigenpal workflow validate ./workflow.yaml
-# If the workflow has action.invoke-workflow steps, local validation cannot
-# resolve their targets (sibling workflows live in the server DB). Add --online
-# to check invoke targets, input types, and cycles before pushing.
+# --online also checks action.invoke-workflow targets, transform.template
+# tmpl_… ids, and explicitly selected OCR/vision/text models against live tenant
+# catalog metadata. Local `template: ./file.xlsx` paths
+# are inspected on disk with or without --online and must stay inside the
+# workflow project unless you pass --allow-external-templates.
 eigenpal workflow validate ./workflow.yaml --online
+eigenpal models list --json
 eigenpal workflow push --file workflow.yaml
 
 # Run with ad-hoc input and read the output (use this for API-triggered workflows).
@@ -160,6 +168,75 @@ eigenpal run agents.<slug> \
 
 `agents file list/get/diff` are read/compare commands only. Change agent files
 through Git source, then use `agents save`, `agents release`, and `agents sync`.
+
+## Agent templates (Git source)
+
+DOCX/XLSX templates for **runtime agents** live in Git source, not in the
+workspace Templates table. YAML workflows use workspace templates via
+`transform.template` and `tmpl_...` instead — see `reference/step-types.md`.
+
+Workspace DOCX/XLSX templates for YAML workflows:
+
+```bash
+eigenpal workflow templates upload ./templates/roster.xlsx --json
+eigenpal workflow templates smoke ./templates/roster.xlsx --data ./fixture.json --out ./filled.xlsx
+# YAML may keep a source path; push uploads and sends tmpl_ + tmpr_ ids.
+# template: ./templates/roster.xlsx
+eigenpal workflow validate ./workflow.yaml --online
+eigenpal workflow push --file workflow.yaml
+```
+
+**Local template** (one agent):
+
+```text
+agents/<slug>/templates/<template-slug>/
+  template.docx   # or template.xlsx
+  TEMPLATE.md     # frontmatter: name, description, type: docx|xlsx
+```
+
+**Shared template package** (reused across agents):
+
+```text
+resources/templates/<template-slug>/
+  eigenpal.yaml   # required package manifest
+  template.docx   # or template.xlsx
+  TEMPLATE.md     # optional metadata
+```
+
+At runtime the agent fills templates with the baked-in **fill-template**
+platform skill (`vars`, then `fill`) — not `transform.template`. Local
+templates resolve by slug under `agent/templates/<slug>/`. Shared dependencies
+install under `agent/eigenpal_modules/resources/templates/<slug>/`; pass that
+file path to fill-template when the template is not copied locally.
+
+```bash
+# Add or update a local template, then validate and save.
+cp ./invoice.docx agents/<slug>/templates/invoice/template.docx
+$EDITOR agents/<slug>/templates/invoice/TEMPLATE.md
+eigenpal agents validate agents/<slug>
+eigenpal agents save -m "Add invoice template"
+eigenpal agents release patch agents/<slug>
+eigenpal agents sync agents.<slug>
+
+# Shared template: validate, save, and release the package.
+cp ./report.xlsx resources/templates/monthly-report/template.xlsx
+$EDITOR resources/templates/monthly-report/eigenpal.yaml
+eigenpal agents validate resources/templates/monthly-report
+eigenpal agents save -m "Add monthly report template"
+eigenpal agents release patch resources/templates/monthly-report
+
+# Consuming agent: pin an exact dependency version, then release and sync.
+$EDITOR agents/<slug>/eigenpal.yaml   # workspace:resources.templates.monthly-report: "1.0.0"
+eigenpal agents validate agents/<slug>
+eigenpal agents save -m "Use monthly report template"
+eigenpal agents release patch agents/<slug>
+eigenpal agents sync agents.<slug>
+```
+
+Updating a shared template does not auto-sync dependent agents. Release the
+template package, bump each consumer's exact-version dependency, then release
+and sync those agents. Workspace `tmpl_...` templates are a different system —
+use `eigenpal workflow templates`, not `agents save`.
 
 ## Shared Resource Updates
 

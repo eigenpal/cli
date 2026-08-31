@@ -23,7 +23,7 @@ implement at runtime. Server-side validation errors point you here.
 
 - `ai.*` — model-backed processing (parse, extract, classify). Cost + latency depend on the model.
 - `transform.*` — deterministic data transforms (set, remove, combine, split, merge,
-  script, template, pdf-embed, xlsx-to-json). WASM sandboxed where applicable.
+  script, template, pdf-embed, xlsx-to-json, json-to-xlsx). WASM sandboxed where applicable.
 - `action.*` — external side effects (HTTP, invoke another workflow, website reader).
 - `control.*` — flow control (if, foreach, parallel, parallel_map, wait, fail).
 
@@ -35,13 +35,16 @@ the catalog tells you what fields it takes.
 
 | Use case                          | Step                                              |
 | --------------------------------- | ------------------------------------------------- |
-| Read a PDF / DOCX / image         | `ai.parse`                                        |
+| Read a PDF / DOCX / image (native-first) | `ai.parse` with `parseMode: native` or `native-or-ocr` |
+| Read a PDF / DOCX / image (full OCR/vision) | `ai.parse` with `parseMode: ocr` or `vision` |
 | Pull a typed object from text     | `ai.extract` with `config.schema`                 |
 | Pick one label from a fixed set   | `ai.classify` with `config.labels`                |
 | Reject bad inputs with a 4xx code | `control.fail` (often after `ai.classify`)        |
 | Sum / filter / regex              | `transform.script` (NOT Liquid)                   |
-| Render a DOCX template            | `transform.template`                              |
+| Render a DOCX or XLSX template (YAML workflow) | `transform.template` with `tmpl_...` or `./file.xlsx` |
+| Fill a DOCX or XLSX template (runtime agent)   | fill-template platform skill         |
 | Convert XLSX to JSON              | `transform.xlsx-to-json`                          |
+| Convert JSON rows to XLSX         | `transform.json-to-xlsx`                          |
 | Merge or combine objects          | `transform.combine` / `transform.merge`           |
 | Conditional execution             | `if:` on the step (Liquid) or `control.if`        |
 | Map over an input array           | `forEach:` on the step or `control.foreach`       |
@@ -50,6 +53,59 @@ the catalog tells you what fields it takes.
 | External HTTP call                | `action.http`                                     |
 | Call another workflow             | `action.invoke-workflow`                          |
 | Fetch a webpage as markdown       | `action.website-reader`                           |
+
+## Workspace vs Git templates
+
+Two separate template systems share DOCX/XLSX placeholder syntax but not
+references:
+
+| Goal | Mechanism |
+| --- | --- |
+| YAML workflow produces a filled DOCX/XLSX | `transform.template` with `templateId: tmpl_...` or `template: ./templates/foo.xlsx` (CLI push uploads) |
+| Runtime agent produces a filled DOCX/XLSX | fill-template platform skill against Git templates |
+
+Git templates (`agents/<agent>/templates/<slug>/`, shared
+`resources/templates/<slug>/`) never receive a `tmpl_...` ID and cannot be
+used in `transform.template`. Manage Git templates through the agent source
+loop — see the eigenpal skill's **Agent templates (Git source)** section.
+
+Workspace templates are tenant-scoped `tmpl_...` resources with immutable
+`tmpr_...` revisions. Manage them from the CLI (preferred) or Studio:
+
+```bash
+eigenpal workflow templates upload ./templates/roster.xlsx --json
+eigenpal workflow templates list --json
+eigenpal workflow templates get tmpl_... --json
+eigenpal workflow templates smoke ./templates/roster.xlsx --data ./fixture.json --out ./filled.xlsx
+eigenpal workflow validate ./workflow.yaml --online
+eigenpal workflow push --file workflow.yaml
+```
+
+Author YAML with either a live id or a source-controlled path. Push uploads
+the file (skipped when the SHA-256 still matches) and sends `templateId` +
+current `templateRevisionId` to the server without rewriting the file on disk.
+
+`templateId` must be `tmpl_...` when not using a local path; file IDs
+(`file_...`) are rejected at validate/push.
+
+In the Office file itself use `{placeholder}` and, for XLSX row expansion,
+`{table:array.prop}`. `{{placeholder}}` is Liquid for YAML `data` mapping
+only — putting it in an XLSX file fails at fill. Example prototype row:
+
+```yaml
+- name: fill-roster
+  type: transform.template
+  with:
+    templateId: tmpl_...
+    data:
+      report_title: "{{ steps.extract.output.title }}"
+      subjects: "{{ steps.extract.output.subjects }}"
+```
+
+Spreadsheet cells: `{report_title}`, `{table:subjects.first_name}`,
+`{table:subjects.last_name}`. Null/blank cells stay empty; numbers and
+booleans keep spreadsheet types; every sheet is filled; existing formulas
+stay formulas.
 
 ## Liquid vs `transform.script`
 
@@ -356,7 +412,7 @@ _Generated from `STEP_SCHEMAS` in `@eigenpal/types/src/workflow/step-configs.ts`
 
 #### `ai.parse` — Parse Document
 
-Extract text from documents (PDF, DOCX, images) using OCR or vision models
+Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models
 
 **Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
 
@@ -365,7 +421,7 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `input` | string | yes |  | Storage reference or template expression for the document |
-| `parseMode` | `"ocr"` \| `"vision"` | no |  | Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. Text and Office files always use native parsing. |
+| `parseMode` | `"ocr"` \| `"vision"` \| `"native"` \| `"native-or-ocr"` | no |  | Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. `native` extracts PDF embedded text only and never calls OCR or vision. `native-or-ocr` extracts native text, runs page-quality diagnostics, and requests OCR when pages have detectable anomalies (empty, U+FFFD, lone surrogates, forbidden controls, unassigned/noncharacter, heavy PUA). Page selection, subset egress, and billing are provider-dependent. Valid-looking wrong text and literal "?" are not flagged. Text and Office files always use local parsing. |
 | `ocrModel` | string | no |  | OCR provider ID for PDF/image parsing |
 | `llmModel` | string | no |  | LLM provider ID for vision-based parsing |
 | `figureModel` | string | no |  | Vision model used only for the optional figure-description pass |
@@ -391,6 +447,7 @@ Extract text from documents (PDF, DOCX, images) using OCR or vision models
 | `parserType` | `"plaintext"` \| `"office"` \| `"llm-vision"` \| `"ocr"` | yes |  |  |
 | `parserVersion` | string | no |  |  |
 | `model` | string | no |  | Model used (for LLM/OCR parsers) |
+| `processingStrategy` | `"native"` \| `"ocr"` \| `"vision"` \| `"hybrid"` | no |  | How this result was produced: `native` (local PDF text only), `ocr`, `vision`, or `hybrid` (native pages merged with OCR on fallback pages). |
 | `structured` | record<string, unknown> | no |  | Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser |
 
 #### `ai.extract` — Extract Data
@@ -637,7 +694,7 @@ Merge multiple named inputs into a single output
 
 #### `transform.template` — Fill Template
 
-Fill a DOCX template with data from previous steps. Select a template in the workflow builder or provide a template ID from your workspace.
+Fill a DOCX or XLSX workspace template with data from previous steps. Reference a tmpl_... id, or a local ./templates/file.xlsx path (CLI push uploads it). Git agent templates use the fill-template skill instead and cannot be referenced here. File IDs (file_...) are not accepted. Placeholders are auto-detected. In the Office file use {placeholder} and {table:array.prop}; {{placeholder}} in an XLSX file is rejected ({{ }} is YAML Liquid only).
 
 **Durable retry:** Transforms, including those that write files, are not durably retried.
 
@@ -645,11 +702,13 @@ Fill a DOCX template with data from previous steps. Select a template in the wor
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `templateId` | string | yes |  | ID of the template from templates table |
-| `data` | record<string, unknown> | yes |  | Data object to merge into template. Each key must be explicitly defined - cannot pass a whole object as single expression |
-| `outputFilename` | string | no |  | Output filename - supports {{field}} syntax |
-| `highlightNotFound` | boolean | no | `true` | Highlight missing variables with red-colored text in the output document |
-| `notFoundText` | string | no | `"NOT FOUND"` | Text to display for missing variables when highlightNotFound is enabled |
+| `templateId` | string | no |  | Workspace template ID (tmpl_...) from the Templates table (DOCX or XLSX). Git agent templates cannot be referenced here. File IDs (file_...) are not accepted. Mutually exclusive with `template`. |
+| `template` | string | no |  | Local DOCX or XLSX path relative to the workflow YAML (e.g. ./templates/foo.xlsx). CLI push keeps the real path inside the workflow project unless you pass --allow-external-templates, uploads unmatched files as new tmpl_ resources, and does not rewrite the source YAML. Mutually exclusive with templateId. |
+| `templateRevisionId` | string | no |  | Immutable template revision ID (tmpr_...). Pin this when executions must keep using the same template bytes after replacements. Requires templateId; local `template` paths are pinned automatically on push. |
+| `data` | record<string, unknown> | yes |  | Data object to merge into template. Each key must be explicitly defined - cannot pass a whole object as single expression. |
+| `outputFilename` | string | no |  | Output filename - supports {{field}} syntax; .docx or .xlsx extension is added if omitted |
+| `highlightNotFound` | boolean | no | `true` | Highlight missing variables with red-colored text in the output document (DOCX only; ignored for XLSX) |
+| `notFoundText` | string | no | `"NOT FOUND"` | Text to display for missing variables when highlightNotFound is enabled (DOCX only; ignored for XLSX) |
 
 **Output:** `object`
 
@@ -702,6 +761,31 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 | --- | --- | --- | --- | --- |
 | `rows` | array<record<string, unknown>> | yes |  | Array of row objects (first row = headers as keys) |
 | `fileId` | string | no |  | File ID of stored CSV when outputCsv is true |
+
+#### `transform.json-to-xlsx` — JSON to XLSX
+
+Convert JSON rows into an XLSX spreadsheet. Pair with transform.xlsx-to-json. Formula-looking strings stay text; nested cell values are rejected.
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `filename` | string | no |  | Output filename — supports LiquidJS; .xlsx is added if omitted |
+| `columns` | array<object> | no |  | Ordered columns for a single-sheet workbook. Use sheets for multiple sheets. |
+| `rows` | string \| array<record<string, unknown>> | no |  | Array of row objects, or a template expression that resolves to one |
+| `sheets` | array<object> | no |  | Multiple sheets. Do not combine with top-level columns/rows. |
+| `limits` | object | no |  | Optional workload caps that can only lower the server defaults. Omitted fields use the server defaults. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `fileId` | string | yes |  | File ID from the files table |
+| `filename` | string | yes |  | Sanitized output filename including .xlsx |
+| `sheetCount` | integer | yes |  | Number of sheets in the workbook |
+| `sheets` | array<object> | yes |  | Per-sheet name and row count |
 
 #### `transform.script` — Script
 

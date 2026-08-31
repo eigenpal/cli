@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as XLSX from 'xlsx';
 
 import {
   formatWorkflowVersionLabel,
@@ -12,6 +13,13 @@ import {
 } from './index';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
+
+function createWorkbook(rows: unknown[][]): Buffer {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+  return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', bookSST: true }));
+}
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -66,6 +74,12 @@ function resolveWorkflowRoute(request: Request, workflowId: string): Response | 
   const url = new URL(request.url);
   if (request.method === 'GET' && url.pathname === `/api/workflows/${workflowId}`) {
     return jsonResponse({ id: workflowId });
+  }
+  if (request.method === 'GET' && url.pathname === `/api/workflows/${workflowId}/versions`) {
+    return jsonResponse({ data: [], total: 0 });
+  }
+  if (request.method === 'POST' && url.pathname === '/api/workflows/validate') {
+    return jsonResponse({ valid: true, issues: [] });
   }
   return null;
 }
@@ -539,6 +553,114 @@ describe('workflow versions create', () => {
         });
       }
     );
+  });
+
+  test('resolves local template paths in posted YAML like workflow push', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-versions-template-'));
+    const file = join(dir, 'workflow.yaml');
+    mkdirSync(join(dir, 'templates'), { recursive: true });
+    writeFileSync(join(dir, 'templates', 'roster.xlsx'), createWorkbook([['{title}']]));
+    writeFileSync(
+      file,
+      `name: invoices
+steps:
+  - name: fill
+    type: transform.template
+    with:
+      template: ./templates/roster.xlsx
+      data:
+        title: Demo
+`
+    );
+    let posted: { pathname: string; body: { yaml?: string } } | null = null;
+    try {
+      await withApiServer(
+        async (request) => {
+          const resolved = resolveWorkflowRoute(request, 'wf_abc');
+          if (resolved) return resolved;
+          const url = new URL(request.url);
+          if (request.method === 'GET' && url.pathname === '/v1/templates') {
+            return jsonResponse({ items: [], total: 0 });
+          }
+          if (request.method === 'POST' && url.pathname === '/v1/files/uploads') {
+            return jsonResponse({
+              transport: 'multipart',
+              url: '/v1/files/uploads/multipart',
+              maxFileSizeBytes: 50 * 1024 * 1024,
+            });
+          }
+          if (request.method === 'POST' && url.pathname === '/v1/files/uploads/multipart') {
+            return jsonResponse({ id: 'fil_test', filename: 'roster.xlsx' });
+          }
+          if (request.method === 'POST' && url.pathname === '/v1/templates') {
+            return jsonResponse(
+              {
+                id: 'tmpl_123456789012345678901',
+                name: 'roster',
+                filename: 'roster.xlsx',
+                format: 'xlsx',
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                tokens: [],
+                grammar: { syntax: '{field}', tokenDiscovery: true, capabilities: [] },
+                currentRevision: {
+                  id: 'tmpr_123456789012345678901',
+                  number: 1,
+                  sha256: 'aa'.repeat(32),
+                  createdAt: '2026-08-28T00:00:00.000Z',
+                },
+                createdAt: '2026-08-28T00:00:00.000Z',
+                cleanupProof: `stp_${'f'.repeat(43)}`,
+              },
+              { status: 201 }
+            );
+          }
+          if (request.method === 'DELETE' && url.pathname.startsWith('/v1/files/')) {
+            return jsonResponse({ deleted: true });
+          }
+          if (
+            request.method === 'POST' &&
+            url.pathname === '/v1/templates/tmpl_123456789012345678901/staging'
+          ) {
+            return jsonResponse({ finalized: true });
+          }
+          if (request.method === 'POST' && url.pathname === '/v1/automations/wf_abc/versions') {
+            posted = { pathname: url.pathname, body: await request.json() };
+            return jsonResponse(
+              { id: 'wh_new', automationId: 'wf_abc', version: '1.4.0', isCurrent: true },
+              { status: 201 }
+            );
+          }
+          return new Response('not found', { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await runCli(
+            [
+              'workflow',
+              'versions',
+              'create',
+              'wf_abc',
+              '--file',
+              file,
+              '--set-version',
+              '1.4.0',
+              '--json',
+              '--base-url',
+              baseUrl,
+            ],
+            baseUrl
+          );
+          expect(result.status).toBe(0);
+          expect(posted?.body.yaml).toContain('templateId: tmpl_123456789012345678901');
+          expect(posted?.body.yaml).not.toContain('template: ./templates/roster.xlsx');
+          const payload = JSON.parse(result.stdout) as {
+            localTemplates?: { templateId: string }[];
+          };
+          expect(payload.localTemplates?.[0]?.templateId).toBe('tmpl_123456789012345678901');
+        }
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('rejects missing source without calling the API', async () => {

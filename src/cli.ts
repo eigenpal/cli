@@ -13,6 +13,7 @@ import {
   runGitPassthroughFromArgv,
 } from './commands/git';
 import { init } from './commands/init';
+import { registerModelsCommands } from './commands/models';
 import { registerRunCommands } from './commands/run';
 import { registerRunsCommands } from './commands/runs';
 import { installSkillTools, listSkillTools, uninstallSkillTools } from './commands/skill';
@@ -171,6 +172,7 @@ authCmd
 
 registerWorkflowCommands(program);
 registerAgentCommands(program);
+registerModelsCommands(program);
 registerRunCommands(program);
 registerRunsCommands(program);
 registerGitCommands(program);

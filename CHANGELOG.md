@@ -1,5 +1,18 @@
 # @eigenpal/cli
 
+## 0.13.1
+
+### Patch Changes
+
+- 56f8c5f: `workflow versions create --file` now resolves local `template:` paths the same way as `workflow push`, and `workflow templates smoke --data` help documents the JSON fixture file path.
+- 56f8c5f: `eigenpal workflow push` keeps local Office templates inside the workflow project, including when a path uses `../` or a symlink. Files outside that directory need `--allow-external-templates`. Push validates the workflow and version before uploading, creates new template resources instead of moving shared `tmpl_…` pointers, and fully removes those unpublished uploads if publish does not succeed.
+- 56f8c5f: When resolving a workflow by `wf_…` id, connection failures, auth errors, and server outages now surface their normal CLI messages instead of being misreported as "workflow not found."
+- 56f8c5f: `eigenpal workflow templates` uploads, inspects, replaces, and deletes workspace DOCX/XLSX templates, and can smoke-fill a local file or a `tmpl_…` id with a JSON fixture. `workflow validate --online` checks live template metadata, and `workflow push` uploads source-controlled `template: ./file.xlsx` paths without writing environment-specific ids back into YAML.
+- 56f8c5f: The workflow step catalog now includes `transform.json-to-xlsx`, so `eigenpal workflow step-type` and the bundled skill reference document how to write JSON rows to an Excel workbook.
+- 56f8c5f: `eigenpal models list` shows the text, vision, and OCR models your current environment can use. `--json` is the scripting path. Online workflow validation now rejects selected models that are not configured for the tenant, without treating that as a live provider outage.
+- 56f8c5f: CLI skill and step guidance now distinguish workspace `tmpl_...` templates from Git agent templates, document the Git-backed template authoring workflow, and cover DOCX and XLSX filling for YAML workflows. XLSX examples use `{placeholder}` / `{table:array.prop}` in the spreadsheet and `tmpl_...` IDs — not `{{placeholder}}` in the file and not file IDs.
+- 56f8c5f: `eigenpal runs artifacts inspect` returns structured JSON for XLSX run outputs (sheet names, headers, typed rows) with safe size limits, and `eigenpal runs compare` now diffs spreadsheet artifacts by workbook content instead of ZIP bytes.
+
 ## 0.13.0
 
 ### Minor Changes

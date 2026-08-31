@@ -10,11 +10,12 @@
  */
 
 import {
-  WORKFLOW_TOOL_METADATA,
   isTerminalExecutionStatus,
+  WORKFLOW_TOOL_METADATA,
   type WorkflowToolName,
 } from '@eigenpal/types';
 import type { SchemaQualityWarning } from '@eigenpal/workflow-yaml';
+import { parseWorkflow, WorkflowValidationError, YamlParseError } from '@eigenpal/workflow-yaml';
 import { InvalidArgumentError, type Command } from 'commander';
 import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
@@ -27,6 +28,15 @@ import { ApiClient as Client } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { formatEigenpalDirIfAvailable } from '../../lib/format-eigenpal';
 import { action } from '../../lib/format-error';
+import {
+  cleanupCreatedWorkspaceTemplates,
+  finalizeCreatedWorkspaceTemplates,
+  loadLocalTemplatesForPush,
+  rewriteLocalTemplateYaml,
+  stageWorkspaceTemplatesForPush,
+  type ResolvedLocalTemplate,
+  type StagedWorkspaceTemplate,
+} from '../../lib/local-templates';
 import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
@@ -51,6 +61,7 @@ import {
   renderBatchDiffHuman,
 } from './experiment-compare';
 import { registerStepExecCommands } from './step-exec';
+import { registerTemplateCommands } from './templates';
 import {
   printIssues,
   registerAllValidateCommand,
@@ -321,6 +332,7 @@ YAML's \`name:\` field). Both:
   registerWorkflowCoreCommands(workflow);
   registerEvaluatorsCommands(workflow);
   registerDatasetCommands(workflow);
+  registerTemplateCommands(workflow);
   registerExperimentCommands(workflow);
   registerVersionsCommands(workflow);
   registerStepTypeCommands(workflow);
@@ -459,6 +471,10 @@ function registerWorkflowCoreCommands(parent: Command): void {
       '--set-version <semver>',
       'Push at this exact semver (e.g. 1.4.0). Mutually exclusive with `--bump` and with a top-level `version:` in the YAML. (Named `--set-version` to avoid the global `-v, --version` flag.)'
     )
+    .option(
+      '--allow-external-templates',
+      'Allow local template: paths whose real path is outside the workflow project directory (the folder that contains the YAML file). Off by default; ../ and symlink escapes are rejected.'
+    )
     .addHelpText(
       'after',
       `
@@ -478,6 +494,14 @@ per push). Passing both an explicit \`version:\` in the YAML and
 flag would otherwise shadow it. Validation failures come back as
 \`{ issues: [{ field, message, code }], hint }\`; follow the hint and re-run
 \`workflow step-type get <type>\` to see the authoritative config schema.
+
+Local \`template: ./templates/foo.xlsx\` paths are resolved with realpath
+inside the workflow project (the directory that contains the YAML file).
+\`../\` and symlink escapes are rejected unless you pass
+\`--allow-external-templates\`. Push validates the workflow and version
+first, then uploads unmatched files as new tmpl_ resources (checksum matches
+are reused). Shared tmpl_ pointers are not moved. If publish fails, those
+new uploads are deleted. The file on disk is not rewritten.
 `
     );
   addJsonFlag(withBaseUrl(pushCmd)).action(
@@ -488,6 +512,7 @@ flag would otherwise shadow it. Validation failures come back as
           workflowId?: string;
           bump?: string;
           setVersion?: string;
+          allowExternalTemplates?: boolean;
           json?: boolean;
         }
       ) => {
@@ -531,31 +556,31 @@ flag would otherwise shadow it. Validation failures come back as
 
         const yamlOnDisk = await fs.readFile(filePath, 'utf8');
         const client = buildClient(opts);
+        const definition = parseWorkflowOrThrow(yamlOnDisk);
+        const loadedTemplates = await loadLocalTemplatesForPush(filePath, definition.steps, {
+          allowExternal: Boolean(opts.allowExternalTemplates),
+        });
+
+        let workflowId: string | undefined;
+        let nextVersion: string | undefined;
+        let cliWantsRewrite = false;
 
         if (opts.workflowId) {
           // Resolve `--workflow-id <wf_… or slug>` to a concrete id before
-          // any API call so error messages, splice logic and PATCH URLs all
-          // see the same value.
-          const workflowId = await resolveWorkflowId(client, opts.workflowId);
-          // Update path: the server's POST /api/workflows/:id/versions
-          // requires a `version` body param. Resolve it from one of three
-          // mutually-exclusive sources:
-          //   1) `--version X.Y.Z` — explicit override
-          //   2) `--bump patch|minor|major` — read server's current, compute next
-          //   3) top-level `version:` in the YAML (legacy hand-edit flow)
+          // any API mutation so error messages, splice logic and PATCH URLs
+          // all see the same value.
+          workflowId = await resolveWorkflowId(client, opts.workflowId);
           const yamlVersion = extractWorkflowVersion(yamlOnDisk);
-          const cliWantsRewrite = Boolean(opts.bump || opts.setVersion);
+          cliWantsRewrite = Boolean(opts.bump || opts.setVersion);
           if (cliWantsRewrite && yamlVersion) {
             throw new Error(
               `--${opts.bump ? 'bump' : 'set-version'} conflicts with the top-level \`version: ${yamlVersion}\` in ${filePath}. Remove the YAML field, or omit the flag.`
             );
           }
 
-          let nextVersion: string | undefined;
           if (opts.setVersion) {
             nextVersion = opts.setVersion;
           } else if (opts.bump) {
-            // Need the server's current version to compute the next one.
             const wf = (await client.get(`/api/workflows/${workflowId}`)) as {
               version?: string | null;
             };
@@ -582,28 +607,7 @@ flag would otherwise shadow it. Validation failures come back as
             process.exit(1);
           }
 
-          // If the CLI computed the version, splice it into the YAML so the
-          // server sees a single source of truth for `version` (matches the
-          // shape the YAML legacy flow already produces).
-          const yamlToSend = cliWantsRewrite
-            ? spliceWorkflowVersion(yamlOnDisk, nextVersion)
-            : yamlOnDisk;
-
-          const result = (await client.post(`/api/workflows/${workflowId}/versions`, {
-            yaml: yamlToSend,
-            version: nextVersion,
-          })) as {
-            id?: string;
-            version?: string;
-            warnings?: SchemaQualityWarning[];
-            [k: string]: unknown;
-          };
-          if (opts.json) {
-            printJson(result);
-            return;
-          }
-          success(`Pushed ${ui.bold(workflowId)} (v${result.version ?? nextVersion})`);
-          printSchemaQualityWarnings(result.warnings);
+          await preflightVersionConflict(client, workflowId, nextVersion);
         } else {
           // Create path: server defaults to 1.0.0 if no version is sent.
           // `--bump` is meaningless when there's no current version to bump
@@ -613,39 +617,76 @@ flag would otherwise shadow it. Validation failures come back as
               '--bump requires --workflow-id (need a current version to bump from). For a new workflow, use --set-version <X.Y.Z> or omit both.'
             );
           }
-          const yamlToSend =
-            opts.setVersion && !extractWorkflowVersion(yamlOnDisk)
-              ? spliceWorkflowVersion(yamlOnDisk, opts.setVersion)
-              : yamlOnDisk;
-          const createVersion = opts.setVersion ?? extractWorkflowVersion(yamlToSend) ?? undefined;
-          // Server returns { workflow, version, history } from createWorkflowWithVersion.
-          // The earlier shape (result.id / result.version as a string) was never live
-          // here — `[object Object]` slips through if you read result.version directly.
-          const result = (await client.post('/api/workflows', {
-            yaml: yamlToSend,
-            ...(createVersion ? { version: createVersion } : {}),
-          })) as {
-            workflow?: { id?: string; currentVersion?: { version?: string } };
-            version?: { version?: string };
-            history?: { id?: string };
-            warnings?: SchemaQualityWarning[];
-            // Older shapes — kept as defensive fallbacks.
-            id?: string;
-            currentVersion?: { version?: string };
-            [k: string]: unknown;
-          };
-          if (opts.json) {
-            printJson(result);
-            return;
+          nextVersion = opts.setVersion ?? extractWorkflowVersion(yamlOnDisk) ?? undefined;
+        }
+
+        await preflightWorkflowValidate(client, yamlOnDisk, workflowId);
+
+        let created: StagedWorkspaceTemplate[] = [];
+        let resolvedTemplates: ResolvedLocalTemplate[] = [];
+        try {
+          const staged = await stageWorkspaceTemplatesForPush(client, loadedTemplates);
+          created = staged.created;
+          resolvedTemplates = staged.resolved;
+          const yamlWithTemplates = rewriteLocalTemplateYaml(yamlOnDisk, resolvedTemplates);
+          reportResolvedTemplates(resolvedTemplates, Boolean(opts.json));
+
+          if (workflowId) {
+            const yamlToSend = cliWantsRewrite
+              ? spliceWorkflowVersion(yamlWithTemplates, nextVersion!)
+              : yamlWithTemplates;
+
+            const result = (await client.post(`/api/workflows/${workflowId}/versions`, {
+              yaml: yamlToSend,
+              version: nextVersion,
+            })) as {
+              id?: string;
+              version?: string;
+              warnings?: SchemaQualityWarning[];
+              [k: string]: unknown;
+            };
+            await finalizeCreatedWorkspaceTemplates(client, created);
+            if (opts.json) {
+              printJson(withLocalTemplates(result, resolvedTemplates));
+              return;
+            }
+            success(`Pushed ${ui.bold(workflowId)} (v${result.version ?? nextVersion})`);
+            printSchemaQualityWarnings(result.warnings);
+          } else {
+            const yamlToSend =
+              opts.setVersion && !extractWorkflowVersion(yamlWithTemplates)
+                ? spliceWorkflowVersion(yamlWithTemplates, opts.setVersion)
+                : yamlWithTemplates;
+            const createVersion =
+              opts.setVersion ?? extractWorkflowVersion(yamlToSend) ?? undefined;
+            const result = (await client.post('/api/workflows', {
+              yaml: yamlToSend,
+              ...(createVersion ? { version: createVersion } : {}),
+            })) as {
+              workflow?: { id?: string; currentVersion?: { version?: string } };
+              version?: { version?: string };
+              history?: { id?: string };
+              warnings?: SchemaQualityWarning[];
+              id?: string;
+              currentVersion?: { version?: string };
+              [k: string]: unknown;
+            };
+            await finalizeCreatedWorkspaceTemplates(client, created);
+            if (opts.json) {
+              printJson(withLocalTemplates(result, resolvedTemplates));
+              return;
+            }
+            const id = result.workflow?.id ?? result.id ?? '?';
+            const ver =
+              result.version?.version ??
+              result.workflow?.currentVersion?.version ??
+              result.currentVersion?.version ??
+              '?';
+            success(`Created ${ui.bold(id)} (v${ver})`);
+            printSchemaQualityWarnings(result.warnings);
           }
-          const id = result.workflow?.id ?? result.id ?? '?';
-          const ver =
-            result.version?.version ??
-            result.workflow?.currentVersion?.version ??
-            result.currentVersion?.version ??
-            '?';
-          success(`Created ${ui.bold(id)} (v${ver})`);
-          printSchemaQualityWarnings(result.warnings);
+        } catch (err) {
+          await rethrowAfterTemplateCleanup(client, created, err);
         }
       }
     )
@@ -684,6 +725,102 @@ flag would otherwise shadow it. Validation failures come back as
 // inline rather than pulling in a `semver` dep: the surface is small and
 // adding npm deps to the bundled CLI raises the install size for everyone.
 // ---------------------------------------------------------------------------
+
+function withLocalTemplates(
+  result: Record<string, unknown>,
+  resolved: ResolvedLocalTemplate[]
+): Record<string, unknown> {
+  if (resolved.length === 0) return result;
+  return { ...result, localTemplates: resolved };
+}
+
+function parseWorkflowOrThrow(yamlText: string) {
+  try {
+    return parseWorkflow(yamlText);
+  } catch (err) {
+    if (err instanceof YamlParseError) {
+      const where = err.line !== undefined ? ` (line ${err.line})` : '';
+      throw new Error(`${err.message}${where}`);
+    }
+    if (err instanceof WorkflowValidationError) {
+      const detail = err.errors
+        .map(
+          (issue) =>
+            `${issue.path.length > 0 ? issue.path.map(String).join('.') : '(root)'}: ${issue.message}`
+        )
+        .join('\n  ');
+      throw new Error(detail ? `Workflow YAML is invalid:\n  ${detail}` : err.message);
+    }
+    throw err;
+  }
+}
+
+async function preflightWorkflowValidate(
+  client: ApiClient,
+  yaml: string,
+  workflowId?: string
+): Promise<void> {
+  const res = (await client.post('/api/workflows/validate', {
+    yaml,
+    ...(workflowId ? { workflowId } : {}),
+  })) as { valid?: boolean; issues?: Array<{ field?: string; message: string }> };
+  const issues = Array.isArray(res.issues) ? res.issues : [];
+  if (res.valid === false || issues.length > 0) {
+    const detail = issues
+      .map((issue) => `${issue.field ?? '(root)'}: ${issue.message}`)
+      .join('\n  ');
+    throw new Error(
+      issues.length > 0 ? `Workflow validation failed:\n  ${detail}` : 'Workflow validation failed.'
+    );
+  }
+}
+
+async function preflightVersionConflict(
+  client: ApiClient,
+  workflowId: string,
+  nextVersion: string
+): Promise<void> {
+  const listed = (await client.get(`/api/workflows/${workflowId}/versions`, {
+    limit: '100',
+    offset: '0',
+  })) as { data?: Array<{ version?: string | null }> };
+  const versions = Array.isArray(listed.data) ? listed.data : [];
+  if (versions.some((row) => row.version === nextVersion)) {
+    throw new Error(
+      `Version ${nextVersion} already exists for ${workflowId}. Choose a new --set-version / --bump, or change the YAML version.`
+    );
+  }
+}
+
+async function rethrowAfterTemplateCleanup(
+  client: ApiClient,
+  created: readonly StagedWorkspaceTemplate[],
+  err: unknown
+): Promise<never> {
+  const reason = err instanceof Error ? err.message : String(err);
+  if (created.length === 0) throw err;
+  const cleanup = await cleanupCreatedWorkspaceTemplates(client, created);
+  const createdIds = created.map((row) => row.id);
+  if (cleanup.failed.length > 0) {
+    const leftover = cleanup.failed.map((row) => `${row.id} (${row.error})`).join(', ');
+    throw new Error(
+      `${reason}. Failed to hard-clean staged templates ${leftover}. Created during this push: ${createdIds.join(', ')}.`
+    );
+  }
+  throw new Error(
+    `${reason}. Removed staged template${createdIds.length === 1 ? '' : 's'} ${createdIds.join(', ')}.`
+  );
+}
+
+function reportResolvedTemplates(resolved: ResolvedLocalTemplate[], json: boolean): void {
+  if (resolved.length === 0 || json) return;
+  for (const row of resolved) {
+    const verb = row.action === 'reused' ? 'reused checksum' : 'uploaded';
+    success(
+      `Template ${ui.bold(row.path)} → ${ui.bold(row.templateId)} @ ${ui.bold(row.templateRevisionId)} ${ui.dim(`(${verb}, ${row.sha256.slice(0, 12)}…)`)}`
+    );
+  }
+}
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 type BumpLevel = 'patch' | 'minor' | 'major';
@@ -2410,6 +2547,10 @@ client-side so HEAD is never dropped unless it is off the requested page.
     .description(descriptionFor('workflow_create_version'))
     .option('--file <yaml>', 'Path to workflow YAML. Mutually exclusive with --from.')
     .option(
+      '--allow-external-templates',
+      'Allow local template paths outside the workflow project. Use only for trusted YAML.'
+    )
+    .option(
       '--from <version-id>',
       'Existing version id to copy into a new tagged snapshot. Leaves the source tag unchanged. Mutually exclusive with --file.'
     )
@@ -2434,6 +2575,10 @@ Pass exactly one of \`--file\` or \`--from\`. \`--set-version\` is the tag on
 the new row; copying never retags the source. Default is to activate the new
 version (same as the public API). \`--no-activate\` keeps a detached candidate
 off live traffic until \`workflow versions promote\`.
+
+With \`--file\`, local \`template: ./templates/foo.xlsx\` paths are uploaded the
+same way as \`workflow push\`: the file on disk is not rewritten; only the YAML
+sent to the server is replaced with \`templateId\` + \`templateRevisionId\`.
 `
     );
   addJsonFlag(withBaseUrl(createCmd)).action(
@@ -2445,32 +2590,52 @@ off live traffic until \`workflow versions promote\`.
           from?: string;
           setVersion?: string;
           activate?: boolean;
+          allowExternalTemplates?: boolean;
           json?: boolean;
         }
       ) => {
         let yaml: string | undefined;
+        let resolvedTemplates: ResolvedLocalTemplate[] = [];
+        let created: StagedWorkspaceTemplate[] = [];
+        let yamlOnDisk: string | undefined;
+        let loadedTemplates: Awaited<ReturnType<typeof loadLocalTemplatesForPush>> = [];
         if (opts.file) {
-          yaml = await fs.readFile(opts.file, 'utf8');
+          yamlOnDisk = await fs.readFile(opts.file, 'utf8');
+          const definition = parseWorkflowOrThrow(yamlOnDisk);
+          loadedTemplates = await loadLocalTemplatesForPush(opts.file, definition.steps, {
+            allowExternal: Boolean(opts.allowExternalTemplates),
+          });
         }
         const resolved = resolveWorkflowVersionCreateRequest({
           file: opts.file,
           from: opts.from,
           setVersion: opts.setVersion,
-          yamlVersion: yaml ? extractWorkflowVersion(yaml) : null,
+          yamlVersion: yamlOnDisk ? extractWorkflowVersion(yamlOnDisk) : null,
         });
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        if (opts.file && yamlOnDisk) {
+          await preflightVersionConflict(client, workflowId, resolved.version);
+          await preflightWorkflowValidate(client, yamlOnDisk, workflowId);
+          const staged = await stageWorkspaceTemplatesForPush(client, loadedTemplates);
+          created = staged.created;
+          resolvedTemplates = staged.resolved;
+          yaml = rewriteLocalTemplateYaml(yamlOnDisk, resolvedTemplates);
+          reportResolvedTemplates(resolvedTemplates, Boolean(opts.json));
+        }
         const activate = opts.activate !== false;
         const body =
           resolved.source === 'yaml'
             ? { yaml, version: resolved.version, activate }
             : { historyId: opts.from, version: resolved.version, activate };
 
-        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const result = (await client.post(
-          automationVersionsPath(workflowId),
-          body
-        )) as PublicWorkflowVersion;
+        const result = (await client
+          .post(automationVersionsPath(workflowId), body)
+          .catch((err) =>
+            rethrowAfterTemplateCleanup(client, created, err)
+          )) as PublicWorkflowVersion;
+        await finalizeCreatedWorkspaceTemplates(client, created);
         if (opts.json) {
-          printJson(result);
+          printJson(withLocalTemplates(result as Record<string, unknown>, resolvedTemplates));
           return;
         }
         const id = typeof result.id === 'string' ? result.id : '?';

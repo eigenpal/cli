@@ -17,6 +17,7 @@ export type {
 // OCR Client
 export type {
   OCRClient,
+  OCRClientCapabilities,
   OCRClientConfig,
   OCRFigure,
   OCRKeyValue,

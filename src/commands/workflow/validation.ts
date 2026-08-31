@@ -32,6 +32,11 @@ import { parse as parseYaml } from 'yaml';
 import { ApiClient } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
+import {
+  countTemplateSteps,
+  diagnoseTemplateSteps,
+  type TemplateDiagnostic,
+} from '../../lib/template-diagnostics';
 import { error, info, success, ui, warn, withBaseUrl } from '../../lib/ui';
 
 interface ValidationIssue {
@@ -89,12 +94,16 @@ function validateWorkflowYaml(path: string): {
   warnings: SchemaQualityWarning[];
   /** action.invoke-workflow step count — drives the `--online` nudge. */
   invokeStepCount: number;
+  templateStepCount: number;
+  steps: unknown;
 } {
   if (!existsSync(path)) {
     return {
       issues: [{ field: path, message: 'File not found.' }],
       warnings: [],
       invokeStepCount: 0,
+      templateStepCount: 0,
+      steps: [],
     };
   }
   const text = readFileSync(path, 'utf-8');
@@ -106,7 +115,13 @@ function validateWorkflowYaml(path: string): {
     } catch {
       warnings = [];
     }
-    return { issues: [], warnings, invokeStepCount: countInvokeWorkflowSteps(definition.steps) };
+    return {
+      issues: [],
+      warnings,
+      invokeStepCount: countInvokeWorkflowSteps(definition.steps),
+      templateStepCount: countTemplateSteps(definition.steps),
+      steps: definition.steps,
+    };
   } catch (err) {
     if (err instanceof YamlParseError) {
       const where = err.line !== undefined ? ` (line ${err.line})` : '';
@@ -114,6 +129,8 @@ function validateWorkflowYaml(path: string): {
         issues: [{ field: 'yaml', message: `${err.message}${where}` }],
         warnings: [],
         invokeStepCount: 0,
+        templateStepCount: 0,
+        steps: [],
       };
     }
     if (err instanceof WorkflowValidationError) {
@@ -124,12 +141,16 @@ function validateWorkflowYaml(path: string): {
         })),
         warnings: [],
         invokeStepCount: 0,
+        templateStepCount: 0,
+        steps: [],
       };
     }
     return {
       issues: [{ field: '(root)', message: err instanceof Error ? err.message : String(err) }],
       warnings: [],
       invokeStepCount: 0,
+      templateStepCount: 0,
+      steps: [],
     };
   }
 }
@@ -140,12 +161,64 @@ function validateWorkflowYaml(path: string): {
  * validation cannot resolve invoke targets (they live in the server DB), so
  * these references go unchecked unless the user runs `--online` (or pushes).
  */
-function printInvokeOnlineHint(invokeStepCount: number, online: boolean | undefined): void {
-  if (online || invokeStepCount === 0) return;
-  const plural = invokeStepCount === 1 ? '' : 's';
-  info(
-    `${invokeStepCount} action.invoke-workflow step${plural} not checked locally. Run \`validate --online\` (or push) to validate invoke targets, input types, and cycles against the server.`
+function printInvokeOnlineHint(
+  invokeStepCount: number,
+  templateStepCount: number,
+  online: boolean | undefined
+): void {
+  if (online) return;
+  if (invokeStepCount > 0) {
+    const plural = invokeStepCount === 1 ? '' : 's';
+    info(
+      `${invokeStepCount} action.invoke-workflow step${plural} not checked locally. Run \`validate --online\` (or push) to validate invoke targets, input types, and cycles against the server.`
+    );
+  }
+  if (templateStepCount > 0) {
+    const plural = templateStepCount === 1 ? '' : 's';
+    info(
+      `${templateStepCount} transform.template step${plural} with tmpl_… ids are not checked against live template metadata unless you pass \`--online\`. Local \`template:\` paths are inspected on disk either way.`
+    );
+  }
+}
+
+function printTemplateDiagnostics(path: string, diagnostics: TemplateDiagnostic[]): boolean {
+  if (diagnostics.length === 0) return true;
+  const errors = diagnostics.filter((item) => item.severity === 'error');
+  const warnings = diagnostics.filter((item) => item.severity === 'warning');
+  if (warnings.length > 0) {
+    warn(
+      `transform.template ${ui.dim(`(${path})`)}: ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`
+    );
+    for (const item of warnings) {
+      warn(`  ${ui.dim(item.field)} ${item.message}`);
+    }
+  }
+  if (errors.length === 0) return true;
+  return printIssues(
+    'transform.template',
+    path,
+    errors.map((item) => ({ field: item.field, message: item.message }))
   );
+}
+
+async function runTemplateDiagnostics(
+  workflowFile: string,
+  steps: unknown,
+  opts: OnlineOpt
+): Promise<boolean> {
+  let client: ApiClient | undefined;
+  if (opts.online) {
+    const config = resolveConfig(opts);
+    requireApiKey(config);
+    client = new ApiClient(config);
+  }
+  const diagnostics = await diagnoseTemplateSteps({
+    workflowFile,
+    steps,
+    client,
+    allowExternal: Boolean(opts.allowExternalTemplates),
+  });
+  return printTemplateDiagnostics(workflowFile, diagnostics);
 }
 
 function printSchemaQualityWarnings(path: string, warnings: SchemaQualityWarning[]): void {
@@ -441,6 +514,7 @@ interface DirOpt {
 interface OnlineOpt extends DirOpt {
   online?: boolean;
   baseUrl?: string;
+  allowExternalTemplates?: boolean;
 }
 
 function rootDir(opts: DirOpt): string {
@@ -481,14 +555,21 @@ export function registerAllValidateCommand(parent: Command): void {
     )
     .option(
       '--online',
-      'Also validate cross-workflow action.invoke-workflow references against the server (needs auth). Catches target-not-found, input type mismatches, missing/unknown input keys, undeclared output, and invoke cycles that local validation cannot see.'
+      'Authenticate and also validate action.invoke-workflow targets, transform.template tmpl_… references, and explicitly selected OCR/vision/text models against this tenant environment (existence, format, revision pairing, tokens vs data, XLSX {{ }} mistakes, configured catalog). Local template: paths are inspected on disk with or without this flag. Model checks use the configured catalog only — they do not probe live provider health.'
+    )
+    .option(
+      '--allow-external-templates',
+      'Allow local template: paths whose real path is outside the workflow project directory (the folder that contains the YAML file). Off by default; ../ and symlink escapes are rejected.'
     )
     .addHelpText(
       'after',
       '\nNote\n' +
-        '  Local validation cannot resolve action.invoke-workflow targets (they live\n' +
-        '  in the server DB), so invoke reference/type/cycle errors only surface at\n' +
-        '  push — or run `validate --online` to check them before pushing.\n'
+        '  Local validation cannot resolve action.invoke-workflow targets, tmpl_…\n' +
+        '  template ids, or whether selected OCR/vision/text models exist in this\n' +
+        '  environment (they live on the server). Run `validate --online` to check\n' +
+        '  them before pushing. Source-controlled `template: ./file.xlsx` paths are\n' +
+        '  inspected on disk without --online and must stay inside the workflow\n' +
+        '  project unless you pass --allow-external-templates.\n'
     );
   withBaseUrl(cmd).action(
     action(async (path: string | undefined, opts: OnlineOpt) => {
@@ -502,8 +583,9 @@ export function registerAllValidateCommand(parent: Command): void {
         const wfOk = printIssues('workflow.yaml', target, wfResult.issues);
         if (wfOk) {
           printSchemaQualityWarnings(target, wfResult.warnings);
-          printInvokeOnlineHint(wfResult.invokeStepCount, opts.online);
+          printInvokeOnlineHint(wfResult.invokeStepCount, wfResult.templateStepCount, opts.online);
         }
+        const templateOk = wfOk ? await runTemplateDiagnostics(target, wfResult.steps, opts) : true;
         let onlineOk = true;
         if (wfOk && opts.online) {
           onlineOk = printIssues(
@@ -512,7 +594,7 @@ export function registerAllValidateCommand(parent: Command): void {
             await onlineInvokeIssues(readFileSync(target, 'utf-8'), opts)
           );
         }
-        if (!wfOk || !onlineOk) process.exit(1);
+        if (!wfOk || !templateOk || !onlineOk) process.exit(1);
         return;
       }
 
@@ -523,7 +605,7 @@ export function registerAllValidateCommand(parent: Command): void {
       const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
       if (wfOk) {
         printSchemaQualityWarnings(wfPath, wfResult.warnings);
-        printInvokeOnlineHint(wfResult.invokeStepCount, opts.online);
+        printInvokeOnlineHint(wfResult.invokeStepCount, wfResult.templateStepCount, opts.online);
       }
       const evOk = printIssues(
         'evaluators.yaml',
@@ -538,6 +620,10 @@ export function registerAllValidateCommand(parent: Command): void {
       // Online invoke check runs only when the local workflow shape is valid —
       // the server would just re-report the same parse/schema errors otherwise.
       let onlineOk = true;
+      const templateOk =
+        wfOk && existsSync(wfFile)
+          ? await runTemplateDiagnostics(wfFile, wfResult.steps, opts)
+          : true;
       if (wfOk && opts.online && existsSync(wfFile)) {
         onlineOk = printIssues(
           'invoke refs (server)',
@@ -545,7 +631,7 @@ export function registerAllValidateCommand(parent: Command): void {
           await onlineInvokeIssues(readFileSync(wfFile, 'utf-8'), opts)
         );
       }
-      if (!wfOk || !evOk || !dsOk || !onlineOk) process.exit(1);
+      if (!wfOk || !evOk || !dsOk || !templateOk || !onlineOk) process.exit(1);
     })
   );
 }

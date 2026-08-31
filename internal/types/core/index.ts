@@ -7,6 +7,8 @@ export {
   BaseEntitySchema,
   ID_PREFIXES,
   JsonSchemaSchema,
+  TemplateIdSchema,
+  TemplateRevisionIdSchema,
   TimestampSchema,
   generateId,
   toJsonSchema,

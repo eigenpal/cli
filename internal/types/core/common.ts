@@ -13,6 +13,7 @@ export const ID_PREFIXES = {
   STEP_EXECUTION: 'step',
   FILE: 'file',
   TEMPLATE: 'tmpl',
+  TEMPLATE_REVISION: 'tmpr',
   USER: 'user',
   TENANT: 'org',
   TENANT_INVITE: 'inv',
@@ -86,6 +87,22 @@ export function generateId(prefix?: string): string {
   return prefix ? `${prefix}_${id}` : id;
 }
 
+const NANOID_SUFFIX_PATTERN = '[A-Za-z0-9_-]{21}';
+
+export const TemplateIdSchema = z
+  .string()
+  .regex(
+    new RegExp(`^${ID_PREFIXES.TEMPLATE}_${NANOID_SUFFIX_PATTERN}$`),
+    'Expected tmpl_… id; file_… ids are not public template identities'
+  );
+
+export const TemplateRevisionIdSchema = z
+  .string()
+  .regex(
+    new RegExp(`^${ID_PREFIXES.TEMPLATE_REVISION}_${NANOID_SUFFIX_PATTERN}$`),
+    'Expected tmpr_… id'
+  );
+
 /**
  * Timestamp schema - accepts Date or ISO string
  */
@@ -126,7 +143,7 @@ export function toJsonSchema(schema: z.ZodType): JsonSchema7Type {
 }
 
 /**
- * Template placeholder definition for DOCX templates
+ * Template placeholder definition (auto-extracted for DOCX templates; XLSX placeholders are not auto-extracted)
  */
 export interface TemplatePlaceholder {
   name: string; // e.g., "items.title" for nested

@@ -21,6 +21,7 @@ Inspect, watch, and manage workflow, agent, and eval runs.
   - [`eigenpal runs cancel [options] <run-id>`](#eigenpal-runs-cancel-options-run-id)
   - [`eigenpal runs artifacts|artifact list|ls [options] <run-id>`](#eigenpal-runs-artifactsartifact-listls-options-run-id)
   - [`eigenpal runs artifacts|artifact fetch [options] <run-id>`](#eigenpal-runs-artifactsartifact-fetch-options-run-id)
+  - [`eigenpal runs artifacts|artifact inspect [options] [run-id] [artifact-path]`](#eigenpal-runs-artifactsartifact-inspect-options-run-id-artifact-path)
   - [`eigenpal runs reviews|rv update [options] <run-id>`](#eigenpal-runs-reviewsrv-update-options-run-id)
   - [`eigenpal runs reviews|rv close [options] <run-id>`](#eigenpal-runs-reviewsrv-close-options-run-id)
   - [`eigenpal runs reviews|rv clear [options] <run-id>`](#eigenpal-runs-reviewsrv-clear-options-run-id)
@@ -42,7 +43,8 @@ runs
 ├── promote <run-id>
 ├── artifacts|artifact
 │   ├── list|ls <run-id>
-│   └── fetch <run-id>
+│   ├── fetch <run-id>
+│   └── inspect [run-id] [artifact-path]
 ├── trace <run-id>
 ├── reviews|rv
 │   ├── update <run-id>
@@ -63,23 +65,24 @@ runs
 
 ### Core
 
-| Command                                                             | Description                                                                                                      |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `eigenpal runs list\|ls [options] [source]`                         | List runs across workflows and agents, optionally scoped to one source.                                          |
-| `eigenpal runs get [options] <run-id>`                              | Get one run.                                                                                                     |
-| `eigenpal runs compare\|diff [options] <reference-run-id> <run-id>` | Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks. |
-| `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                                    |
-| `eigenpal runs promote [options] <run-id>`                          | Promote a run into a dataset example on the run's automation.                                                    |
-| `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                                         |
-| `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                                  |
-| `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                                    |
+| Command                                                             | Description                                                                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal runs list\|ls [options] [source]`                         | List runs across workflows and agents, optionally scoped to one source.                                                         |
+| `eigenpal runs get [options] <run-id>`                              | Get one run.                                                                                                                    |
+| `eigenpal runs compare\|diff [options] <reference-run-id> <run-id>` | Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes). |
+| `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                                                   |
+| `eigenpal runs promote [options] <run-id>`                          | Promote a run into a dataset example on the run's automation.                                                                   |
+| `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                                                        |
+| `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                                                 |
+| `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                                                   |
 
 ### Artifacts
 
-| Command                                                         | Description                                            |
-| --------------------------------------------------------------- | ------------------------------------------------------ |
-| `eigenpal runs artifacts\|artifact list\|ls [options] <run-id>` | List available run artifacts without downloading them. |
-| `eigenpal runs artifacts\|artifact fetch [options] <run-id>`    | Download run artifacts by canonical artifact path.     |
+| Command                                                                        | Description                                                                                                         |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal runs artifacts\|artifact list\|ls [options] <run-id>`                | List available run artifacts without downloading them.                                                              |
+| `eigenpal runs artifacts\|artifact fetch [options] <run-id>`                   | Download run artifacts by canonical artifact path.                                                                  |
+| `eigenpal runs artifacts\|artifact inspect [options] [run-id] [artifact-path]` | Inspect a run XLSX artifact as structured JSON (sheet names, headers, typed rows). Use --file for a local workbook. |
 
 ### Reviews
 
@@ -158,7 +161,7 @@ Get one run.
 
 ### `eigenpal runs compare|diff [options] <reference-run-id> <run-id>`
 
-Compare one run against another run. PDF/DOCX text comparison uses pdftotext/python3 and reports byte fallbacks.
+Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes).
 
 ### Arguments
 
@@ -309,6 +312,30 @@ Download run artifacts by canonical artifact path.
 | `--include <parts>` | no       | `"all"` | Comma-separated parts: output,input,metadata,issues,trace,lockfile,expected,all |
 | `--path <path>`     | no       | `[]`    | Fetch one exact artifact path from `artifacts list`; repeatable                 |
 | `--json`            | no       |         | Output a JSON summary of written artifacts                                      |
+
+### `eigenpal runs artifacts|artifact inspect [options] [run-id] [artifact-path]`
+
+Inspect a run XLSX artifact as structured JSON (sheet names, headers, typed rows). Use --file for a local workbook.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `run-id`        | no       | no       |             |
+| `artifact-path` | no       | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                                        |
+| ------------------ | -------- | ------- | ---------------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                                    |
+| `--json`           | no       |         | Output the raw server response as JSON                                             |
+| `--file <path>`    | no       |         | Inspect a local .xlsx/.xls file instead of downloading a run artifact              |
+| `--path <path>`    | no       |         | Canonical artifact path from `artifacts list` (alias for positional artifact-path) |
+| `--sheet <names>`  | no       |         | Comma-separated sheet names or zero-based indices to include                       |
+| `--max-sheets <n>` | no       |         | Maximum sheets to include (default 20)                                             |
+| `--max-rows <n>`   | no       |         | Maximum data rows per sheet (default 500)                                          |
+| `--max-cols <n>`   | no       |         | Maximum columns per sheet (default 50)                                             |
 
 ### `eigenpal runs reviews|rv update [options] <run-id>`
 

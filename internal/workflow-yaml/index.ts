@@ -14,6 +14,13 @@ export {
   type ValidationIssue,
 } from './parser';
 
+export {
+  collectLocalTemplateRefs,
+  collectPinnedTemplateRevisionIds,
+  collectPublishLocalTemplateIssues,
+  type LocalTemplateRef,
+} from './local-templates';
+
 export { needsUpgrade, upgradeWorkflow } from './upgrades';
 
 export { spliceWorkflowVersion, stripWorkflowVersion } from './version-field';

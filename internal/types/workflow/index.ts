@@ -57,6 +57,8 @@ export {
   getStepOutputSchema,
   getStepRetryCapability,
   getStepSchema,
+  isLegacyFileTemplateId,
+  isLocalTemplatePath,
   isOutputSchemaUnknown,
   listStepTypes,
   listStepTypesByCategory,

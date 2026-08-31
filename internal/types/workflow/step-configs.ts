@@ -13,8 +13,26 @@
  */
 
 import { z } from 'zod';
-import { toJsonSchema, type JsonSchema7Type } from '../core/common';
-import { ParseResultSchema } from '../parser/parser';
+import {
+  ID_PREFIXES,
+  TemplateIdSchema,
+  TemplateRevisionIdSchema,
+  toJsonSchema,
+  type JsonSchema7Type,
+} from '../core/common';
+import {
+  ParseModeSchema,
+  ParseResultSchema,
+  refineNativeParseModeConflicts,
+} from '../parser/parser';
+import {
+  JsonToXlsxColumnSchema,
+  JsonToXlsxLimitsSchema,
+  JsonToXlsxOutputSchema,
+  JsonToXlsxResolvedRowsSchema,
+  JsonToXlsxSheetNameSchema,
+  refineJsonToXlsxLayout,
+} from '../processor/configs/json-to-xlsx';
 import { compileTypedScript } from '../typed-script';
 import type { StepRetryCapability } from './retry';
 import { SCRIPT_FN_MAX_BYTES } from './script-function';
@@ -29,82 +47,81 @@ import { STEP_TYPES } from './steps';
  * ai.parse - Parse documents using OCR/LLM
  * Config goes in step.with
  */
-export const AiParseConfigSchema = z.object({
-  input: z.string().describe('Storage reference or template expression for the document'),
-  parseMode: z
-    .enum(['ocr', 'vision'])
-    .optional()
-    .describe(
-      'Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. Text and Office files always use native parsing.'
+export const AiParseConfigSchema = z
+  .object({
+    input: z.string().describe('Storage reference or template expression for the document'),
+    parseMode: ParseModeSchema.optional().describe(
+      'Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. `native` extracts PDF embedded text only and never calls OCR or vision. `native-or-ocr` extracts native text, runs page-quality diagnostics, and requests OCR when pages have detectable anomalies (empty, U+FFFD, lone surrogates, forbidden controls, unassigned/noncharacter, heavy PUA). Page selection, subset egress, and billing are provider-dependent. Valid-looking wrong text and literal "?" are not flagged. Text and Office files always use local parsing.'
     ),
-  ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
-  llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
-  figureModel: z
-    .string()
-    .optional()
-    .describe('Vision model used only for the optional figure-description pass'),
-  maxConcurrency: z
-    .number()
-    .min(1)
-    .max(10)
-    .default(3)
-    .optional()
-    .describe('Max concurrent VLM batch requests'),
-  pagesPerBatch: z
-    .number()
-    .min(1)
-    .max(20)
-    .default(5)
-    .optional()
-    .describe('Number of page images per VLM request'),
-  pdfRenderScale: z
-    .number()
-    .min(1)
-    .max(4)
-    .default(1)
-    .optional()
-    .describe(
-      'Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes.'
-    ),
-  imageQuality: z
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(85)
-    .optional()
-    .describe(
-      'JPEG quality for rendered PDF page images sent to VLM parsing. Higher values reduce compression artifacts at larger payload sizes.'
-    ),
-  prompt: z.string().optional().describe('Custom extraction prompt'),
-  languages: z.array(z.string()).optional().describe('OCR language hints'),
-  outputFormat: z
-    .enum(['plain', 'markdown', 'djot', 'html'])
-    .default('markdown')
-    .optional()
-    .describe(
-      'Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown.'
-    ),
-  nativeText: z
-    .boolean()
-    .default(false)
-    .optional()
-    .describe(
-      'Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text.'
-    ),
-  describeFigures: z
-    .boolean()
-    .optional()
-    .describe(
-      'Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext.'
-    ),
-  figureInstructions: z
-    .string()
-    .optional()
-    .describe(
-      'Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs.'
-    ),
-});
+    ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
+    llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
+    figureModel: z
+      .string()
+      .optional()
+      .describe('Vision model used only for the optional figure-description pass'),
+    maxConcurrency: z
+      .number()
+      .min(1)
+      .max(10)
+      .default(3)
+      .optional()
+      .describe('Max concurrent VLM batch requests'),
+    pagesPerBatch: z
+      .number()
+      .min(1)
+      .max(20)
+      .default(5)
+      .optional()
+      .describe('Number of page images per VLM request'),
+    pdfRenderScale: z
+      .number()
+      .min(1)
+      .max(4)
+      .default(1)
+      .optional()
+      .describe(
+        'Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes.'
+      ),
+    imageQuality: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(85)
+      .optional()
+      .describe(
+        'JPEG quality for rendered PDF page images sent to VLM parsing. Higher values reduce compression artifacts at larger payload sizes.'
+      ),
+    prompt: z.string().optional().describe('Custom extraction prompt'),
+    languages: z.array(z.string()).optional().describe('OCR language hints'),
+    outputFormat: z
+      .enum(['plain', 'markdown', 'djot', 'html'])
+      .default('markdown')
+      .optional()
+      .describe(
+        'Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown.'
+      ),
+    nativeText: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text.'
+      ),
+    describeFigures: z
+      .boolean()
+      .optional()
+      .describe(
+        'Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext.'
+      ),
+    figureInstructions: z
+      .string()
+      .optional()
+      .describe(
+        'Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs.'
+      ),
+  })
+  .superRefine(refineNativeParseModeConflicts);
 
 export const AiParseOutputSchema = ParseResultSchema.omit({ rawResponse: true });
 
@@ -807,31 +824,111 @@ export const TransformMergeOutputSchema = z.object({
 });
 
 /**
- * transform.template - Fill DOCX template with data
+ * True when a transform.template templateId looks like a files-table ID.
+ * Authoring/publish validation rejects these; the worker still resolves them
+ * for on-prem/legacy workflows.
+ */
+export function isLegacyFileTemplateId(templateId: string): boolean {
+  return templateId.startsWith(`${ID_PREFIXES.FILE}_`);
+}
+
+/**
+ * Source-controlled Office path used in YAML instead of a tmpl_ id.
+ * Resolved relative to the workflow file by the CLI on push.
+ */
+export function isLocalTemplatePath(value: string): boolean {
+  if (typeof value !== 'string' || value.length === 0) return false;
+  if (value.includes('\0') || value.includes('\\') || value.includes('://')) return false;
+  if (value.startsWith('/') || /^[A-Za-z]:/.test(value)) return false;
+  if (
+    value.startsWith(`${ID_PREFIXES.TEMPLATE}_`) ||
+    value.startsWith(`${ID_PREFIXES.TEMPLATE_REVISION}_`) ||
+    value.startsWith(`${ID_PREFIXES.FILE}_`)
+  ) {
+    return false;
+  }
+  return /^(?:\.\.?\/|[A-Za-z0-9._-]).*\.(docx|xlsx)$/i.test(value);
+}
+
+/**
+ * transform.template - Fill DOCX or XLSX template with data
  * Config goes in step.with
  */
-export const TransformTemplateConfigSchema = z.object({
-  templateId: z
-    .string()
-    .min(1, 'Template is required')
-    .describe('ID of the template from templates table'),
-  data: z
-    .record(z.string(), z.unknown())
-    .describe(
-      'Data object to merge into template. Each key must be explicitly defined - cannot pass a whole object as single expression'
+export const TransformTemplateConfigSchema = z
+  .object({
+    templateId: TemplateIdSchema.optional().describe(
+      'Workspace template ID (tmpl_...) from the Templates table (DOCX or XLSX). Git agent templates cannot be referenced here. File IDs (file_...) are not accepted. Mutually exclusive with `template`.'
     ),
-  outputFilename: z.string().optional().describe('Output filename - supports {{field}} syntax'),
-  highlightNotFound: z
-    .boolean()
-    .default(true)
-    .optional()
-    .describe('Highlight missing variables with red-colored text in the output document'),
-  notFoundText: z
-    .string()
-    .default('NOT FOUND')
-    .optional()
-    .describe('Text to display for missing variables when highlightNotFound is enabled'),
-});
+    template: z
+      .string()
+      .optional()
+      .describe(
+        'Local DOCX or XLSX path relative to the workflow YAML (e.g. ./templates/foo.xlsx). CLI push keeps the real path inside the workflow project unless you pass --allow-external-templates, uploads unmatched files as new tmpl_ resources, and does not rewrite the source YAML. Mutually exclusive with templateId.'
+      ),
+    templateRevisionId: TemplateRevisionIdSchema.optional().describe(
+      'Immutable template revision ID (tmpr_...). Pin this when executions must keep using the same template bytes after replacements. Requires templateId; local `template` paths are pinned automatically on push.'
+    ),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe(
+        'Data object to merge into template. Each key must be explicitly defined - cannot pass a whole object as single expression.'
+      ),
+    outputFilename: z
+      .string()
+      .optional()
+      .describe(
+        'Output filename - supports {{field}} syntax; .docx or .xlsx extension is added if omitted'
+      ),
+    highlightNotFound: z
+      .boolean()
+      .default(true)
+      .optional()
+      .describe(
+        'Highlight missing variables with red-colored text in the output document (DOCX only; ignored for XLSX)'
+      ),
+    notFoundText: z
+      .string()
+      .default('NOT FOUND')
+      .optional()
+      .describe(
+        'Text to display for missing variables when highlightNotFound is enabled (DOCX only; ignored for XLSX)'
+      ),
+  })
+  .superRefine((value, ctx) => {
+    const hasId = typeof value.templateId === 'string' && value.templateId.length > 0;
+    const hasPath = typeof value.template === 'string' && value.template.length > 0;
+    if (hasId && hasPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Set templateId or template, not both',
+        path: ['template'],
+      });
+    }
+    if (!hasId && !hasPath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'Provide templateId (tmpl_…) or a local template path such as ./templates/letter.docx',
+        path: ['templateId'],
+      });
+    }
+    if (hasPath && !isLocalTemplatePath(value.template!)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'template must be a relative .docx or .xlsx path (e.g. ./templates/foo.xlsx), not an absolute path or tmpl_/file_ id',
+        path: ['template'],
+      });
+    }
+    if (hasPath && value.templateRevisionId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'templateRevisionId requires templateId. Local template paths are pinned to the current revision on push.',
+        path: ['templateRevisionId'],
+      });
+    }
+  });
 
 export const TransformTemplateOutputSchema = z.object({
   fileId: z.string().describe('File ID from files table'),
@@ -900,6 +997,56 @@ export const TransformXlsxToJsonOutputSchema = z.object({
     .describe('Array of row objects (first row = headers as keys)'),
   fileId: z.string().optional().describe('File ID of stored CSV when outputCsv is true'),
 });
+
+/**
+ * transform.json-to-xlsx - Convert JSON rows into an XLSX spreadsheet file
+ * Config goes in step.with
+ *
+ * Authoring accepts a template expression for rows (string). After template
+ * resolution the worker requires an array of row objects. Column/sheet-name
+ * schemas and the sheets XOR columns+rows contract are shared with the
+ * processor config.
+ */
+const JsonToXlsxAuthoringRowsSchema = z
+  .union([
+    z
+      .string()
+      .min(1)
+      .describe(
+        'Template expression resolving to an array of row objects, e.g. {{ steps.extract.output.items }}'
+      ),
+    JsonToXlsxResolvedRowsSchema,
+  ])
+  .describe('Array of row objects, or a template expression that resolves to one');
+
+const JsonToXlsxSheetConfigSchema = z.object({
+  name: JsonToXlsxSheetNameSchema.optional(),
+  columns: z.array(JsonToXlsxColumnSchema).min(1).describe('Ordered columns for this sheet'),
+  rows: JsonToXlsxAuthoringRowsSchema,
+});
+
+export const TransformJsonToXlsxConfigSchema = z
+  .object({
+    filename: z
+      .string()
+      .optional()
+      .describe('Output filename — supports LiquidJS; .xlsx is added if omitted'),
+    columns: z
+      .array(JsonToXlsxColumnSchema)
+      .min(1)
+      .optional()
+      .describe('Ordered columns for a single-sheet workbook. Use sheets for multiple sheets.'),
+    rows: JsonToXlsxAuthoringRowsSchema.optional(),
+    sheets: z
+      .array(JsonToXlsxSheetConfigSchema)
+      .min(1)
+      .optional()
+      .describe('Multiple sheets. Do not combine with top-level columns/rows.'),
+    limits: JsonToXlsxLimitsSchema.optional(),
+  })
+  .superRefine(refineJsonToXlsxLayout);
+
+export const TransformJsonToXlsxOutputSchema = JsonToXlsxOutputSchema;
 
 /**
  * transform.script — Execute a TypeScript function in a QuickJS sandbox.
@@ -1558,6 +1705,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'transform.template': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.pdf-embed': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.xlsx-to-json': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.json-to-xlsx': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.script': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.text-chunker': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.regex-extract': DETERMINISTIC_RETRY_CAPABILITY,
@@ -1592,7 +1740,8 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     type: 'ai.parse',
     category: 'ai',
     name: 'Parse Document',
-    description: 'Extract text from documents (PDF, DOCX, images) using OCR or vision models',
+    description:
+      'Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models',
     configSchema: AiParseConfigSchema,
     outputSchema: AiParseOutputSchema,
     configInWith: true,
@@ -1708,7 +1857,7 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     category: 'transform',
     name: 'Fill Template',
     description:
-      'Fill a DOCX template with data from previous steps. Select a template in the workflow builder or provide a template ID from your workspace.',
+      'Fill a DOCX or XLSX workspace template with data from previous steps. Reference a tmpl_... id, or a local ./templates/file.xlsx path (CLI push uploads it). Git agent templates use the fill-template skill instead and cannot be referenced here. File IDs (file_...) are not accepted. Placeholders are auto-detected. In the Office file use {placeholder} and {table:array.prop}; {{placeholder}} in an XLSX file is rejected ({{ }} is YAML Liquid only).',
     configSchema: TransformTemplateConfigSchema,
     outputSchema: TransformTemplateOutputSchema,
     configInWith: true,
@@ -1730,6 +1879,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Convert XLSX spreadsheet to JSON array of row objects for use in scripts or downstream steps',
     configSchema: TransformXlsxToJsonConfigSchema,
     outputSchema: TransformXlsxToJsonOutputSchema,
+    configInWith: true,
+  },
+  'transform.json-to-xlsx': {
+    type: 'transform.json-to-xlsx',
+    category: 'transform',
+    name: 'JSON to XLSX',
+    description:
+      'Convert JSON rows into an XLSX spreadsheet. Pair with transform.xlsx-to-json. Formula-looking strings stay text; nested cell values are rejected.',
+    configSchema: TransformJsonToXlsxConfigSchema,
+    outputSchema: TransformJsonToXlsxOutputSchema,
     configInWith: true,
   },
   'transform.script': {
@@ -2022,6 +2181,8 @@ export type TransformMergeConfig = z.infer<typeof TransformMergeConfigSchema>;
 export type TransformTemplateConfig = z.infer<typeof TransformTemplateConfigSchema>;
 export type TransformPdfEmbedConfig = z.infer<typeof TransformPdfEmbedConfigSchema>;
 export type TransformPdfEmbedOutput = z.infer<typeof TransformPdfEmbedOutputSchema>;
+export type TransformJsonToXlsxConfig = z.infer<typeof TransformJsonToXlsxConfigSchema>;
+export type TransformJsonToXlsxOutput = z.infer<typeof TransformJsonToXlsxOutputSchema>;
 export type TransformScriptConfig = z.infer<typeof TransformScriptConfigSchema>;
 export type TransformTextChunkerConfig = z.infer<typeof TransformTextChunkerConfigSchema>;
 export type TransformTextChunkerOutput = z.infer<typeof TransformTextChunkerOutputSchema>;

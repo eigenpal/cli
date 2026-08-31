@@ -9,7 +9,11 @@ import {
   type LocalFileRef,
   type S3FileRef,
 } from '../../files/runtime-file-ref';
-import { ParseResultSchema } from '../../parser/parser';
+import {
+  ParseModeSchema,
+  ParseResultSchema,
+  refineNativeParseModeConflicts,
+} from '../../parser/parser';
 
 /**
  * Document Parser Processor Schemas
@@ -43,10 +47,9 @@ export const DocumentParserOutputSchema = ParseResultSchema;
 export const DocumentParserConfigSchema = z
   .object({
     // Model selection for PDF/image parsing
-    parseMode: z
-      .enum(['ocr', 'vision'])
-      .optional()
-      .describe('Base parser for PDF/image inputs. OCR is the default.'),
+    parseMode: ParseModeSchema.optional().describe(
+      'Base parser for PDF/image inputs. OCR is the default. `native` extracts PDF text only (never OCR/vision). `native-or-ocr` requests OCR when pages have detectable native-text anomalies (empty, U+FFFD, lone surrogates, forbidden controls, unassigned/noncharacter, heavy PUA). Page selection, subset egress, and billing are provider-dependent. Valid-looking wrong text and literal "?" are not flagged.'
+    ),
     ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
     llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
     figureModel: z
@@ -115,6 +118,7 @@ export const DocumentParserConfigSchema = z
         'Format for extracted text. Only the native (Kreuzberg) parser uses this — OCR/VLM always emit markdown.'
       ),
   })
+  .superRefine(refineNativeParseModeConflicts)
   .prefault({});
 
 export type DocumentParserInput = z.infer<typeof DocumentParserInputSchema>;

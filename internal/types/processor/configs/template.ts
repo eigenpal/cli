@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { TemplateIdSchema, TemplateRevisionIdSchema } from '../../core/common';
 
 /**
  * Template Processor Schemas
  *
- * Renders DOCX templates with data using docxtemplater.
- * Supports {{placeholder}} syntax with format preservation.
+ * Renders DOCX and XLSX templates with data (docxtemplater and xlsx-template).
+ * DOCX supports {placeholder} syntax, loops, and missing-value highlighting.
+ * XLSX uses {placeholder} and {table:array.prop} row syntax; highlighting is DOCX-only.
  */
 
 export const TemplateInputSchema = z.object({
@@ -16,7 +18,15 @@ export const TemplateOutputSchema = z.object({
 });
 
 export const TemplateConfigSchema = z.object({
-  templateId: z.string().describe('ID of the template from templates table'),
+  // Runtime compatibility only: old published workflows may still contain a
+  // files-table id. New authoring uses TransformTemplateConfigSchema, which
+  // accepts only tmpl_ identities.
+  templateId: z
+    .union([TemplateIdSchema, z.string().regex(/^file_[A-Za-z0-9_-]{21}$/)])
+    .describe('Workspace template ID. Legacy file ids are runtime-only compatibility.'),
+  templateRevisionId: TemplateRevisionIdSchema.optional().describe(
+    'Optional immutable template revision ID (tmpr_...).'
+  ),
   outputFilename: z
     .string()
     .optional()
@@ -25,12 +35,16 @@ export const TemplateConfigSchema = z.object({
     .boolean()
     .default(true)
     .optional()
-    .describe('Highlight missing variables with red-colored text in the output document'),
+    .describe(
+      'Highlight missing variables with red-colored text in the output document (DOCX only; ignored for XLSX)'
+    ),
   notFoundText: z
     .string()
     .default('NOT FOUND')
     .optional()
-    .describe('Text to display for missing variables when highlightNotFound is enabled'),
+    .describe(
+      'Text to display for missing variables when highlightNotFound is enabled (DOCX only; ignored for XLSX)'
+    ),
 });
 
 export type TemplateInput = z.infer<typeof TemplateInputSchema>;

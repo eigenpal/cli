@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ApiClient } from './client';
+import { ApiClient, ApiError, HtmlResponseError } from './client';
 import { resolveWorkflowId } from './resolve-workflow';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -101,5 +101,121 @@ describe('resolveWorkflowId', () => {
     } finally {
       global.fetch = fetch;
     }
+  });
+
+  describe('outage errors propagate (id path)', () => {
+    test('fetch failure is not misclassified as workflow-not-found', async () => {
+      global.fetch = (async () => {
+        throw new TypeError('fetch failed', { cause: new Error('ECONNREFUSED') });
+      }) as unknown as typeof fetch;
+      const client = new ApiClient({ baseUrl: 'http://localhost:9999', apiKey: 'k', dir: '.' });
+      try {
+        await expect(resolveWorkflowId(client, 'wf_abc')).rejects.toMatchObject({
+          message: 'fetch failed',
+        });
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('HTML response is not misclassified as workflow-not-found', async () => {
+      const client = makeClient(
+        () =>
+          new Response('<html><body>404</body></html>', {
+            status: 404,
+            headers: { 'content-type': 'text/html' },
+          })
+      );
+      try {
+        await expect(resolveWorkflowId(client, 'wf_abc')).rejects.toBeInstanceOf(HtmlResponseError);
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('401 auth error propagates', async () => {
+      const client = makeClient(() => jsonResponse({ error: 'Unauthorized' }, 401));
+      try {
+        await resolveWorkflowId(client, 'wf_abc');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(401);
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('5xx server error propagates', async () => {
+      const client = makeClient(() => jsonResponse({ error: 'Internal server error' }, 500));
+      try {
+        await resolveWorkflowId(client, 'wf_abc');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(500);
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+  });
+
+  describe('outage errors propagate (slug path)', () => {
+    test('fetch failure is not misclassified as workflow-not-found', async () => {
+      global.fetch = (async () => {
+        throw new TypeError('fetch failed', { cause: new Error('ECONNREFUSED') });
+      }) as unknown as typeof fetch;
+      const client = new ApiClient({ baseUrl: 'http://localhost:9999', apiKey: 'k', dir: '.' });
+      try {
+        await expect(resolveWorkflowId(client, 'my-slug')).rejects.toMatchObject({
+          message: 'fetch failed',
+        });
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('HTML response is not misclassified as workflow-not-found', async () => {
+      const client = makeClient(
+        () =>
+          new Response('<html><body>404</body></html>', {
+            status: 404,
+            headers: { 'content-type': 'text/html' },
+          })
+      );
+      try {
+        await expect(resolveWorkflowId(client, 'my-slug')).rejects.toBeInstanceOf(
+          HtmlResponseError
+        );
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('401 auth error propagates', async () => {
+      const client = makeClient(() => jsonResponse({ error: 'Unauthorized' }, 401));
+      try {
+        await resolveWorkflowId(client, 'my-slug');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(401);
+      } finally {
+        global.fetch = fetch;
+      }
+    });
+
+    test('5xx server error propagates', async () => {
+      const client = makeClient(() => jsonResponse({ error: 'Internal server error' }, 500));
+      try {
+        await resolveWorkflowId(client, 'my-slug');
+        expect.unreachable();
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        expect((err as ApiError).status).toBe(500);
+      } finally {
+        global.fetch = fetch;
+      }
+    });
   });
 });

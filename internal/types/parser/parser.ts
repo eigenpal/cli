@@ -1,4 +1,20 @@
 import { z } from 'zod';
+import { NativeTextQualitySchema } from './native-text-quality';
+
+export {
+  assessNativeTextQuality,
+  NativeTextQualityCountsSchema,
+  NativeTextQualityProfileSchema,
+  NativeTextQualityReasonSchema,
+  NativeTextQualitySchema,
+  NativeTextQualityStatusSchema,
+  pageNeedsOcrFallback,
+  type NativeTextQuality,
+  type NativeTextQualityCounts,
+  type NativeTextQualityProfile,
+  type NativeTextQualityReason,
+  type NativeTextQualityStatus,
+} from './native-text-quality';
 
 /**
  * Office MIME types - all natively supported via Kreuzberg
@@ -78,6 +94,43 @@ export const ParserTypeSchema = z.enum([
 export type ParserType = z.infer<typeof ParserTypeSchema>;
 
 /**
+ * User-facing parse mode for PDF/image inputs.
+ * Omitted / `ocr` / `vision` keep historical routing. `native` and
+ * `native-or-ocr` are additive.
+ */
+export const ParseModeSchema = z.enum(['ocr', 'vision', 'native', 'native-or-ocr']);
+export type ParseMode = z.infer<typeof ParseModeSchema>;
+
+export const PageProvenanceSourceSchema = z.enum(['native', 'ocr', 'vision']);
+export type PageProvenanceSource = z.infer<typeof PageProvenanceSourceSchema>;
+
+export const PageProvenanceSchema = z.object({
+  source: PageProvenanceSourceSchema,
+});
+export type PageProvenance = z.infer<typeof PageProvenanceSchema>;
+
+export const ProcessingStrategySchema = z.enum(['native', 'ocr', 'vision', 'hybrid']);
+export type ProcessingStrategy = z.infer<typeof ProcessingStrategySchema>;
+
+/**
+ * Reject `parseMode: native` combined with figure captions — that pass always
+ * sends page images to a vision model.
+ */
+export function refineNativeParseModeConflicts(
+  config: { parseMode?: ParseMode; describeFigures?: boolean },
+  ctx: z.RefinementCtx
+): void {
+  if (config.parseMode === 'native' && config.describeFigures === true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['describeFigures'],
+      message:
+        'parseMode "native" cannot be combined with describeFigures because figure captions require vision egress',
+    });
+  }
+}
+
+/**
  * Document metadata
  */
 export const DocumentMetadataSchema = z.object({
@@ -95,6 +148,8 @@ export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
 export const ParseUsageSchema = z.object({
   pageCount: z.number(),
   processingTimeMs: z.number().optional(),
+  /** Pages actually sent through OCR during hybrid native-or-ocr fallback. */
+  ocrPagesProcessed: z.number().int().nonnegative().optional(),
 });
 
 export type ParseUsage = z.infer<typeof ParseUsageSchema>;
@@ -246,6 +301,13 @@ export const PageResultSchema = z.object({
   height: z.number().optional().describe('Page height'),
   unit: CoordinateUnitSchema.optional().describe('Unit for width/height and bounding regions'),
   confidence: z.number().min(0).max(1).optional().describe('Overall page confidence'),
+
+  nativeTextQuality: NativeTextQualitySchema.optional().describe(
+    'Per-page diagnosis of native-extracted text. Reports objectively detectable anomalies (empty, U+FFFD, forbidden controls, unassigned/noncharacter code points, heavy private-use). Does not certify semantic correctness — valid-looking wrong mappings and literal "?" cannot be distinguished from legitimate text.'
+  ),
+  provenance: PageProvenanceSchema.optional().describe(
+    'Which extractor produced the final text/layout on this page'
+  ),
 });
 
 export type PageResult = z.infer<typeof PageResultSchema>;
@@ -263,6 +325,9 @@ export const ParseResultSchema = z.object({
   parserType: ParserTypeSchema,
   parserVersion: z.string().optional(),
   model: z.string().optional().describe('Model used (for LLM/OCR parsers)'),
+  processingStrategy: ProcessingStrategySchema.optional().describe(
+    'How this result was produced: `native` (local PDF text only), `ocr`, `vision`, or `hybrid` (native pages merged with OCR on fallback pages).'
+  ),
 
   structured: StructuredDocumentSchema.optional().describe(
     'Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser'
@@ -313,6 +378,12 @@ export const ParseOptionsSchema = z.object({
 
   // Language hints
   languages: z.array(z.string()).optional().describe('OCR language hints'),
+
+  // 1-indexed page subset for OCR providers that support page selection.
+  pages: z
+    .array(z.number().int().min(1))
+    .optional()
+    .describe('1-indexed pages to OCR; omit or empty to analyze the whole document'),
 
   // Internal: tenant context. Set by the document-parser processor so the
   // LLM-vision parser can fall back to the workspace-level default LLM

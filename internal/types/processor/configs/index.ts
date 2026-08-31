@@ -19,6 +19,7 @@ export * from './classify';
 export * from './classify-pages';
 export * from './document-parser';
 export * from './extract';
+export * from './json-to-xlsx';
 export * from './merge';
 export * from './pdf-embedder';
 export * from './segment';
@@ -39,6 +40,11 @@ import {
   DocumentParserOutputSchema,
 } from './document-parser';
 import { ExtractConfigSchema, ExtractInputSchema, ExtractOutputSchema } from './extract';
+import {
+  JsonToXlsxConfigSchema,
+  JsonToXlsxInputSchema,
+  JsonToXlsxOutputSchema,
+} from './json-to-xlsx';
 import { MergeConfigSchema, MergeInputSchema, MergeOutputSchema } from './merge';
 import {
   PdfEmbedderConfigSchema,
@@ -127,6 +133,12 @@ export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
     inputSchema: XlsxToJsonInputSchema,
     outputSchema: XlsxToJsonOutputSchema,
     configSchema: XlsxToJsonConfigSchema,
+  },
+  [PROCESSOR_IDS.JSON_TO_XLSX]: {
+    id: PROCESSOR_IDS.JSON_TO_XLSX,
+    inputSchema: JsonToXlsxInputSchema,
+    outputSchema: JsonToXlsxOutputSchema,
+    configSchema: JsonToXlsxConfigSchema,
   },
 };
 

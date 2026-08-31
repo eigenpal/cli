@@ -9,6 +9,7 @@ Manage workflows: push, pull, and evaluate.
   - [Core](#core)
   - [Evaluators](#evaluators)
   - [Dataset](#dataset)
+  - [Templates](#templates)
   - [Experiment](#experiment)
   - [Versions](#versions)
   - [Step-type](#step-type)
@@ -33,6 +34,13 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-delete-options-workflow-id-exampleid)
   - [`eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-get-options-workflow-id-exampleid)
   - [`eigenpal workflow dataset validate [options] [path]`](#eigenpal-workflow-dataset-validate-options-path)
+  - [`eigenpal workflow templates upload [options] <file>`](#eigenpal-workflow-templates-upload-options-file)
+  - [`eigenpal workflow templates list|ls [options]`](#eigenpal-workflow-templates-listls-options)
+  - [`eigenpal workflow templates get|inspect [options] <template-id>`](#eigenpal-workflow-templates-getinspect-options-template-id)
+  - [`eigenpal workflow templates download [options] <template-id>`](#eigenpal-workflow-templates-download-options-template-id)
+  - [`eigenpal workflow templates replace [options] <template-id> <file>`](#eigenpal-workflow-templates-replace-options-template-id-file)
+  - [`eigenpal workflow templates delete [options] <template-id>`](#eigenpal-workflow-templates-delete-options-template-id)
+  - [`eigenpal workflow templates smoke [options] <template>`](#eigenpal-workflow-templates-smoke-options-template)
   - [`eigenpal workflow experiment|exp list|ls [options] <workflow-id>`](#eigenpal-workflow-experimentexp-listls-options-workflow-id)
   - [`eigenpal workflow experiment|exp run [options] <workflow-id>`](#eigenpal-workflow-experimentexp-run-options-workflow-id)
   - [`eigenpal workflow experiment|exp status [options] <workflow-id> <batchId>`](#eigenpal-workflow-experimentexp-status-options-workflow-id-batchid)
@@ -73,6 +81,14 @@ workflow
 │   │   ├── delete <workflow-id> <exampleId>
 │   │   └── get <workflow-id> <exampleId>
 │   └── validate [path]
+├── templates
+│   ├── upload <file>
+│   ├── list|ls
+│   ├── get|inspect <template-id>
+│   ├── download <template-id>
+│   ├── replace <template-id> <file>
+│   ├── delete <template-id>
+│   └── smoke <template>
 ├── experiment|exp
 │   ├── list|ls <workflow-id>
 │   ├── run <workflow-id>
@@ -132,6 +148,18 @@ workflow
 | `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>` | Delete one eval example by id. Non-TTY shells require --yes.                                                    |
 | `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`    | Fetch one eval example with full triggerInput, expectedOutput, and metadata.                                    |
 | `eigenpal workflow dataset validate [options] [path]`                          | Validate a dataset folder against the examples/<name>/{input,expected,meta} convention. Defaults to ./dataset/. |
+
+### Templates
+
+| Command                                                              | Description                                                                                                                    |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `eigenpal workflow templates upload [options] <file>`                | Upload a DOCX or XLSX file as a new tmpl*… resource with an immutable tmpr*… revision.                                         |
+| `eigenpal workflow templates list\|ls [options]`                     | List workspace templates.                                                                                                      |
+| `eigenpal workflow templates get\|inspect [options] <template-id>`   | Inspect a tmpl*… resource: current tmpr*…, format, checksum, tokens, grammar.                                                  |
+| `eigenpal workflow templates download [options] <template-id>`       | Download current (or pinned) template bytes.                                                                                   |
+| `eigenpal workflow templates replace [options] <template-id> <file>` | Append an immutable revision and advance the tmpl\_… pointer.                                                                  |
+| `eigenpal workflow templates delete [options] <template-id>`         | Delete the mutable tmpl*… pointer. Pinned tmpr*… revisions remain so workflows that set templateRevisionId still run.          |
+| `eigenpal workflow templates smoke [options] <template>`             | Fill a local Office file or a tmpl\_… resource with a JSON fixture and write the result. Local files never contact the server. |
 
 ### Experiment
 
@@ -231,14 +259,15 @@ Create or update a workflow from a YAML file.
 
 ### Options
 
-| Flag                     | Required | Default | Description                                                                                                                                                                             |
-| ------------------------ | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--file <yaml>`          | no       |         | Path to YAML file                                                                                                                                                                       |
-| `--workflow-id <id>`     | no       |         | Update existing workflow (default: create new)                                                                                                                                          |
-| `--bump <level>`         | no       |         | Auto-bump from the server's current version: patch \| minor \| major. Mutually exclusive with `--version` and with a top-level `version:` in the YAML.                                  |
-| `--set-version <semver>` | no       |         | Push at this exact semver (e.g. 1.4.0). Mutually exclusive with `--bump` and with a top-level `version:` in the YAML. (Named `--set-version` to avoid the global `-v, --version` flag.) |
-| `--base-url <url>`       | no       |         | Server base URL                                                                                                                                                                         |
-| `--json`                 | no       |         | Output the raw server response as JSON                                                                                                                                                  |
+| Flag                         | Required | Default | Description                                                                                                                                                                             |
+| ---------------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--file <yaml>`              | no       |         | Path to YAML file                                                                                                                                                                       |
+| `--workflow-id <id>`         | no       |         | Update existing workflow (default: create new)                                                                                                                                          |
+| `--bump <level>`             | no       |         | Auto-bump from the server's current version: patch \| minor \| major. Mutually exclusive with `--version` and with a top-level `version:` in the YAML.                                  |
+| `--set-version <semver>`     | no       |         | Push at this exact semver (e.g. 1.4.0). Mutually exclusive with `--bump` and with a top-level `version:` in the YAML. (Named `--set-version` to avoid the global `-v, --version` flag.) |
+| `--allow-external-templates` | no       |         | Allow local template: paths whose real path is outside the workflow project directory (the folder that contains the YAML file). Off by default; ../ and symlink escapes are rejected.   |
+| `--base-url <url>`           | no       |         | Server base URL                                                                                                                                                                         |
+| `--json`                     | no       |         | Output the raw server response as JSON                                                                                                                                                  |
 
 ### `eigenpal workflow move [options] <workflow-id>`
 
@@ -270,11 +299,12 @@ Local-only validation. Without [path]: runs the templated three-way check (./wor
 
 ### Options
 
-| Flag               | Required | Default | Description                                                                                                                                                                                                                                         |
-| ------------------ | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--dir <path>`     | no       |         | Project root (defaults to cwd; resolves the three default paths from here)                                                                                                                                                                          |
-| `--online`         | no       |         | Also validate cross-workflow action.invoke-workflow references against the server (needs auth). Catches target-not-found, input type mismatches, missing/unknown input keys, undeclared output, and invoke cycles that local validation cannot see. |
-| `--base-url <url>` | no       |         | Server base URL                                                                                                                                                                                                                                     |
+| Flag                         | Required | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dir <path>`               | no       |         | Project root (defaults to cwd; resolves the three default paths from here)                                                                                                                                                                                                                                                                                                                                                                         |
+| `--online`                   | no       |         | Authenticate and also validate action.invoke-workflow targets, transform.template tmpl\_… references, and explicitly selected OCR/vision/text models against this tenant environment (existence, format, revision pairing, tokens vs data, XLSX {{ }} mistakes, configured catalog). Local template: paths are inspected on disk with or without this flag. Model checks use the configured catalog only — they do not probe live provider health. |
+| `--allow-external-templates` | no       |         | Allow local template: paths whose real path is outside the workflow project directory (the folder that contains the YAML file). Off by default; ../ and symlink escapes are rejected.                                                                                                                                                                                                                                                              |
+| `--base-url <url>`           | no       |         | Server base URL                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### `eigenpal workflow clear-local [options] [examples...]`
 
@@ -490,6 +520,129 @@ Validate a dataset folder against the examples/<name>/{input,expected,meta} conv
 | ------ | -------- | -------- | ----------- |
 | `path` | no       | no       |             |
 
+### `eigenpal workflow templates upload [options] <file>`
+
+Upload a DOCX or XLSX file as a new tmpl*… resource with an immutable tmpr*… revision.
+
+### Arguments
+
+| Name   | Required | Variadic | Description |
+| ------ | -------- | -------- | ----------- |
+| `file` | yes      | no       |             |
+
+### Options
+
+| Flag                   | Required | Default | Description                                               |
+| ---------------------- | -------- | ------- | --------------------------------------------------------- |
+| `--name <name>`        | no       |         | Display name (defaults to the filename without extension) |
+| `--description <text>` | no       |         | Optional description                                      |
+| `--base-url <url>`     | no       |         | Server base URL                                           |
+| `--json`               | no       |         | Output the raw server response as JSON                    |
+
+### `eigenpal workflow templates list|ls [options]`
+
+List workspace templates.
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--limit <n>`      | no       | `50`    | Page size                              |
+| `--offset <n>`     | no       | `0`     | Page offset                            |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow templates get|inspect [options] <template-id>`
+
+Inspect a tmpl*… resource: current tmpr*…, format, checksum, tokens, grammar.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `template-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow templates download [options] <template-id>`
+
+Download current (or pinned) template bytes.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `template-id` | yes      | no       |             |
+
+### Options
+
+| Flag                   | Required | Default | Description                       |
+| ---------------------- | -------- | ------- | --------------------------------- |
+| `--out <path>`         | no       |         | Write to this file (required)     |
+| `--revision-id <tmpr>` | no       |         | Pin an immutable tmpr\_… revision |
+| `--base-url <url>`     | no       |         | Server base URL                   |
+
+### `eigenpal workflow templates replace [options] <template-id> <file>`
+
+Append an immutable revision and advance the tmpl\_… pointer.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `template-id` | yes      | no       |             |
+| `file`        | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow templates delete [options] <template-id>`
+
+Delete the mutable tmpl*… pointer. Pinned tmpr*… revisions remain so workflows that set templateRevisionId still run.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `template-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                            |
+| ------------------ | -------- | ------- | -------------------------------------- |
+| `--yes`            | no       | `false` | Required for non-TTY shells            |
+| `--base-url <url>` | no       |         | Server base URL                        |
+| `--json`           | no       |         | Output the raw server response as JSON |
+
+### `eigenpal workflow templates smoke [options] <template>`
+
+Fill a local Office file or a tmpl\_… resource with a JSON fixture and write the result. Local files never contact the server.
+
+### Arguments
+
+| Name       | Required | Variadic | Description |
+| ---------- | -------- | -------- | ----------- |
+| `template` | yes      | no       |             |
+
+### Options
+
+| Flag                   | Required | Default | Description                                                  |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------ |
+| `--data <file>`        | yes      |         | Path to a JSON fixture file (object with template data keys) |
+| `--out <path>`         | yes      |         | Filled DOCX/XLSX output path                                 |
+| `--revision-id <tmpr>` | no       |         | When <template> is a tmpl\_… id, pin this revision           |
+| `--base-url <url>`     | no       |         | Server base URL                                              |
+| `--json`               | no       |         | Output the raw server response as JSON                       |
+
 ### `eigenpal workflow experiment|exp list|ls [options] <workflow-id>`
 
 List executions for the workflow, newest first.
@@ -664,14 +817,15 @@ Create a tagged workflow version from YAML or by copying an existing snapshot.
 
 ### Options
 
-| Flag                     | Required | Default | Description                                                                                                                                                                                                    |
-| ------------------------ | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--file <yaml>`          | no       |         | Path to workflow YAML. Mutually exclusive with --from.                                                                                                                                                         |
-| `--from <version-id>`    | no       |         | Existing version id to copy into a new tagged snapshot. Leaves the source tag unchanged. Mutually exclusive with --file.                                                                                       |
-| `--set-version <semver>` | no       |         | Bare semver tag such as 1.4.0. Required when copying with --from. For --file, omit this flag if the YAML already has a top-level version: field. (Named --set-version to avoid the global -v, --version flag.) |
-| `--no-activate`          | no       |         | Keep the tagged version off live traffic until you promote it. Default is to make it current. Requires an existing current version.                                                                            |
-| `--base-url <url>`       | no       |         | Server base URL                                                                                                                                                                                                |
-| `--json`                 | no       |         | Output the raw server response as JSON                                                                                                                                                                         |
+| Flag                         | Required | Default | Description                                                                                                                                                                                                    |
+| ---------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--file <yaml>`              | no       |         | Path to workflow YAML. Mutually exclusive with --from.                                                                                                                                                         |
+| `--allow-external-templates` | no       |         | Allow local template paths outside the workflow project. Use only for trusted YAML.                                                                                                                            |
+| `--from <version-id>`        | no       |         | Existing version id to copy into a new tagged snapshot. Leaves the source tag unchanged. Mutually exclusive with --file.                                                                                       |
+| `--set-version <semver>`     | no       |         | Bare semver tag such as 1.4.0. Required when copying with --from. For --file, omit this flag if the YAML already has a top-level version: field. (Named --set-version to avoid the global -v, --version flag.) |
+| `--no-activate`              | no       |         | Keep the tagged version off live traffic until you promote it. Default is to make it current. Requires an existing current version.                                                                            |
+| `--base-url <url>`           | no       |         | Server base URL                                                                                                                                                                                                |
+| `--json`                     | no       |         | Output the raw server response as JSON                                                                                                                                                                         |
 
 ### `eigenpal workflow versions promote [options] <workflow-id> <versionId>`
 

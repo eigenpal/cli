@@ -36,7 +36,7 @@ const HELP_GROUPS: CommandGroup[] = [
   {
     title: 'Authenticate',
     description: 'Profiles in ~/.config/eigenpal/credentials.json',
-    commands: ['auth', 'status'],
+    commands: ['auth', 'status', 'models'],
   },
   {
     title: 'Workflows',
