@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.13.2
+
+### Patch Changes
+
+- 7bdeb95: CLI installation no longer downloads packages already included in its self-contained executable, reducing install overhead and improving compatibility with restricted enterprise networks.
+
 ## 0.13.1
 
 ### Patch Changes
