@@ -56,5 +56,9 @@ describe('registerEvaluatorTypeCommands', () => {
     expect(payload.entrySchema.properties.description).toBeDefined();
     expect(payload.entrySchema.properties.weight).toBeDefined();
     expect(payload.configSchema).toBeDefined();
+    expect(JSON.stringify(payload.configSchema)).toContain('matchBy');
+    expect(JSON.stringify(payload.configSchema)).toContain(
+      "numeric `10` differs from string `'10'`"
+    );
   });
 });

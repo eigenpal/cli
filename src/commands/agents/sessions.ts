@@ -1,5 +1,6 @@
 import { type Command } from 'commander';
 import { action } from '../../lib/format-error';
+import { requireYesInNonInteractive } from '../../lib/non-interactive';
 import { addJsonFlag, table, withBaseUrl, withPagination, type PaginationOpts } from '../../lib/ui';
 import { BaseOpts, buildClient, compactParams, printJson, renderGeneric } from './shared';
 
@@ -35,7 +36,7 @@ export function registerSessionCommands(agent: Command): void {
 
   addJsonFlag(withBaseUrl(session.command('stop <session-id>')))
     .description('Stop a builder session.')
-    .option('--yes', 'Required in non-interactive environments')
+    .option('--yes', 'Skip confirmation (required in CI / agent terminals without a TTY)')
     .action(action(stopSession));
 }
 
@@ -87,8 +88,7 @@ async function messageSession(sessionId: string, opts: BaseOpts & { text: string
 }
 
 async function stopSession(sessionId: string, opts: BaseOpts & { yes?: boolean }) {
-  if (!(opts.yes || process.stdin.isTTY))
-    throw new Error('Pass --yes to stop in non-interactive mode');
+  requireYesInNonInteractive(opts.yes, 'Stop builder session');
   const client = buildClient(opts);
   renderGeneric(
     await client.delete(`/v1/agents/sessions/${encodeURIComponent(sessionId)}`),

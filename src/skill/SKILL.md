@@ -14,6 +14,48 @@ metadata:
 Use long command names in generated commands and documentation. Short aliases may
 appear in user examples, but do not prefer them.
 
+## Non-interactive / agent terminals (read first)
+
+**Never run a CLI command that opens a confirmation or picker without checking
+`--help` first.** Agent terminals, CI, and piped shells are usually non-TTY — an
+interactive prompt will hang indefinitely.
+
+Rules:
+
+- **`--yes`** — skip confirmations and pickers when a deterministic default exists,
+  or acknowledge a destructive action in scripts. Required for most cancel/delete/replace
+  flows in non-TTY.
+- **`--force`** — only where documented: overwrite user-edited skill files on reinstall
+  (`skill install --force`). Do not use as a generic “yes to everything”.
+- **Provide explicit inputs** instead of prompts: `--file`, `--template`, `--tools`,
+  `--stdin` / `--value-file`, `--base-url`, profile name for `auth use <name>`,
+  `EIGENPAL_API_KEY` instead of `auth login` in CI.
+
+Commands that can prompt or block (always inspect `--help` for the exact flag):
+
+| Area | Command | Non-interactive bypass |
+| --- | --- | --- |
+| Init | `init [name]` | `--template <name>` and/or `--yes` (default template: blank) |
+| Auth | `auth login` | Do not run non-interactively; set `EIGENPAL_API_KEY` and optionally `EIGENPAL_BASE_URL` |
+| Auth | `auth use` | positional profile name |
+| Skill | `skill install` | `--tools claude,cursor` and/or `--yes`; `--force` to overwrite edits |
+| Skill | `skill uninstall` | tool ids, `--all`, or `--target` + `--yes` |
+| Workflow | `workflow push` | `--file workflow.yaml` (TTY-only path picker otherwise) |
+| Workflow | `workflow dataset push --mode replace` | `--yes` |
+| Workflow | `workflow dataset example delete` | `--yes` |
+| Workflow | `workflow experiment cancel` | `--yes` |
+| Workflow | `workflow templates delete` | `--yes` |
+| Agents | `agents dataset push --mode replace` | `--yes` |
+| Agents | `agents experiment cancel` | `--yes` |
+| Agents | `agents session stop` | `--yes` |
+| Agents | `agents secrets set` | `--stdin` or `--value-file` |
+| Runs | `runs cancel` | `--yes` |
+| Runs | `runs reviews clear` | `--yes` |
+| Runs | `runs expected delete` | `--yes` |
+
+If a command fails with “requires --yes when run non-interactively”, re-run with
+`--yes` only when the action is intentional — never to blindly retry.
+
 ## Choose A Command
 
 - `eigenpal workflow` manages YAML workflow definitions, datasets, evaluators,
@@ -30,15 +72,28 @@ appear in user examples, but do not prefer them.
 - `eigenpal runs` inspects, watches, compares, reruns, cancels, and downloads
   artifacts for workflow or agent runs.
 
+## Authenticate And Select A Workspace
+
+```bash
+eigenpal auth login
+eigenpal status --json
+eigenpal auth list
+eigenpal auth use <profile>
+```
+
+For CI, set `EIGENPAL_API_KEY` and optionally `EIGENPAL_BASE_URL` instead of
+running the interactive login.
+
 Use stable ids in scripts:
 
 - Workflow id: `wf_...`
 - Template id: `tmpl_...`
 - Template revision id: `tmpr_...`
-- Workflow execution id: `evx_...`
+- Workflow execution id: `exec_...`
 - Agent execution id: `aex_...`
 - Experiment batch id: `evb_...`
-- Dataset example id: `ex_...`
+- Workflow dataset example id: `evx_...`
+- Agent dataset example id: `aeg_...`
 
 ## Workflow Loop
 
@@ -48,9 +103,11 @@ eigenpal init workflow invoices --template pdf-extraction
 cd invoices
 $EDITOR workflow.yaml
 
-# Inspect step schemas before editing config.
+# Inspect step and evaluator schemas before editing config.
 eigenpal workflow step-type list --search extract
-eigenpal workflow step-type get ai.extract --json | jq '.configSchema.properties'
+eigenpal workflow step-type get ai.extract | jq '.configSchema.properties'
+eigenpal workflow evaluator-type list
+eigenpal workflow evaluator-type get exact-diff | jq '.configSchema'
 
 # Validate and push.
 eigenpal workflow validate ./workflow.yaml
@@ -61,7 +118,10 @@ eigenpal workflow validate ./workflow.yaml
 # workflow project unless you pass --allow-external-templates.
 eigenpal workflow validate ./workflow.yaml --online
 eigenpal models list --json
-eigenpal workflow push --file workflow.yaml
+# First push creates a new wf_…; capture the id from --json output.
+eigenpal workflow push --file workflow.yaml --json | jq '.id'
+# Later pushes must pass --workflow-id to update in place (omit it only on first create).
+eigenpal workflow push --file workflow.yaml --workflow-id wf_…
 
 # Run with ad-hoc input and read the output (use this for API-triggered workflows).
 # `--wait --json` polls to completion and prints the run with top-level `output`.
@@ -125,6 +185,8 @@ Key rules:
 # Clone source and create a branch.
 eigenpal agents clone --out ./source
 cd ./source
+# Use `agents save` to validate, commit, and push source. For other Git ops, use
+# `eigenpal git -- <git-args>` (not bare `git` — the passthrough wires credentials).
 eigenpal git -- switch -c <short-task-branch>
 
 # Inspect source state.
@@ -175,15 +237,34 @@ DOCX/XLSX templates for **runtime agents** live in Git source, not in the
 workspace Templates table. YAML workflows use workspace templates via
 `transform.template` and `tmpl_...` instead — see `reference/step-types.md`.
 
-Workspace DOCX/XLSX templates for YAML workflows:
+Workspace DOCX/XLSX templates for YAML workflows (`tmpl_…` / `tmpr_…`):
 
 ```bash
+# Upload a new template (returns tmpl_… + tmpr_… with --json).
 eigenpal workflow templates upload ./templates/roster.xlsx --json
+
+# List and inspect server templates.
+eigenpal workflow templates list --json
+eigenpal workflow templates get tmpl_…
+eigenpal workflow templates get tmpl_… --json | jq '.currentRevision.id'
+
+# Download current bytes (--out required).
+eigenpal workflow templates download tmpl_… --out ./templates/roster.xlsx
+
+# Replace with a new local file (creates a new tmpr_… revision).
+eigenpal workflow templates replace tmpl_… ./templates/roster-v2.xlsx --json
+
+# Delete the tmpl_… pointer (--yes required outside a TTY).
+eigenpal workflow templates delete tmpl_… --yes
+
+# Smoke-fill locally (no server) or from a tmpl_… id (downloads bytes, fills locally).
 eigenpal workflow templates smoke ./templates/roster.xlsx --data ./fixture.json --out ./filled.xlsx
+eigenpal workflow templates smoke tmpl_… --data ./fixture.json --out ./filled.xlsx
+
 # YAML may keep a source path; push uploads and sends tmpl_ + tmpr_ ids.
 # template: ./templates/roster.xlsx
 eigenpal workflow validate ./workflow.yaml --online
-eigenpal workflow push --file workflow.yaml
+eigenpal workflow push --file workflow.yaml --workflow-id wf_…
 ```
 
 **Local template** (one agent):
@@ -269,10 +350,10 @@ Agent examples are runtime data, not Git source. `agents save` does not persist
 them.
 
 ```bash
-eigenpal agents dataset validate /workspace/evals --agent-dir agents/<slug>
-eigenpal agents dataset push agents.<slug> --file /workspace/evals
+eigenpal agents dataset validate ./dataset --agent-dir agents/<slug>
+eigenpal agents dataset push agents.<slug> --file ./dataset
 eigenpal agents dataset list agents.<slug>
-eigenpal agents dataset pull agents.<slug> --out ./dataset
+eigenpal agents dataset pull agents.<slug> --out ./dataset.zip
 ```
 
 Expected outputs should include stable fields only. Omit timestamps, random IDs,
@@ -301,16 +382,18 @@ Use `--version original` only to reproduce the previous resolved version.
 ```bash
 eigenpal runs reviews update <agent-execution-id> \
   --status open \
-  --verdict needs_changes \
+  --verdict incorrect \
   --note "Expected the filing date to be extracted."
 eigenpal runs reviews close <agent-execution-id> \
   --note "Fixed and verified."
 eigenpal runs reviews clear <agent-execution-id> --yes
 
-eigenpal runs reviews expected list <agent-execution-id>
-eigenpal runs reviews expected upload <agent-execution-id> expected.json --name expected.json
-eigenpal runs reviews expected copy-output <agent-execution-id> result.json --name expected.json
-eigenpal runs reviews expected pull <agent-execution-id> --out expected/
+eigenpal runs expected list <agent-execution-id>
+eigenpal runs expected upload <agent-execution-id> expected.json --name expected.json
+eigenpal runs expected copy-output <agent-execution-id> result.json --name expected.json
+eigenpal runs expected pull <agent-execution-id> --out expected/
+eigenpal runs expected rename <agent-execution-id> old.json new.json
+eigenpal runs expected delete <agent-execution-id> old.json --yes
 ```
 
 ## Output
@@ -336,12 +419,25 @@ Status messages go to stderr. Pipeable data goes to stdout.
 
 Use generated references for exact flags and defaults:
 
+CLI command references:
+
 - [`reference/cli/workflow.md`](reference/cli/workflow.md)
 - [`reference/cli/agents.md`](reference/cli/agents.md)
 - [`reference/cli/runs.md`](reference/cli/runs.md)
+- [`reference/cli/run.md`](reference/cli/run.md)
+- [`reference/cli/rerun.md`](reference/cli/rerun.md)
 - [`reference/cli/auth.md`](reference/cli/auth.md)
+- [`reference/cli/init.md`](reference/cli/init.md)
+- [`reference/cli/models.md`](reference/cli/models.md)
+- [`reference/cli/skill.md`](reference/cli/skill.md)
+- [`reference/cli/status.md`](reference/cli/status.md)
+- [`reference/cli/surface.md`](reference/cli/surface.md)
+
+Workflow and eval references:
+
 - [`reference/workflow-yaml.md`](reference/workflow-yaml.md)
 - [`reference/step-types.md`](reference/step-types.md)
+- [`reference/step-exec.md`](reference/step-exec.md)
 - [`reference/dataset-format.md`](reference/dataset-format.md)
 - [`reference/evaluators.md`](reference/evaluators.md)
 - [`reference/debugging.md`](reference/debugging.md)

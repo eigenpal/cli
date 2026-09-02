@@ -431,7 +431,7 @@ Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or
 | `imageQuality` | integer | no | `85` | JPEG quality for rendered PDF page images sent to VLM parsing. Higher values reduce compression artifacts at larger payload sizes. |
 | `prompt` | string | no |  | Custom extraction prompt |
 | `languages` | array<string> | no |  | OCR language hints |
-| `outputFormat` | `"plain"` \| `"markdown"` \| `"djot"` \| `"html"` | no | `"markdown"` | Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown. |
+| `outputFormat` | `"plain"` \| `"markdown"` \| `"djot"` \| `"html"` \| `"layout"` | no | `"markdown"` | Format for extracted text. `markdown` (default) keeps structure; `plain` is unstyled text; `djot`/`html` preserve more markup. `layout` is native-PDF spatial text with column gaps preserved as spaces. It requires `parseMode: native` or `parseMode: native-or-ocr` and a PDF — omitted parseMode and `nativeText: true` are not enough. Native mode is layout-only and fail-closed. `native-or-ocr` keeps layout text on accepted native pages and uses OCR markdown on suspect or empty pages, so the document can mix fixed-width layout and markdown. Extractor failure never falls back to another parser. Office, plaintext, and images fail. OCR/vision cannot request `layout`. |
 | `nativeText` | boolean | no | `false` | Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text. |
 | `describeFigures` | boolean | no |  | Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext. |
 | `figureInstructions` | string | no |  | Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs. |
@@ -740,9 +740,9 @@ Embed OCR text layer into scanned PDFs/images to make them searchable
 | `wordCount` | number | yes |  | Number of words embedded |
 | `text` | string | yes |  | Extracted text from the document |
 
-#### `transform.xlsx-to-json` — XLSX to JSON
+#### `transform.xlsx-to-json` — Spreadsheet to JSON
 
-Convert XLSX spreadsheet to JSON array of row objects for use in scripts or downstream steps
+Convert an XLS or XLSX spreadsheet to a JSON array of row objects. Supports headerless files, named or positional columns, displayed text, and a single rectangular range.
 
 **Durable retry:** Transforms, including those that write files, are not durably retried.
 
@@ -751,16 +751,26 @@ Convert XLSX spreadsheet to JSON array of row objects for use in scripts or down
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `input` | string | yes |  | File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime |
-| `sheet` | integer \| string | no |  | Sheet to read: 0-based index or sheet name. Omit for first sheet. |
-| `outputCsv` | boolean | no | `false` | If true, also write CSV to storage and include fileId in output |
+| `sheet` | integer \| string | no |  | Sheet to read: 0-based index or exact sheet name. Omit for the first sheet. |
+| `outputCsv` | boolean | no | `false` | If true, also write CSV to storage and include fileId. Zero-config uses the historical full-sheet SheetJS CSV. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection. |
+| `includeMetadata` | boolean | no | `false` | If true, include sheet metadata and diagnostics in the step output. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false. |
 | `outputFilename` | string | no |  | Output CSV filename when outputCsv is true - supports LiquidJS e.g. {{filename}}.csv |
+| `headerRow` | `false` \| integer | no |  | Header row: a positive 1-based Excel row, or false to keep the first effective row as data. Omit to use the first effective row as the header. When range is set and this is omitted, the first range row is the header. |
+| `columns` | array<object> | no |  | Ordered output columns. Each item needs a key and exactly one source: index (0-based absolute column) or header (exact displayed header text). Named header sources require a header row. Omit to keep every column in the effective range. |
+| `valueMode` | `"raw"` \| `"displayed"` | no | `"raw"` | raw (default) returns typed cached cell values. displayed returns formatted cell text (dates, leading zeros, punctuation, diacritics, embedded newlines). Formulas are never calculated. |
+| `range` | string | no |  | Optional rectangular A1 range without a sheet qualifier, e.g. A1:D20. Disjoint ranges are rejected. |
+| `blankCells` | `"empty-string"` \| `"null"` \| `"omit"` | no | `"empty-string"` | How truly empty cells appear in each row object. Default empty-string. 0, false, and a formula that cached an empty string are not empty cells. |
+| `blankRows` | `"skip"` \| `"keep"` | no | `"skip"` | skip (default) drops rows whose projected columns are all truly empty. keep retains them. Detection uses projected columns only. |
+| `limits` | object | no |  | Optional workload caps that can only lower the server defaults. Omitted fields use the server defaults. |
 
 **Output:** `object`
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `rows` | array<record<string, unknown>> | yes |  | Array of row objects (first row = headers as keys) |
+| `rows` | array<record<string, unknown>> | yes |  | Array of row objects (first row = headers as keys unless headerRow is false) |
 | `fileId` | string | no |  | File ID of stored CSV when outputCsv is true |
+| `sheet` | object | no |  | Selected sheet metadata after projection. Present only when includeMetadata is true. |
+| `diagnostics` | array<object> | no |  | Non-fatal warnings collected while reading the sheet. Present only when includeMetadata is true. Warnings are still logged when metadata is omitted. |
 
 #### `transform.json-to-xlsx` — JSON to XLSX
 
@@ -899,7 +909,7 @@ Execute another workflow and return its output
 
 **Output:** `record<string, unknown>`
 
-> When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. Call get_workflow_output_schema to see the exact resolved fields.
+> When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. CLI authors can run `eigenpal workflow schema <workflow-id>` to inspect resolved fields; Studio builder agents can call `get_workflow_output_schema`.
 
 #### `action.website-reader` — Website Reader
 

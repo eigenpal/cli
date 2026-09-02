@@ -10,8 +10,11 @@ import {
   type S3FileRef,
 } from '../../files/runtime-file-ref';
 import {
+  PARSE_OUTPUT_FORMAT_DESCRIPTION,
   ParseModeSchema,
+  ParseOutputFormatSchema,
   ParseResultSchema,
+  refineLayoutOutputFormat,
   refineNativeParseModeConflicts,
 } from '../../parser/parser';
 
@@ -110,15 +113,12 @@ export const DocumentParserConfigSchema = z
     languages: z.array(z.string()).optional().describe('OCR language hints (e.g., ["en", "de"])'),
 
     // Output format
-    outputFormat: z
-      .enum(['plain', 'markdown', 'djot', 'html'])
-      .default('markdown')
+    outputFormat: ParseOutputFormatSchema.default('markdown')
       .optional()
-      .describe(
-        'Format for extracted text. Only the native (Kreuzberg) parser uses this — OCR/VLM always emit markdown.'
-      ),
+      .describe(PARSE_OUTPUT_FORMAT_DESCRIPTION),
   })
   .superRefine(refineNativeParseModeConflicts)
+  .superRefine(refineLayoutOutputFormat)
   .prefault({});
 
 export type DocumentParserInput = z.infer<typeof DocumentParserInputSchema>;

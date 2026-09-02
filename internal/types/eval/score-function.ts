@@ -14,7 +14,8 @@
  * signature with the mandatory `: number` return annotation.
  */
 export function defaultScoreFunction(): string {
-  return `type WorkflowOutput = Record<string, unknown>;
+  return `type WorkflowData = Record<string, unknown>;
+type WorkflowOutput = { data: WorkflowData };
 type Expected = WorkflowOutput;
 type Actual = WorkflowOutput;
 

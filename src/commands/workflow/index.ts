@@ -20,7 +20,6 @@ import { InvalidArgumentError, type Command } from 'commander';
 import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createInterface } from 'node:readline/promises';
 import type { ZodType } from 'zod';
 
 import type { ApiClient } from '../../lib/client';
@@ -37,6 +36,7 @@ import {
   type ResolvedLocalTemplate,
   type StagedWorkspaceTemplate,
 } from '../../lib/local-templates';
+import { requireTypedConfirmation, requireYesInNonInteractive } from '../../lib/non-interactive';
 import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
@@ -68,28 +68,6 @@ import {
   registerDatasetValidateCommand,
   registerEvaluatorsValidateCommand,
 } from './validation';
-
-/**
- * Typed-slug-style TTY confirmation. The dashboard requires the user to
- * type the workflow id back; we ask for the same here. Returns true only
- * on an exact match. Always false for non-TTY (the caller has already
- * checked, but we double-check defensively).
- */
-async function confirmReplace(workflowId: string): Promise<boolean> {
-  if (!process.stdout.isTTY || !process.stdin.isTTY) return false;
-  process.stderr.write(
-    `\n  ${ui.warn('!')} ${ui.bold('About to REPLACE every eval example for workflow:')}\n    ${ui.bold(workflowId)}\n` +
-      `  ${ui.dim('This deletes existing examples and their files. Cannot be undone.')}\n\n` +
-      `  Type the workflow id to confirm, or press Enter to abort: `
-  );
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    const answer = (await rl.question('')).trim();
-    return answer === workflowId;
-  } finally {
-    rl.close();
-  }
-}
 
 interface WorkflowCommandConfig {
   dir?: string;
@@ -1148,22 +1126,21 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
         if (opts.mode !== 'append' && opts.mode !== 'replace') {
           throw new Error('--mode must be "append" or "replace"');
         }
+        // Fail fast in CI / agent terminals before any network I/O.
+        if (opts.mode === 'replace') {
+          requireYesInNonInteractive(opts.yes, 'Replace workflow dataset');
+        }
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         // Replace deletes every existing eval_examples row for the
         // workflow + cascades through `files`. Mirror the dashboard's
         // typed-slug confirmation gate at TTY level. `--yes` bypasses
         // for CI / scripted use.
         if (opts.mode === 'replace' && !opts.yes) {
-          if (!process.stdout.isTTY) {
-            throw new Error(
-              '--mode=replace is destructive and requires --yes when run non-interactively'
-            );
-          }
-          const ok = await confirmReplace(workflowId);
-          if (!ok) {
-            process.stderr.write(`${ui.dim('Aborted.')}\n`);
-            process.exit(1);
-          }
+          await requireTypedConfirmation({
+            id: workflowId,
+            actionName: 'replace every dataset example and its files',
+            cancelledMessage: 'Dataset replace aborted',
+          });
         }
         // `--file` accepts either a pre-zipped archive OR a folder. Skill
         // recipes (and the dataset format reference) show `--file ./dataset/`,

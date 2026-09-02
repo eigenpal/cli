@@ -51,7 +51,7 @@ const EVALUATOR_REGISTRY: Record<string, EvaluatorTypeDef> = {
     type: 'exact-diff',
     name: 'Exact Diff',
     description:
-      'Deterministic deep-equal between actual and expected with numeric tolerance and optional path-scoping.',
+      'Deterministic deep-equal between actual and expected with numeric tolerance, path scoping, and opt-in unordered arrays.',
     configSchema: ExactDiffConfigSchema,
   },
   'llm-judge': {

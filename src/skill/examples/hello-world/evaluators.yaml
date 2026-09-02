@@ -1,5 +1,7 @@
+passThreshold: 1.0
 evaluators:
   - name: exact-match
     type: exact-diff
     config:
-      passThreshold: 1.0
+      rules:
+        $: {}

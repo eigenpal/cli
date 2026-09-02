@@ -1,5 +1,15 @@
 import { z } from 'zod';
 import { compileTypedScript } from '../typed-script';
+import {
+  DEFAULT_EXACT_DIFF_NUMERIC_TOLERANCE,
+  MAX_UNORDERED_ARRAY_ITEMS,
+  MAX_UNORDERED_COMPARISON_OPERATIONS,
+  MAX_UNORDERED_PAIR_COMPARISONS,
+  evalPathIsDescendant,
+  selectExactDiffRulePaths,
+  type ExactDiffPathRule,
+  type ExactDiffRules,
+} from './compare-output';
 
 /**
  * Evaluator configuration — stored in `automations.eval_config_yaml` as YAML, parsed into this shape.
@@ -36,31 +46,248 @@ export const LLM_JUDGE_PROMPT_MIN_LENGTH = 10;
 
 // ------- exact-diff config -------
 
-export const ExactDiffConfigSchema = z
+const LEGACY_EXACT_DIFF_COMPARISON_KEYS = [
+  'paths',
+  'unorderedPaths',
+  'numericTolerance',
+  'allowExtraFields',
+] as const;
+
+const UnorderedArrayPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(
+    /^[^.[\]\s]+(?:(?:\[\])?\.[^.[\]\s]+)*$/,
+    'must name the array field itself with dot-path syntax such as `subjects` or `groups[].members` (not `subjects[]`); numeric indexes are not supported'
+  );
+
+export const ExactDiffRulePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(
+    /^(\$|(?:[^.[\]\s$]+)(?:\[\])?(?:\.(?:[^.[\]\s$]+)(?:\[\])?)*)$/,
+    'must be `$` or a dot-path such as `total`, `lineItems`, `lineItems[]`, or `lineItems[].unitPrice` (numeric indexes are not allowed)'
+  );
+
+export const ExactDiffArrayItemsSchema = z.enum(['at-least', 'at-most', 'exactly']);
+
+export const ExactDiffMatchByPathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(
+    /^[^.[\]\s$,]+(?:\.[^.[\]\s$,]+)*$/,
+    'must be a relative object field path such as `sku` or `meta.sku` (array indexes, commas, and wildcards are not supported)'
+  );
+
+export const ExactDiffMatchBySchema = z
+  .union([ExactDiffMatchByPathSchema, z.array(ExactDiffMatchByPathSchema).min(1)])
+  .superRefine((value, ctx) => {
+    if (!Array.isArray(value)) return;
+    const seen = new Set<string>();
+    for (let index = 0; index < value.length; index++) {
+      const path = value[index]!;
+      if (seen.has(path)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index],
+          message: 'matchBy paths must be unique',
+        });
+      }
+      seen.add(path);
+    }
+  });
+
+export const ExactDiffPathRuleSchema = z
   .object({
+    order: z
+      .enum(['ordered', 'unordered'])
+      .optional()
+      .describe(
+        `Array matching mode at this path. Independent of \`items\`. Set on the array path (\`lineItems\`), not the item path (\`lineItems[]\`). \`unordered\` matches distinct items in any order. Arrays stay ordered when omitted. Unordered matching is limited to ${MAX_UNORDERED_ARRAY_ITEMS} items, ${MAX_UNORDERED_PAIR_COMPARISONS} candidate pairs, and ${MAX_UNORDERED_COMPARISON_OPERATIONS} recursive operations per comparison.`
+      ),
+    items: ExactDiffArrayItemsSchema.optional().describe(
+      'How expected and actual array items relate. Set on the array path (`lineItems`), not the item path (`lineItems[]`). Independent of `order`. Ordered arrays use positional prefix matching: `at-least` (default) requires expected to match actual from index 0 and allows trailing actual extras; `at-most` requires actual to match expected from index 0 and allows trailing expected extras; `exactly` is equal-cardinality positional comparison. Unordered arrays match distinct items in any order: `at-least` requires every expected item and allows extra actual items (including extras with missing or duplicate identities); `at-most` requires every actual item and allows missing expected items (every actual item being checked needs a valid unique identity); `exactly` is a bijection (both sides need valid unique identities).'
+    ),
+    matchBy: ExactDiffMatchBySchema.optional().describe(
+      "Identity fields for unordered arrays of objects. Requires `order: unordered` on the same rule. Set on the array path (`lineItems`), not the item path (`lineItems[]`). A relative path (`sku`) or unique paths (`[country, sku]`) inside each item. Pairs expected and actual objects by exact identity, then diffs the paired objects with inherited nested rules. Identity type and value must both match: numeric `10` differs from string `'10'`; no coercion or numeric tolerance. Omitted = structural matching. Applies only at the array path where it is set and is not inherited by descendants. Nested object fields are allowed; array indexes, commas, and wildcards are not. Empty or comma-only values are rejected; composite paths must be unique."
+    ),
+    allowExtraFields: z
+      .boolean()
+      .optional()
+      .describe(
+        'When false, extra actual keys at this object fail the diff. When omitted, extra keys are allowed. Applies only to objects.'
+      ),
     numericTolerance: z
       .number()
       .min(0)
-      .default(1e-6)
+      .optional()
       .describe(
-        'Maximum absolute difference between numeric values that still counts as equal. Use 1e-6 for floats, 0 for exact integer match.'
+        'Maximum absolute difference for numeric leaves at or under this path. Omitted = inherit, then historical relative epsilon. Explicit `0` is exact.'
+      ),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (rule.matchBy === undefined) return;
+    if (rule.order !== 'unordered') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['matchBy'],
+        message: 'matchBy requires `order: unordered` on the same rule',
+      });
+    }
+  });
+
+const MIXED_EXACT_DIFF_MESSAGE =
+  'cannot mix `rules` with legacy comparison fields (`paths`, `unorderedPaths`, `numericTolerance`, `allowExtraFields`)';
+
+export const ExactDiffConfigSchema = z
+  .object({
+    rules: z
+      .record(z.string(), ExactDiffPathRuleSchema)
+      .optional()
+      .describe(
+        'Per-path comparison rules. Keys select compared paths (`$` = full output). More-specific keys inherit then override parent rules. `{}` selects a path using inherited platform defaults. Do not mix with legacy `paths`, `unorderedPaths`, `numericTolerance`, or `allowExtraFields`.'
+      ),
+    numericTolerance: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        'Legacy global numeric tolerance (absolute). When omitted, comparison uses historical relative epsilon. Prefer `rules.<path>.numericTolerance`. Accepted only when `rules` is omitted.'
       ),
     allowExtraFields: z
       .boolean()
-      .default(true)
+      .optional()
       .describe(
-        'When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly.'
+        'Legacy global extra-field/extra-item flag. Prefer `rules.<path>.allowExtraFields` and `rules.<path>.items`. `true` normalizes to object extras allowed and array `items: at-least`; `false` normalizes to object extras rejected and array `items: exactly`. Accepted only when `rules` is omitted.'
       ),
     passThreshold: ScoreInUnitInterval.optional().describe(LEGACY_EVALUATOR_THRESHOLD_DESCRIPTION),
     paths: z
       .array(z.string().min(1))
       .optional()
       .describe(
-        'Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score.'
+        'Legacy scoped paths. Prefer selecting those paths as `rules` keys. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`.'
+      ),
+    unorderedPaths: z
+      .array(UnorderedArrayPathSchema)
+      .optional()
+      .describe(
+        'Legacy unordered array paths. Prefer `rules.<path>.order: unordered`. Name the array field itself (`subjects`, not `subjects[]`).'
       ),
   })
-  .default({ numericTolerance: 1e-6, allowExtraFields: true });
+  .superRefine((config, ctx) => {
+    const hasRules = config.rules !== undefined;
+    const mixedLegacy = LEGACY_EXACT_DIFF_COMPARISON_KEYS.filter(
+      (key) => config[key] !== undefined
+    );
+    if (hasRules && mixedLegacy.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rules'],
+        message: MIXED_EXACT_DIFF_MESSAGE,
+      });
+    }
+    for (const [path, rule] of Object.entries(config.rules ?? {})) {
+      const parsed = ExactDiffRulePathSchema.safeParse(path);
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rules', path],
+          message:
+            parsed.error.issues[0]?.message ??
+            'must be `$` or a dot-path such as `total`, `lineItems`, `lineItems[]`, or `lineItems[].unitPrice` (numeric indexes are not allowed)',
+        });
+        continue;
+      }
+      if (!path.endsWith('[]')) continue;
+      const arrayPath = path.slice(0, -2);
+      const itemScopeMessage = (field: string) =>
+        `\`${field}\` belongs on the array path (\`${arrayPath}\`), not the item path (\`${path}\`); \`${path}\` is item scope`;
+      if (rule.order !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rules', path, 'order'],
+          message: itemScopeMessage('order'),
+        });
+      }
+      if (rule.items !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rules', path, 'items'],
+          message: itemScopeMessage('items'),
+        });
+      }
+      if (rule.matchBy !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rules', path, 'matchBy'],
+          message: itemScopeMessage('matchBy'),
+        });
+      }
+    }
+  })
+  .default({});
 export type ExactDiffConfig = z.infer<typeof ExactDiffConfigSchema>;
+
+export interface NormalizedExactDiffConfig {
+  rules: ExactDiffRules;
+  /** Compared roots, or `null` when `$` / empty rules means the full output. */
+  scopedPaths: string[] | null;
+  passThreshold?: number;
+}
+
+function legacyUnorderedPathApplies(unorderedPath: string, selected: readonly string[]): boolean {
+  if (selected.includes('$')) return true;
+  return selected.some((path) => {
+    if (path === unorderedPath) return true;
+    // Narrow leaf scopes such as `lineItems[].sku` project fixed indexes before
+    // comparison, so ancestor unordered array mode does not apply at runtime.
+    if (evalPathIsDescendant(path, unorderedPath) && path.includes('[]')) return false;
+    return evalPathIsDescendant(path, unorderedPath) || evalPathIsDescendant(unorderedPath, path);
+  });
+}
+
+function legacyExactDiffToRules(config: ExactDiffConfig): ExactDiffRules {
+  const numericTolerance = config.numericTolerance ?? DEFAULT_EXACT_DIFF_NUMERIC_TOLERANCE;
+  const allowExtra = config.allowExtraFields ?? true;
+  const base: ExactDiffPathRule = {
+    numericTolerance,
+    allowExtraFields: allowExtra,
+    items: allowExtra ? 'at-least' : 'exactly',
+  };
+  const selected = config.paths && config.paths.length > 0 ? config.paths : ['$'];
+  const rules: Record<string, ExactDiffPathRule> = {};
+  for (const path of selected) {
+    rules[path] = { ...base };
+  }
+  for (const unorderedPath of config.unorderedPaths ?? []) {
+    if (!legacyUnorderedPathApplies(unorderedPath, selected)) continue;
+    rules[unorderedPath] = { ...base, ...rules[unorderedPath], order: 'unordered' };
+  }
+  return rules;
+}
+
+/**
+ * Translate parsed exact-diff config into the rules used at comparison time.
+ * Legacy globals become an equivalent `$` / path rule set; `rules` is passed through.
+ */
+export function normalizeExactDiffConfig(config: ExactDiffConfig): NormalizedExactDiffConfig {
+  const rules = config.rules !== undefined ? config.rules : legacyExactDiffToRules(config);
+  const scopedPaths =
+    config.rules !== undefined
+      ? selectExactDiffRulePaths(rules)
+      : config.paths && config.paths.length > 0
+        ? config.paths
+        : null;
+  return {
+    rules,
+    scopedPaths,
+    ...(typeof config.passThreshold === 'number' ? { passThreshold: config.passThreshold } : {}),
+  };
+}
 
 // ------- llm-judge config -------
 
@@ -124,8 +351,8 @@ export type LlmJudgeConfig = z.infer<typeof LlmJudgeConfigSchema>;
  * (b) the dashboard help blurb above the editor.
  */
 export const CUSTOM_SCRIPT_CONTRACT = {
-  expected: "the example's expected output",
-  actual: "the workflow's actual output",
+  expected: "the example's expected-output envelope (`{ data: ... }`)",
+  actual: 'the workflow result envelope (`{ data: ..., files?: ... }`)',
   returns: 'a number in [0, 1] (the `: number` annotation is required)',
   throws: 'caught and scored as 0',
 } as const;

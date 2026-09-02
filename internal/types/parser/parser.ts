@@ -101,6 +101,25 @@ export type ParserType = z.infer<typeof ParserTypeSchema>;
 export const ParseModeSchema = z.enum(['ocr', 'vision', 'native', 'native-or-ocr']);
 export type ParseMode = z.infer<typeof ParseModeSchema>;
 
+/**
+ * Shared `ai.parse` / native-parser output format vocabulary.
+ *
+ * Keep this the single enum so step YAML, processor config, and ParseOptions
+ * cannot drift. `layout` is native-PDF spatial text (Poppler `pdftotext
+ * -layout`); Kreuzberg only accepts the other four values.
+ */
+export const PARSE_OUTPUT_FORMATS = ['plain', 'markdown', 'djot', 'html', 'layout'] as const;
+export const ParseOutputFormatSchema = z.enum(PARSE_OUTPUT_FORMATS);
+export type ParseOutputFormat = z.infer<typeof ParseOutputFormatSchema>;
+
+/** Kreuzberg `extractBytes` outputFormat — `layout` is never in this set. */
+export const KREUZBERG_OUTPUT_FORMATS = ['plain', 'markdown', 'djot', 'html'] as const;
+export type KreuzbergOutputFormat = (typeof KREUZBERG_OUTPUT_FORMATS)[number];
+
+export function isKreuzbergOutputFormat(format: string): format is KreuzbergOutputFormat {
+  return (KREUZBERG_OUTPUT_FORMATS as readonly string[]).includes(format);
+}
+
 export const PageProvenanceSourceSchema = z.enum(['native', 'ocr', 'vision']);
 export type PageProvenanceSource = z.infer<typeof PageProvenanceSourceSchema>;
 
@@ -128,6 +147,37 @@ export function refineNativeParseModeConflicts(
         'parseMode "native" cannot be combined with describeFigures because figure captions require vision egress',
     });
   }
+}
+
+export const LAYOUT_OUTPUT_PARSE_MODE_ERROR =
+  'outputFormat "layout" is native PDF-only. Set parseMode to "native" or "native-or-ocr". Omitted parseMode, OCR, vision, and nativeText: true cannot request layout.';
+
+/**
+ * Shared `outputFormat` field copy for `ai.parse` / document-parser config.
+ * `layout` requires an explicit native parse mode and a PDF at runtime.
+ */
+export const PARSE_OUTPUT_FORMAT_DESCRIPTION =
+  'Format for extracted text. `markdown` (default) keeps structure; `plain` is unstyled text; `djot`/`html` preserve more markup. `layout` is native-PDF spatial text with column gaps preserved as spaces. It requires `parseMode: native` or `parseMode: native-or-ocr` and a PDF — omitted parseMode and `nativeText: true` are not enough. Native mode is layout-only and fail-closed. `native-or-ocr` keeps layout text on accepted native pages and uses OCR markdown on suspect or empty pages, so the document can mix fixed-width layout and markdown. Extractor failure never falls back to another parser. Office, plaintext, and images fail. OCR/vision cannot request `layout`.';
+
+/**
+ * `layout` is a native PDF extractor, not a Kreuzberg/OCR/VLM render choice.
+ * Require an explicit `parseMode` of `native` or `native-or-ocr`.
+ */
+export function isNativeLayoutCompatible(config: { parseMode?: ParseMode }): boolean {
+  return config.parseMode === 'native' || config.parseMode === 'native-or-ocr';
+}
+
+export function refineLayoutOutputFormat(
+  config: { parseMode?: ParseMode; outputFormat?: string },
+  ctx: z.RefinementCtx
+): void {
+  if (config.outputFormat !== 'layout') return;
+  if (isNativeLayoutCompatible(config)) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['outputFormat'],
+    message: LAYOUT_OUTPUT_PARSE_MODE_ERROR,
+  });
 }
 
 /**
@@ -280,7 +330,7 @@ export type LayoutElement = z.infer<typeof LayoutElementSchema>;
  */
 export const PageResultSchema = z.object({
   pageIndex: z.number().describe('0-based page index'),
-  text: z.string().describe('Extracted text content (markdown/HTML)'),
+  text: z.string().describe('Extracted page text (markdown/HTML/plain, or spatial layout text)'),
 
   // Page identification (useful for multi-sheet Excel files)
   pageName: z.string().optional().describe('Page/sheet name (e.g., Excel sheet name)'),
@@ -343,12 +393,13 @@ export type ParseResult = z.infer<typeof ParseResultSchema>;
  * Parse options/config
  */
 export const ParseOptionsSchema = z.object({
-  // Output format preference. Vocabulary matches @kreuzberg/node, the only
-  // parser that actually consumes this value. `plain` is text without markup,
-  // `markdown` keeps headings/lists/tables (default — best for downstream LLM
-  // extraction), `djot` is a stricter markdown variant, `html` preserves the
-  // full layout. OCR/VLM parsers ignore this field — they emit markdown.
-  outputFormat: z.enum(['plain', 'markdown', 'djot', 'html']).default('markdown'),
+  // Output format preference. Shared vocabulary (`ParseOutputFormatSchema`).
+  // `plain` / `markdown` / `djot` / `html` are Kreuzberg-only (native PDF and
+  // Office). `layout` is native-PDF spatial text via Poppler and is never
+  // forwarded to Kreuzberg. Step config must pair `layout` with parseMode
+  // `native` or `native-or-ocr`. OCR/VLM parsers ignore this field — they emit
+  // markdown — and must not request `layout`.
+  outputFormat: ParseOutputFormatSchema.default('markdown'),
 
   // OCR-specific options
   ocrProvider: z.string().optional().describe('OCR provider ID to use'),

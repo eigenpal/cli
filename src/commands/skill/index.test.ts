@@ -96,6 +96,21 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'SKILL.md'), 'utf-8')).toBe('# user customized\n');
   });
 
+  it('fails fast on user edits in non-interactive mode without a policy flag', async () => {
+    const source = mkTmp();
+    const target = mkTmp();
+    plantSource(source, { 'SKILL.md': '# original\n' });
+
+    await installSkill({ source, target, yes: true });
+    writeFileSync(join(target, 'SKILL.md'), '# user customized\n');
+    writeFileSync(join(source, 'SKILL.md'), '# v2\n');
+
+    await expect(installSkill({ source, target })).rejects.toThrow(
+      /Pass --yes to keep them or --force to overwrite/
+    );
+    expect(readFileSync(join(target, 'SKILL.md'), 'utf-8')).toBe('# user customized\n');
+  });
+
   it('overwrites user edits when --force is given', async () => {
     const source = mkTmp();
     const target = mkTmp();
@@ -275,7 +290,7 @@ describe('uninstallSkill', () => {
     expect(exited).toBe(true);
   });
 
-  it('preserves user-edited files unless --yes is forced', async () => {
+  it('requires --yes for non-interactive uninstall and preserves edited files on failure', async () => {
     const source = mkTmp();
     const target = mkTmp();
     plantSource(source, { 'SKILL.md': '# original\n' });
@@ -283,22 +298,10 @@ describe('uninstallSkill', () => {
     await installSkill({ source, target, yes: true });
     writeFileSync(join(target, 'SKILL.md'), '# user wrote this\n');
 
-    // Without --yes, current code uninstalls based on prompt; in our test we
-    // simulate non-interactive by passing yes: false but stdin.isTTY is false
-    // in tests, so the prompt is skipped and removal proceeds. Pin the
-    // intended semantic: yes:false + edited file → file kept.
-    // Run uninstall with explicit yes=false to exercise the keep-edits branch.
-    await uninstallSkill({ target, yes: false }).catch(() => {
-      // The prompt path tries to read stdin; in a non-TTY test environment it
-      // skips the prompt and proceeds with default-keep semantics.
-    });
-
-    // Either the file is kept (non-yes path) OR the test environment made it
-    // through a non-interactive uninstall — assert at least one of those.
-    const survived = existsSync(join(target, 'SKILL.md'));
-    if (survived) {
-      expect(readFileSync(join(target, 'SKILL.md'), 'utf-8')).toBe('# user wrote this\n');
-    }
+    await expect(uninstallSkill({ target, yes: false })).rejects.toThrow(
+      /requires --yes when run non-interactively/
+    );
+    expect(readFileSync(join(target, 'SKILL.md'), 'utf-8')).toBe('# user wrote this\n');
   });
 });
 

@@ -1,6 +1,7 @@
 import { type Command } from 'commander';
 import { promises as fs } from 'node:fs';
 import { action } from '../../lib/format-error';
+import { requireYesInNonInteractive } from '../../lib/non-interactive';
 import {
   addJsonFlag,
   intArg,
@@ -82,7 +83,7 @@ export function registerExperimentCommands(agent: Command): void {
 
   addJsonFlag(withBaseUrl(experiment.command('cancel <agent-id-or-slug> <batch-id>')))
     .description('Cancel every active execution in an experiment.')
-    .option('--yes', 'Required in non-interactive environments')
+    .option('--yes', 'Skip confirmation (required in CI / agent terminals without a TTY)')
     .action(action(cancelExperiment));
 }
 
@@ -214,8 +215,7 @@ async function cancelExperiment(
   batchId: string,
   opts: BaseOpts & { yes?: boolean }
 ) {
-  if (!(opts.yes || process.stdin.isTTY))
-    throw new Error('Pass --yes to cancel in non-interactive mode');
+  requireYesInNonInteractive(opts.yes, 'Cancel experiment batch');
   const client = buildClient(opts);
   const payload = await client.post(
     `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments/${encodeURIComponent(batchId)}/cancel`

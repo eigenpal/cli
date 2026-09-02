@@ -16,9 +16,10 @@ eigenpal run workflows.<workflow-id> --example <example-name>
 
 `<workflow-id>` is either a `wf_…` id or a slug (the YAML's `name:`
 field). The workflow must be pushed (`eigenpal workflow push`) before
-`eigenpal run` works — only saved workflows execute. Streams a live
-step list as the run progresses. Bails to the prompt the moment a step
-transitions to `failed`.
+`eigenpal run` works — only saved workflows execute. Without `--wait`,
+the command enqueues the run and exits after printing the run id — it
+does not stream step progress. Add `--wait` to poll until a terminal
+status, or use `runs watch <exec-id>` for a live step-by-step view.
 
 If the workflow is server-stable and the failure is on a real
 historical execution, skip the rerun and pull the recorded execution

@@ -17,6 +17,7 @@ import {
   EvalConfigYamlSchema,
   EvaluatorBaseEntrySchema,
   ExactDiffConfigSchema,
+  ExactDiffPathRuleSchema,
   LlmJudgeConfigSchema,
   STEP_RETRY_CAPABILITIES,
   STEP_SCHEMAS,
@@ -299,6 +300,11 @@ function renderEvaluatorCatalog(): string {
       lines.push(renderObjectFields(cfg));
     } else {
       lines.push(`Type: \`${describeType(cfg)}\`. ${cfg.description ?? ''}`);
+    }
+    if (ev.name === 'exact-diff') {
+      lines.push('#### Per-path `rules` fields');
+      lines.push('');
+      lines.push(renderObjectFields(toJsonSchema(ExactDiffPathRuleSchema)));
     }
     lines.push('');
   }

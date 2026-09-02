@@ -51,7 +51,9 @@ async function readSecretInput(opts: { stdin?: boolean; valueFile?: string }): P
     }
     return String(answer);
   }
-  throw new Error('Secret value input is required in noninteractive mode.');
+  throw new Error(
+    'Secret value is required in non-interactive mode. Pass --stdin, --value-file <path>, or run in a TTY.'
+  );
 }
 
 async function encryptSecretsViaApi(
@@ -173,7 +175,7 @@ export function registerSourceSecretCommands(agent: Command): Command {
     .command('set <name>')
     .description('Encrypt and set a secret value in secrets.enc.yaml.')
     .option('--dir <dir>', 'Directory to inspect')
-    .option('--stdin', 'Read the secret value from stdin')
+    .option('--stdin', 'Read the secret value from stdin (required in CI / agent terminals)')
     .option('--value-file <path>', 'Read the secret value from a file')
     .option('--description <text>', 'Secret description')
     .action(action(setSecret));
@@ -189,3 +191,5 @@ export function registerSourceSecretCommands(agent: Command): Command {
     .action(action(importSecrets));
   return secrets;
 }
+
+export const __testing = { readSecretInput };

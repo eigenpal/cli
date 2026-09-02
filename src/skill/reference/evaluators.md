@@ -56,19 +56,75 @@ finance) who never see the YAML or the judge prompt. Write it for them:
 
 ### `exact-diff` — JSON deep-diff against `expected.json`
 
+Author comparison with a per-field `rules` map. Each key is a path into the
+workflow output (the `.data` object). Use `$` to target the full output.
+An ancestor rule covers its whole subtree; more specific descendants override
+inherited settings. `{}` selects a path with inherited platform defaults.
+
 ```yaml
 - name: invoice-fields
   type: exact-diff
   config:
-    passThreshold: 1.0 # 1.0 = byte-equal; lower = allow some slack
-    paths: [invoiceNumber, totalAmount] # OPTIONAL — restrict to specific dotted paths
+    rules:
+      invoiceNumber: {}
+      total:
+        numericTolerance: 0.01
+      lineItems:
+        order: unordered
+        items: exactly
+        matchBy: sku
+      lineItems[]:
+        allowExtraFields: false
+      lineItems[].unitPrice:
+        numericTolerance: 0.01
 ```
 
-- `passThreshold` — number in `[0, 1]`. The diff produces a similarity
-  score; `score >= passThreshold` ⇒ `passed: true`.
-- `paths` — array of dotted paths into the actual / expected outputs.
-  When set, only those paths are diffed. When absent, the whole object
-  is compared.
+- `rules` — map of path → comparison settings. Only listed paths (and their
+  descendants, unless a descendant adds its own rule) are scored. Omit a path
+  to ignore it, or set `$: {}` to compare the entire output with defaults.
+- `numericTolerance` — maximum absolute difference between expected and actual
+  numeric values at this path. Use `0` for exact integers; `0.01` is typical
+  for currency. When omitted, numeric comparison keeps the historical relative
+  epsilon.
+- `order: unordered` — on an array path, match items by value instead of
+  position. Matches always use distinct item slots; whether missing expected
+  items fail is controlled independently by `items`.
+- `matchBy` — optional identity for unordered arrays of objects. Requires
+  `order: unordered` on the same rule. Set on the array path (`lineItems`),
+  not the item path (`lineItems[]`). A relative field (`sku`) or unique
+  fields (`[country, sku]`) inside each item. Expected and actual objects are
+  paired by exact identity first, then the paired objects are compared with
+  inherited nested rules, so a matching SKU with the wrong amount reports
+  `lineItems[i].amount` instead of "no matching item". Applies only at the
+  array path where it is set and is not inherited. Identity type and value
+  must both match: numeric `10` differs from string `'10'`; no coercion or
+  numeric tolerance. With `items: at-least`, extra actual items may omit or
+  duplicate identities; with `at-most`, missing expected identities are
+  allowed but every actual item being checked needs a unique valid identity;
+  `exactly` validates both sides. Omit `matchBy` to keep structural matching,
+  which still allows legitimate duplicate objects.
+- `items: at-least` — require every expected item while allowing additional
+  actual items (the default). Use `at-most` to permit a subset of expected
+  items but reject unexpected actual items, or `exactly` to permit neither.
+- `order` is independent. Ordered arrays use positional prefix matching:
+  `at-least` requires expected to match actual from index 0 (trailing actual
+  extras only); `at-most` requires actual to match expected from index 0
+  (trailing expected extras only); `exactly` is equal-length positional.
+  `unordered` ignores positions. Set `order`, `items`, and `matchBy` on
+  `lineItems`, not `lineItems[]`.
+- `allowExtraFields: false` — on an object path (often `someArray[]`), reject
+  object keys present in actual but absent from expected.
+
+Path syntax: `lineItems` targets the array; `lineItems[]` targets each element;
+`lineItems[].unitPrice` targets a field inside every element. Nested unordered
+lists use paths such as `groups[].members` with `order: unordered` on that path.
+
+Extract steps may attach `_grounding` metadata under output fields. Exact-diff
+strips that metadata before comparison, so you do not need a rule to exclude it.
+
+Configs authored before per-field rules used other top-level `exact-diff`
+options. Those configs keep working unchanged. Do not mix legacy options with
+`rules` in the same evaluator; validation rejects mixed configs.
 
 `exact-diff` branches on the example's expected shape: success-expected
 examples (`expected.json`) are diffed against the workflow's actual output, and
@@ -120,15 +176,16 @@ one of the keys in `labels`; the harness then looks up the score.
   config:
     passThreshold: 1.0
     function: |
-      type WorkflowOutput = {
+      type WorkflowData = {
         totalAmount: number;
       };
+      type WorkflowOutput = { data: WorkflowData };
       type Expected = WorkflowOutput;
       type Actual = WorkflowOutput;
 
       function scoreScript(expected: WorkflowOutput, actual: WorkflowOutput): number {
-        const a = actual.totalAmount ?? 0;
-        const e = expected.totalAmount ?? 0;
+        const a = actual.data.totalAmount ?? 0;
+        const e = expected.data.totalAmount ?? 0;
         return Math.abs(a - e) <= 0.01 ? 1 : 0;
       }
 ```
@@ -141,6 +198,9 @@ enforced at parse time. The dashboard seeds new evaluators with a
 `WorkflowOutput` type alias derived from the workflow's `output:`
 declaration, plus `Expected` / `Actual` aliases for compatibility. Plain
 `unknown` works too if you do not want a typed signature.
+
+Both arguments are envelopes. Read workflow fields from `expected.data` and
+`actual.data`; the actual envelope may also include `files`.
 
 The signature shape is **locked**:
 
@@ -263,10 +323,22 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `numericTolerance` | number | no | `0.000001` | Maximum absolute difference between numeric values that still counts as equal. Use 1e-6 for floats, 0 for exact integer match. |
-| `allowExtraFields` | boolean | no | `true` | When on, extra fields in the actual output do not fail the diff. Off = actual must match expected exactly. |
+| `rules` | record<string, object> | no |  | Per-path comparison rules. Keys select compared paths (`$` = full output). More-specific keys inherit then override parent rules. `{}` selects a path using inherited platform defaults. Do not mix with legacy `paths`, `unorderedPaths`, `numericTolerance`, or `allowExtraFields`. |
+| `numericTolerance` | number | no |  | Legacy global numeric tolerance (absolute). When omitted, comparison uses historical relative epsilon. Prefer `rules.<path>.numericTolerance`. Accepted only when `rules` is omitted. |
+| `allowExtraFields` | boolean | no |  | Legacy global extra-field/extra-item flag. Prefer `rules.<path>.allowExtraFields` and `rules.<path>.items`. `true` normalizes to object extras allowed and array `items: at-least`; `false` normalizes to object extras rejected and array `items: exactly`. Accepted only when `rules` is omitted. |
 | `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
-| `paths` | array<string> | no |  | Dot-paths to scope the diff to a subset of the expected tree. Empty = diff entire expected. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. Use this when expected has noisy sections you do not want to score. |
+| `paths` | array<string> | no |  | Legacy scoped paths. Prefer selecting those paths as `rules` keys. Syntax: `header.id`, `lineItems[].total`, `lineItems[0].sku`. |
+| `unorderedPaths` | array<string> | no |  | Legacy unordered array paths. Prefer `rules.<path>.order: unordered`. Name the array field itself (`subjects`, not `subjects[]`). |
+
+#### Per-path `rules` fields
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `order` | `"ordered"` \| `"unordered"` | no |  | Array matching mode at this path. Independent of `items`. Set on the array path (`lineItems`), not the item path (`lineItems[]`). `unordered` matches distinct items in any order. Arrays stay ordered when omitted. Unordered matching is limited to 1000 items, 1000000 candidate pairs, and 2000000 recursive operations per comparison. |
+| `items` | `"at-least"` \| `"at-most"` \| `"exactly"` | no |  | How expected and actual array items relate. Set on the array path (`lineItems`), not the item path (`lineItems[]`). Independent of `order`. Ordered arrays use positional prefix matching: `at-least` (default) requires expected to match actual from index 0 and allows trailing actual extras; `at-most` requires actual to match expected from index 0 and allows trailing expected extras; `exactly` is equal-cardinality positional comparison. Unordered arrays match distinct items in any order: `at-least` requires every expected item and allows extra actual items (including extras with missing or duplicate identities); `at-most` requires every actual item and allows missing expected items (every actual item being checked needs a valid unique identity); `exactly` is a bijection (both sides need valid unique identities). |
+| `matchBy` | string \| array<string> | no |  | Identity fields for unordered arrays of objects. Requires `order: unordered` on the same rule. Set on the array path (`lineItems`), not the item path (`lineItems[]`). A relative path (`sku`) or unique paths (`[country, sku]`) inside each item. Pairs expected and actual objects by exact identity, then diffs the paired objects with inherited nested rules. Identity type and value must both match: numeric `10` differs from string `'10'`; no coercion or numeric tolerance. Omitted = structural matching. Applies only at the array path where it is set and is not inherited by descendants. Nested object fields are allowed; array indexes, commas, and wildcards are not. Empty or comma-only values are rejected; composite paths must be unique. |
+| `allowExtraFields` | boolean | no |  | When false, extra actual keys at this object fail the diff. When omitted, extra keys are allowed. Applies only to objects. |
+| `numericTolerance` | number | no |  | Maximum absolute difference for numeric leaves at or under this path. Omitted = inherit, then historical relative epsilon. Explicit `0` is exact. |
 
 
 ### `llm-judge` — LLM-as-judge scoring
@@ -285,7 +357,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `function` | string | yes |  | Full TypeScript source for optional `type` aliases plus `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected output) and `actual` (the workflow's actual output), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
+| `function` | string | yes |  | Full TypeScript source for optional `type` aliases plus `function scoreScript(expected, actual): number { ... }`. Receives `expected` (the example's expected-output envelope (`{ data: ... }`)) and `actual` (the workflow result envelope (`{ data: ..., files?: ... }`)), returns a number in [0, 1] (the `: number` annotation is required). The `: number` return-type annotation is required and enforced at parse time. Throws are caught and scored as 0. |
 | `timeoutMs` | integer | no | `5000` | Maximum wall-clock time the script can run before it is killed and the run is marked failed. |
 | `memoryLimitMb` | integer | no | `10` | Maximum memory the sandbox may allocate. Increase if the script processes large arrays or strings. |
 | `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |

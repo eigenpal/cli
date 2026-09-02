@@ -1,5 +1,4 @@
-import { assertSafeOfficeZip } from '@eigenpal/common';
-import { unzipSync } from 'fflate';
+import { assertSafeSpreadsheetZip, isOfficeZipContainer } from '@eigenpal/common';
 import { createHash, type Hash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
@@ -25,8 +24,6 @@ export const XLSX_COMPARE_LIMITS = {
 } as const;
 
 const XLSX_PARSE_MAX_FILE_BYTES = XLSX_COMPARE_LIMITS.maxFileBytes;
-const WORKSHEET_PATH_RE = /^xl\/worksheets\/[^/]+\.xml$/i;
-const DIMENSION_REF_RE = /<dimension\b[^>]*\bref="([^"]+)"/i;
 
 export type XlsxComparisonDigestResult =
   | { status: 'ok'; digest: string }
@@ -107,13 +104,10 @@ function sheetRangeDimensions(worksheet: XLSX.WorkSheet): { rows: number; cols: 
   };
 }
 
-function isZipContainer(buffer: Buffer): boolean {
-  return buffer.length >= 4 && buffer.readUInt32LE(0) === 0x04034b50;
-}
-
 /**
- * Reject hostile XLSX containers and sparse dimensions before SheetJS builds
- * worksheet objects. Legacy binary XLS files skip ZIP-specific checks.
+ * Reject hostile XLSX containers before SheetJS builds worksheet objects.
+ * Compare callers pass tighter count limits than the Excel-grid defaults.
+ * Legacy binary XLS files skip ZIP-specific checks.
  */
 function preflightWorkbookBuffer(
   buffer: Buffer,
@@ -124,42 +118,16 @@ function preflightWorkbookBuffer(
       `Workbook exceeds file-size limit (${XLSX_PARSE_MAX_FILE_BYTES} bytes): ${buffer.byteLength} bytes`
     );
   }
-  if (!isZipContainer(buffer)) return;
+  if (!isOfficeZipContainer(buffer)) return;
 
-  assertSafeOfficeZip(buffer);
-  const archive = unzipSync(buffer);
-  const worksheetEntries = Object.entries(archive).filter(([path]) => WORKSHEET_PATH_RE.test(path));
-  if (worksheetEntries.length > limits.maxSheets) {
-    throw new Error(
-      `Workbook exceeds maxSheets limit (${limits.maxSheets}): ${worksheetEntries.length} sheets`
-    );
-  }
-  let totalRows = 0;
-  let totalCells = 0;
-  for (const [path, bytes] of worksheetEntries) {
-    const match = DIMENSION_REF_RE.exec(new TextDecoder().decode(bytes));
-    if (!match?.[1]) continue;
-    const range = XLSX.utils.decode_range(match[1]);
-    const rows = range.e.r - range.s.r + 1;
-    const cols = range.e.c - range.s.c + 1;
-    totalRows += rows;
-    totalCells += rows * cols;
-    if (rows > limits.maxRowsPerSheet || cols > limits.maxColumns) {
-      throw new Error(
-        `Worksheet "${path}" exceeds safe dimensions (maxRowsPerSheet=${limits.maxRowsPerSheet}, maxColumns=${limits.maxColumns}): ${rows}x${cols}`
-      );
-    }
-    if (rows * cols > limits.maxTotalCells) {
-      throw new Error(
-        `Worksheet "${path}" exceeds maxTotalCells limit (${limits.maxTotalCells}): ${rows * cols} cells`
-      );
-    }
-  }
-  if (totalRows > limits.maxTotalRows || totalCells > limits.maxTotalCells) {
-    throw new Error(
-      `Workbook exceeds aggregate safe dimensions (${limits.maxTotalRows} rows, ${limits.maxTotalCells} cells): ${totalRows} rows, ${totalCells} cells`
-    );
-  }
+  assertSafeSpreadsheetZip(buffer, {
+    maxSheets: limits.maxSheets,
+    maxRowsPerSheet: limits.maxRowsPerSheet,
+    maxColumns: limits.maxColumns,
+    maxCellsPerSheet: limits.maxTotalCells,
+    maxTotalRows: limits.maxTotalRows,
+    maxTotalCells: limits.maxTotalCells,
+  });
 }
 
 function parseSheetSelection(raw: string): XlsxSheetSelection {

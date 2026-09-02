@@ -519,12 +519,12 @@ Encrypt and set a secret value in secrets.enc.yaml.
 
 ### Options
 
-| Flag                   | Required | Default | Description                       |
-| ---------------------- | -------- | ------- | --------------------------------- |
-| `--dir <dir>`          | no       |         | Directory to inspect              |
-| `--stdin`              | no       |         | Read the secret value from stdin  |
-| `--value-file <path>`  | no       |         | Read the secret value from a file |
-| `--description <text>` | no       |         | Secret description                |
+| Flag                   | Required | Default | Description                                                         |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------- |
+| `--dir <dir>`          | no       |         | Directory to inspect                                                |
+| `--stdin`              | no       |         | Read the secret value from stdin (required in CI / agent terminals) |
+| `--value-file <path>`  | no       |         | Read the secret value from a file                                   |
+| `--description <text>` | no       |         | Secret description                                                  |
 
 ### `eigenpal agents secrets|secret unset [options] <name>`
 
@@ -607,13 +607,13 @@ Upload dataset examples from a local dataset directory or zip archive.
 
 ### Options
 
-| Flag                       | Required | Default    | Description                                          |
-| -------------------------- | -------- | ---------- | ---------------------------------------------------- |
-| `--base-url <url>`         | no       |            | Server base URL                                      |
-| `--json`                   | no       |            | Output the raw server response as JSON               |
-| `--file <path>`            | yes      |            | Dataset directory or .zip archive                    |
-| `--mode <append\|replace>` | no       | `"append"` | Upload mode                                          |
-| `--yes`                    | no       |            | Confirm replace mode in non-interactive environments |
+| Flag                       | Required | Default    | Description                                                                        |
+| -------------------------- | -------- | ---------- | ---------------------------------------------------------------------------------- |
+| `--base-url <url>`         | no       |            | Server base URL                                                                    |
+| `--json`                   | no       |            | Output the raw server response as JSON                                             |
+| `--file <path>`            | yes      |            | Dataset directory or .zip archive                                                  |
+| `--mode <append\|replace>` | no       | `"append"` | Upload mode                                                                        |
+| `--yes`                    | no       |            | Skip typed-slug confirmation for --mode replace (required in CI / agent terminals) |
 
 ### `eigenpal agents dataset pull [options] <agent-id-or-slug>`
 
@@ -763,11 +763,11 @@ Cancel every active execution in an experiment.
 
 ### Options
 
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
+| Flag               | Required | Default | Description                                                        |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                                                    |
+| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal agents session list|ls [options] <agent-id-or-slug>`
 
@@ -854,11 +854,11 @@ Stop a builder session.
 
 ### Options
 
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
+| Flag               | Required | Default | Description                                                        |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                                                    |
+| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal agents env pull [options] [target]`
 

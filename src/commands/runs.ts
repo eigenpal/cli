@@ -6,6 +6,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ApiClient } from '../lib/client';
 import { action } from '../lib/format-error';
+import { requireTypedConfirmation, requireYesInNonInteractive } from '../lib/non-interactive';
 import { resolveWorkflowId } from '../lib/resolve-workflow';
 import {
   addJsonFlag,
@@ -35,7 +36,6 @@ import {
   buildClient,
   collectRepeated,
   compactParams,
-  confirmTyped,
   pollRun,
   printJson,
   renderGeneric,
@@ -118,8 +118,8 @@ export function registerRunsCommands(program: Command): void {
       'after',
       `
 Examples
-  $ eigenpal runs promote run_abc123 --name golden-invoice
-  $ eigenpal runs promote run_abc123 --json | jq '.exampleId'
+  $ eigenpal runs promote exec_abc123 --name golden-invoice
+  $ eigenpal runs promote exec_abc123 --json | jq '.exampleId'
 
 Copies the run input and review corrections into a dataset example.
 Use \`eigenpal runs reviews update\` first when you need to correct output.
@@ -192,7 +192,15 @@ Use \`eigenpal runs reviews update\` first when you need to correct output.
 
   addJsonFlag(withBaseUrl(runs.command('cancel <run-id>')))
     .description('Cancel a run.')
-    .option('--yes', 'Required in non-interactive environments')
+    .option('--yes', 'Skip confirmation (required in CI / agent terminals without a TTY)')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal runs cancel exec_abc123
+  $ eigenpal runs cancel exec_abc123 --yes    # required in scripts and agent terminals
+`
+    )
     .action(action(cancelRun));
 }
 
@@ -231,7 +239,18 @@ function registerRunReviewCommands(runs: Command): void {
 
   addJsonFlag(withBaseUrl(reviews.command('clear <run-id>')))
     .description('Delete review metadata, corrected JSON, and corrected files for a run.')
-    .option('--yes', 'Required in non-interactive environments')
+    .option(
+      '--yes',
+      'Skip typed-slug confirmation (required in CI / agent terminals without a TTY)'
+    )
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal runs reviews clear exec_abc123
+  $ eigenpal runs reviews clear exec_abc123 --yes    # required in scripts and agent terminals
+`
+    )
     .action(action(clearRunReview));
 }
 
@@ -271,7 +290,18 @@ function registerRunExpectedCommands(runs: Command): void {
 
   addJsonFlag(withBaseUrl(expected.command('delete <run-id> <name>')))
     .description('Delete an expected artifact.')
-    .option('--yes', 'Required in non-interactive environments')
+    .option(
+      '--yes',
+      'Skip typed-slug confirmation (required in CI / agent terminals without a TTY)'
+    )
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal runs expected delete exec_abc123 invoice.pdf
+  $ eigenpal runs expected delete exec_abc123 invoice.pdf --yes
+`
+    )
     .action(action(deleteRunExpected));
 }
 
@@ -1449,9 +1479,12 @@ function compactRunRow(run: Record<string, unknown>) {
 }
 
 async function clearRunReview(executionId: string, opts: BaseOpts & { yes?: boolean }) {
-  if (!(opts.yes || (await confirmTyped(executionId, 'clear review artifacts')))) {
-    throw new Error('Clear cancelled');
-  }
+  await requireTypedConfirmation({
+    yes: opts.yes,
+    id: executionId,
+    actionName: 'clear review artifacts',
+    cancelledMessage: 'Clear cancelled',
+  });
   const client = buildClient(opts);
   const payload = await client.delete(`/v1/runs/${encodeURIComponent(executionId)}/reviews`);
   renderGeneric(payload, opts, `Cleared review for ${executionId}`);
@@ -1572,9 +1605,12 @@ async function deleteRunExpected(
   name: string,
   opts: BaseOpts & { yes?: boolean }
 ) {
-  if (!(opts.yes || (await confirmTyped(name, 'delete expected file')))) {
-    throw new Error('Delete cancelled');
-  }
+  await requireTypedConfirmation({
+    yes: opts.yes,
+    id: name,
+    actionName: 'delete expected file',
+    cancelledMessage: 'Delete cancelled',
+  });
   const client = buildClient(opts);
   await client.delete(
     `/v1/runs/${encodeURIComponent(executionId)}/reviews/expected/${encodeURIComponent(name)}`
@@ -1616,8 +1652,7 @@ async function watchRunCommand(
 }
 
 async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }) {
-  if (!(opts.yes || process.stdin.isTTY))
-    throw new Error('Pass --yes to cancel in non-interactive mode');
+  requireYesInNonInteractive(opts.yes, 'Cancel run');
   const client = buildClient(opts);
   const payload = await client.post(`/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
   renderRunPayload(payload, opts);

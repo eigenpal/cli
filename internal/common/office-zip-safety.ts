@@ -2,17 +2,44 @@ export const MAX_TEMPLATE_INFLATED_BYTES = 100 * 1024 * 1024;
 export const MAX_TEMPLATE_ZIP_ENTRIES = 10_000;
 const MAX_TEMPLATE_COMPRESSION_RATIO = 200;
 
+const EOCD_SIGNATURE = 0x06054b50;
+const CENTRAL_SIGNATURE = 0x02014b50;
+const LOCAL_FILE_SIGNATURE = 0x04034b50;
+
+export type OfficeZipEntry = {
+  path: string;
+  compressed: number;
+  inflated: number;
+};
+
+export type OfficeZipInspection = {
+  entries: OfficeZipEntry[];
+};
+
+export function isOfficeZipContainer(bytes: Buffer): boolean {
+  return bytes.length >= 4 && bytes.readUInt32LE(0) === LOCAL_FILE_SIGNATURE;
+}
+
+function assertSafeZipPath(path: string): void {
+  if (!path || path.includes('\0') || path.includes('\\') || /^[a-zA-Z]:/.test(path)) {
+    throw new Error('Office ZIP entry path is not safe');
+  }
+  const normalized = path.replace(/\\/g, '/');
+  if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
+    throw new Error('Office ZIP entry path is not safe');
+  }
+}
+
 /**
- * Bound ZIP inflation before any XML parser expands an Office archive.
- * ZIP64 archives are rejected because their 64-bit sizes are not represented
- * in the fixed central-directory fields this preflight intentionally trusts.
+ * Bound ZIP inflation and inspect central-directory names before any XML parser
+ * expands an Office archive. ZIP64 archives are rejected because their 64-bit
+ * sizes are not represented in the fixed central-directory fields this preflight
+ * intentionally trusts.
  */
-export function assertSafeOfficeZip(bytes: Buffer): void {
-  const eocdSignature = 0x06054b50;
-  const centralSignature = 0x02014b50;
+export function inspectSafeOfficeZip(bytes: Buffer): OfficeZipInspection {
   let eocd = -1;
   for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65_557); offset -= 1) {
-    if (bytes.readUInt32LE(offset) === eocdSignature) {
+    if (bytes.readUInt32LE(offset) === EOCD_SIGNATURE) {
       eocd = offset;
       break;
     }
@@ -25,10 +52,11 @@ export function assertSafeOfficeZip(bytes: Buffer): void {
     throw new Error('Office ZIP exceeds safe archive bounds');
   }
 
+  const inspected: OfficeZipEntry[] = [];
   let offset = centralOffset;
   let inflatedTotal = 0;
   for (let index = 0; index < entries; index += 1) {
-    if (offset + 46 > bytes.length || bytes.readUInt32LE(offset) !== centralSignature) {
+    if (offset + 46 > bytes.length || bytes.readUInt32LE(offset) !== CENTRAL_SIGNATURE) {
       throw new Error('Invalid Office ZIP central directory');
     }
     const compressed = bytes.readUInt32LE(offset + 20);
@@ -48,6 +76,20 @@ export function assertSafeOfficeZip(bytes: Buffer): void {
     const filenameLength = bytes.readUInt16LE(offset + 28);
     const extraLength = bytes.readUInt16LE(offset + 30);
     const commentLength = bytes.readUInt16LE(offset + 32);
-    offset += 46 + filenameLength + extraLength + commentLength;
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + filenameLength;
+    if (nameEnd > bytes.length) {
+      throw new Error('Invalid Office ZIP central directory');
+    }
+    const path = new TextDecoder().decode(bytes.subarray(nameStart, nameEnd));
+    assertSafeZipPath(path);
+    inspected.push({ path, compressed, inflated });
+    offset = nameEnd + extraLength + commentLength;
   }
+
+  return { entries: inspected };
+}
+
+export function assertSafeOfficeZip(bytes: Buffer): OfficeZipInspection {
+  return inspectSafeOfficeZip(bytes);
 }

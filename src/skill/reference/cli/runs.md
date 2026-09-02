@@ -270,11 +270,11 @@ Cancel a run.
 
 ### Options
 
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
+| Flag               | Required | Default | Description                                                        |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                                                    |
+| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal runs artifacts|artifact list|ls [options] <run-id>`
 
@@ -393,11 +393,11 @@ Delete review metadata, corrected JSON, and corrected files for a run.
 
 ### Options
 
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
+| Flag               | Required | Default | Description                                                                   |
+| ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                               |
+| `--json`           | no       |         | Output the raw server response as JSON                                        |
+| `--yes`            | no       |         | Skip typed-slug confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal runs expected list|ls [options] <run-id>`
 
@@ -503,8 +503,8 @@ Delete an expected artifact.
 
 ### Options
 
-| Flag               | Required | Default | Description                              |
-| ------------------ | -------- | ------- | ---------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                          |
-| `--json`           | no       |         | Output the raw server response as JSON   |
-| `--yes`            | no       |         | Required in non-interactive environments |
+| Flag               | Required | Default | Description                                                                   |
+| ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                               |
+| `--json`           | no       |         | Output the raw server response as JSON                                        |
+| `--yes`            | no       |         | Skip typed-slug confirmation (required in CI / agent terminals without a TTY) |

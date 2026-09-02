@@ -21,8 +21,11 @@ import {
   type JsonSchema7Type,
 } from '../core/common';
 import {
+  PARSE_OUTPUT_FORMAT_DESCRIPTION,
   ParseModeSchema,
+  ParseOutputFormatSchema,
   ParseResultSchema,
+  refineLayoutOutputFormat,
   refineNativeParseModeConflicts,
 } from '../parser/parser';
 import {
@@ -33,6 +36,11 @@ import {
   JsonToXlsxSheetNameSchema,
   refineJsonToXlsxLayout,
 } from '../processor/configs/json-to-xlsx';
+import {
+  XlsxToJsonConfigSchema,
+  XlsxToJsonOutputSchema,
+  refineXlsxToJsonHeaderRowColumns,
+} from '../processor/configs/xlsx-to-json';
 import { compileTypedScript } from '../typed-script';
 import type { StepRetryCapability } from './retry';
 import { SCRIPT_FN_MAX_BYTES } from './script-function';
@@ -94,13 +102,9 @@ export const AiParseConfigSchema = z
       ),
     prompt: z.string().optional().describe('Custom extraction prompt'),
     languages: z.array(z.string()).optional().describe('OCR language hints'),
-    outputFormat: z
-      .enum(['plain', 'markdown', 'djot', 'html'])
-      .default('markdown')
+    outputFormat: ParseOutputFormatSchema.default('markdown')
       .optional()
-      .describe(
-        'Format for extracted text. `markdown` (default) keeps structure and is best for LLM extraction; `plain` is unstyled text; `djot`/`html` preserve more layout. Only the native (Kreuzberg) parser respects this — OCR/VLM always emit markdown.'
-      ),
+      .describe(PARSE_OUTPUT_FORMAT_DESCRIPTION),
     nativeText: z
       .boolean()
       .default(false)
@@ -121,7 +125,8 @@ export const AiParseConfigSchema = z
         'Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs.'
       ),
   })
-  .superRefine(refineNativeParseModeConflicts);
+  .superRefine(refineNativeParseModeConflicts)
+  .superRefine(refineLayoutOutputFormat);
 
 export const AiParseOutputSchema = ParseResultSchema.omit({ rawResponse: true });
 
@@ -965,38 +970,30 @@ export const TransformPdfEmbedOutputSchema = z.object({
 });
 
 /**
- * transform.xlsx-to-json - Convert XLSX spreadsheet to JSON (array of row objects)
- * Config goes in step.with
+ * transform.xlsx-to-json — Spreadsheet to JSON (XLS / XLSX)
+ * Config goes in step.with. Shared conversion fields live on the processor schema.
  */
-export const TransformXlsxToJsonConfigSchema = z.object({
-  input: z
-    .string()
-    .min(1, 'Input is required')
-    .describe(
-      'File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime'
-    ),
-  sheet: z
-    .union([z.number().int().min(0), z.string()])
-    .optional()
-    .describe('Sheet to read: 0-based index or sheet name. Omit for first sheet.'),
-  outputCsv: z
-    .boolean()
-    .default(false)
-    .describe('If true, also write CSV to storage and include fileId in output'),
-  outputFilename: z
-    .string()
-    .optional()
-    .describe(
-      'Output CSV filename when outputCsv is true - supports LiquidJS e.g. {{filename}}.csv'
-    ),
-});
+export const TransformXlsxToJsonConfigSchema = z
+  .object({
+    input: z
+      .string()
+      .min(1, 'Input is required')
+      .describe(
+        'File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime'
+      ),
+  })
+  .extend(XlsxToJsonConfigSchema.shape)
+  .extend({
+    outputFilename: z
+      .string()
+      .optional()
+      .describe(
+        'Output CSV filename when outputCsv is true - supports LiquidJS e.g. {{filename}}.csv'
+      ),
+  })
+  .superRefine(refineXlsxToJsonHeaderRowColumns);
 
-export const TransformXlsxToJsonOutputSchema = z.object({
-  rows: z
-    .array(z.record(z.string(), z.unknown()))
-    .describe('Array of row objects (first row = headers as keys)'),
-  fileId: z.string().optional().describe('File ID of stored CSV when outputCsv is true'),
-});
+export const TransformXlsxToJsonOutputSchema = XlsxToJsonOutputSchema;
 
 /**
  * transform.json-to-xlsx - Convert JSON rows into an XLSX spreadsheet file
@@ -1454,7 +1451,7 @@ export const ActionInvokeWorkflowConfigSchema = z
 export const ActionInvokeWorkflowOutputSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    "When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. Call get_workflow_output_schema to see the exact resolved fields."
+    "When wait is true, the invoked workflow's declared output fields are flattened to the top level alongside a `files` array — reference them as {{ steps.<invoke>.output.<field> }} (there is no `.data` or `.result` wrapper). When wait is false, execution metadata. CLI authors can run `eigenpal workflow schema <workflow-id>` to inspect resolved fields; Studio builder agents can call `get_workflow_output_schema`."
   );
 
 /**
@@ -1874,9 +1871,9 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
   'transform.xlsx-to-json': {
     type: 'transform.xlsx-to-json',
     category: 'transform',
-    name: 'XLSX to JSON',
+    name: 'Spreadsheet to JSON',
     description:
-      'Convert XLSX spreadsheet to JSON array of row objects for use in scripts or downstream steps',
+      'Convert an XLS or XLSX spreadsheet to a JSON array of row objects. Supports headerless files, named or positional columns, displayed text, and a single rectangular range.',
     configSchema: TransformXlsxToJsonConfigSchema,
     outputSchema: TransformXlsxToJsonOutputSchema,
     configInWith: true,

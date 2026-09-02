@@ -9,6 +9,22 @@ export {
   type XlsxPlaceholderInspection,
 } from './office-placeholder-inspect';
 export {
+  EXCEL_WORKSHEET_MAX_COLUMNS,
+  EXCEL_WORKSHEET_MAX_ROWS,
+  OLE_COMPOUND_MAGIC,
+  SPREADSHEET_WORKSHEET_PATH_RE,
+  SPREADSHEET_ZIP_STRUCTURE_DEFAULTS,
+  assertExcelGridRange,
+  assertSafeSpreadsheetZip,
+  classifyOfficeSpreadsheetZip,
+  decodeA1RangeDimensions,
+  isOleCompoundFile,
+  type SafeSpreadsheetZip,
+  type SpreadsheetWorksheetDimension,
+  type SpreadsheetZipClassification,
+  type SpreadsheetZipStructureLimits,
+} from './office-spreadsheet-preflight';
+export {
   NotFoundHighlightModule,
   XLSX_DOUBLE_BRACE_ERROR,
   detectOfficeTemplateFormat,
@@ -24,6 +40,10 @@ export {
   MAX_TEMPLATE_INFLATED_BYTES,
   MAX_TEMPLATE_ZIP_ENTRIES,
   assertSafeOfficeZip,
+  inspectSafeOfficeZip,
+  isOfficeZipContainer,
+  type OfficeZipEntry,
+  type OfficeZipInspection,
 } from './office-zip-safety';
 export {
   deepMerge,

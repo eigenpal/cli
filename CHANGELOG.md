@@ -1,5 +1,37 @@
 # @eigenpal/cli
 
+## 0.14.0
+
+### Minor Changes
+
+- 622e308: CLI evaluator authoring now exposes exact-diff per-field rules for array
+  cardinality and order, strict extra fields, numeric tolerance, and optional typed
+  single- or composite-field `matchBy` identities. Generated guidance explains
+  array and item paths, ordered prefix compatibility, bounded unordered matching,
+  grounding metadata exclusion, and migration from legacy evaluator options.
+- 622e308: The generated step catalog now documents `ai.parse` `outputFormat: layout`,
+  including its PDF-only requirement, compatible native modes, fail-closed native
+  behavior, and page-level OCR fallback in hybrid mode. Workflow authors can
+  discover and configure layout-preserving parsing without leaving the CLI
+  authoring workflow.
+- 622e308: The generated step catalog now documents the complete Spreadsheet to JSON
+  authoring surface: `.xls` and `.xlsx` input, header and column selection, ranges,
+  raw or displayed values, blank handling, optional metadata and diagnostics, CSV
+  projection compatibility, and configurable safety limits.
+
+### Patch Changes
+
+- 622e308: CLI authoring guidance now covers the template lifecycle and file uploads,
+  workflow creation and updates, dataset and evaluator `--file` usage, and
+  discovery of evaluator types, step types, and models. Examples also use the
+  correct workflow, agent, and execution IDs and clarify how to invoke runs,
+  prepare expected artifacts, and review outputs.
+- 622e308: Commands that require confirmation now fail immediately in CI, piped sessions,
+  and agent terminals instead of waiting for input that cannot arrive. Help text
+  identifies the required `--yes` or `--force` override for destructive and
+  replacement actions, while `eigenpal auth login` remains an explicitly
+  interactive flow.
+
 ## 0.13.2
 
 ### Patch Changes

@@ -206,15 +206,12 @@ function warnInsecure(): void {
 }
 
 export async function authLogin(flagBaseUrl?: string): Promise<void> {
-  // CI environments shouldn't be running interactive login — the readline
-  // prompt would hang indefinitely. Bail with a clear hint pointing at the
-  // env var. Most CI runners (GitHub Actions, CircleCI, Jenkins, GitLab,
-  // BitBucket, Vercel) set CI=true; nektos/act and some Jenkins flows set
-  // CI=false for local emulation, so explicitly compare to "true" rather
-  // than relying on truthiness.
-  if (env.CI === 'true' && process.stdin.isTTY !== true) {
+  // Login always needs an interactive confirmation and masked key prompt.
+  // Reject every non-TTY caller up front, even when --base-url is supplied;
+  // otherwise agent terminals outside CI can hang at the later clack prompt.
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
     error(
-      '`auth login` needs an interactive terminal. In CI, set EIGENPAL_API_KEY (and optionally EIGENPAL_BASE_URL) directly instead.'
+      '`auth login` needs an interactive terminal. In CI or agent terminals, set EIGENPAL_API_KEY (and optionally EIGENPAL_BASE_URL) directly instead.'
     );
     process.exit(1);
   }

@@ -2,10 +2,9 @@ import { isTerminalExecutionStatus } from '@eigenpal/types';
 import { InvalidArgumentError } from 'commander';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createInterface } from 'node:readline/promises';
 import { ApiClient } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
-import { success, ui } from '../../lib/ui';
+import { success } from '../../lib/ui';
 
 export type BaseOpts = { baseUrl?: string; json?: boolean };
 export type AgentFile = { path: string; contentBase64: string; contentType?: string };
@@ -183,18 +182,7 @@ export function parseResultsFormat(value: string): 'csv' | 'json' {
   throw new InvalidArgumentError('format must be csv or json');
 }
 
-export async function confirmTyped(id: string, actionName: string): Promise<boolean> {
-  if (!process.stdin.isTTY || !process.stderr.isTTY) return false;
-  process.stderr.write(
-    `\n  ${ui.warn('!')} About to ${actionName} for ${ui.bold(id)}.\n  Type ${ui.bold(id)} to confirm: `
-  );
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    return (await rl.question('')).trim() === id;
-  } finally {
-    rl.close();
-  }
-}
+export { confirmTyped } from '../../lib/non-interactive';
 
 export function toCsv(rows: Record<string, unknown>[], columns: string[]): string {
   const escape = (value: unknown) => {

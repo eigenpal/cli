@@ -39,6 +39,7 @@ import {
 } from 'node:fs';
 import { sep as PATH_SEP, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isInteractiveStdout, nonInteractiveYesRequired } from '../../lib/non-interactive';
 import { error, info, success, table, ui } from '../../lib/ui';
 import { TOOLS, type ToolTarget } from './tools';
 
@@ -161,6 +162,11 @@ export async function installSkill(opts: InstallOptions): Promise<void> {
       skipped += 1;
       continue;
     }
+    if (!isInteractiveStdout()) {
+      throw new Error(
+        `${relativePath} has local edits. Pass --yes to keep them or --force to overwrite them in non-interactive mode.`
+      );
+    }
 
     prompted += 1;
     const choice = await promptThreeWay(targetPath, sourceBytes, targetBytes);
@@ -207,7 +213,7 @@ export async function uninstallSkill(opts: UninstallOptions): Promise<void> {
     process.exit(1);
   }
 
-  if (!opts.yes && process.stdin.isTTY) {
+  if (!opts.yes && isInteractiveStdout()) {
     const proceed = await confirm({
       message: `Remove ${manifest.files.length} files from ${relative(process.cwd(), target) || target}?`,
       initialValue: false,
@@ -216,6 +222,8 @@ export async function uninstallSkill(opts: UninstallOptions): Promise<void> {
       cancel('Aborted.');
       return;
     }
+  } else if (!opts.yes) {
+    throw new Error(nonInteractiveYesRequired('Uninstall skill from custom --target path'));
   }
 
   // Manifest entries are user-controllable on disk; resolve every path back
@@ -294,7 +302,7 @@ export async function installSkillTools(opts: InstallToolsOptions): Promise<void
 
   if (opts.tools !== undefined) {
     selectedIds = parseToolsFlag(opts.tools);
-  } else if (opts.yes || !process.stdin.isTTY) {
+  } else if (opts.yes || !isInteractiveStdout()) {
     // Non-interactive default: keep currently installed tools as-is. If
     // none are installed yet, fall back to Claude Code (matches the
     // historical default so existing scripts keep working).
@@ -420,7 +428,7 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
       info(`Not installed (skipping): ${notInstalled.join(', ')}`);
       targets = targets.filter((t) => installedIds.has(t.id));
     }
-  } else if (opts.yes || !process.stdin.isTTY) {
+  } else if (opts.yes || !isInteractiveStdout()) {
     throw new Error('Non-interactive: pass tool ids (e.g. `skill uninstall claude`) or `--all`.');
   } else {
     const picked = await multiselect<string>({

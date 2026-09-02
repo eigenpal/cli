@@ -138,14 +138,14 @@ describe('agent command tree', () => {
     expect(reviews.stdout).toContain('close');
   });
 
-  test('replace dataset requires confirmation in non-interactive mode before network access', () => {
+  test('replace dataset requires --yes in non-interactive mode before network access', () => {
     const result = spawnSync(
       'bun',
       [CLI, 'agents', 'dataset', 'push', 'invoice-agent', '--file', '.', '--mode', 'replace'],
       { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
     );
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('Dataset replace aborted');
+    expect(result.stderr).toMatch(/requires --yes when run non-interactively/);
   });
 
   test('bare top-level runs command requires a subcommand', () => {

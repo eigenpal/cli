@@ -3,6 +3,7 @@ import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { action } from '../../lib/format-error';
+import { requireTypedConfirmation } from '../../lib/non-interactive';
 import {
   addJsonFlag,
   dim,
@@ -20,7 +21,6 @@ import {
   agentAutomationId,
   buildClient,
   compactParams,
-  confirmTyped,
   parseDatasetMode,
   printJson,
 } from './shared';
@@ -45,15 +45,27 @@ export function registerDatasetCommands(agent: Command): void {
     .description('Upload dataset examples from a local dataset directory or zip archive.')
     .requiredOption('--file <path>', 'Dataset directory or .zip archive')
     .option('--mode <append|replace>', 'Upload mode', parseDatasetMode, 'append')
-    .option('--yes', 'Confirm replace mode in non-interactive environments')
+    .option(
+      '--yes',
+      'Skip typed-slug confirmation for --mode replace (required in CI / agent terminals)'
+    )
     .addHelpText(
       'after',
-      '\nLayout\n' +
-        '  The directory (or archive) must contain an examples/ wrapper:\n' +
-        '  examples/<name>/input.json (required), examples/<name>/input/<file>\n' +
-        '  (referenced via { "$file": "input/<path>" }), plus optional\n' +
-        '  expected.json, expected/<file>, and meta.json.\n' +
-        '  Run `eigenpal agents dataset validate` first to check locally.\n'
+      `
+Examples:
+  $ eigenpal agents dataset push agents.invoice --file ./dataset
+  $ eigenpal agents dataset push agents.invoice --file ./dataset --mode replace --yes
+
+\`--mode replace\` deletes every existing example first. In a TTY you type the agent
+id to confirm; pass \`--yes\` in scripts, CI, and agent terminals (non-TTY).
+
+Layout
+  The directory (or archive) must contain an examples/ wrapper:
+  examples/<name>/input.json (required), examples/<name>/input/<file>
+  (referenced via { "$file": "input/<path>" }), plus optional
+  expected.json, expected/<file>, and meta.json.
+  Run \`eigenpal agents dataset validate\` first to check locally.
+`
     )
     .action(action(pushDataset));
 
@@ -116,8 +128,13 @@ async function pushDataset(
   agentId: string,
   opts: BaseOpts & { file: string; mode: 'append' | 'replace'; yes?: boolean }
 ) {
-  if (opts.mode === 'replace' && !(opts.yes || (await confirmTyped(agentId, 'replace dataset')))) {
-    throw new Error('Dataset replace aborted');
+  if (opts.mode === 'replace') {
+    await requireTypedConfirmation({
+      yes: opts.yes,
+      id: agentId,
+      actionName: 'replace dataset',
+      cancelledMessage: 'Dataset replace aborted',
+    });
   }
   const resolved = path.resolve(opts.file);
   const stat = await fs.stat(resolved);
