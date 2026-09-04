@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../../client/ai-client';
 
 /**
  * Split Processor Schemas
@@ -68,6 +69,9 @@ export const SplitConfigSchema = z.object({
     .describe(
       'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted.'
     ),
+  reasoningEffort: ReasoningEffortSchema.optional().describe(
+    'Reasoning effort for the split model. Omit to use the model default.'
+  ),
   windowTokenBudget: z
     .number()
     .int()

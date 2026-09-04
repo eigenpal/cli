@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../client/ai-client';
 import { NativeTextQualitySchema } from './native-text-quality';
 
 export {
@@ -410,6 +411,7 @@ export const ParseOptionsSchema = z.object({
   // LLM-specific options
   provider: z.string().optional().describe('LLM provider ID to use'),
   model: z.string().optional(),
+  reasoningEffort: ReasoningEffortSchema.optional(),
   maxConcurrency: z.number().min(1).max(30).default(3),
   pagesPerBatch: z.number().min(1).max(20).default(5),
   pdfRenderScale: z

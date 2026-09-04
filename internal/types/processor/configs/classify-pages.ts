@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../../client/ai-client';
 
 /**
  * Classify-Pages Processor Schemas
@@ -45,6 +46,9 @@ export const ClassifyPagesConfigSchema = z.object({
   prompt: z.string().optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  reasoningEffort: ReasoningEffortSchema.optional().describe(
+    'Reasoning effort for page classification. Omit to use the model default.'
+  ),
   windowTokenBudget: z.number().int().positive().optional(),
 });
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../../client/ai-client';
 
 /**
  * Classify Processor Schemas
@@ -39,6 +40,9 @@ export const ClassifyConfigSchema = z.object({
     ),
   provider: z.string().optional().describe('Provider ID (e.g., "openai-gpt4o-mini")'),
   model: z.string().optional().describe('Model override'),
+  reasoningEffort: ReasoningEffortSchema.optional().describe(
+    'Reasoning effort for the classification model. Omit to use the model default.'
+  ),
   maxInputTokens: z
     .number()
     .int()

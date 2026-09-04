@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../../client/ai-client';
 import {
   FilePathDescriptorSchema,
   LegacyFileIdInputSchema,
@@ -55,10 +56,16 @@ export const DocumentParserConfigSchema = z
     ),
     ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
     llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
+    llmReasoningEffort: ReasoningEffortSchema.optional().describe(
+      'Reasoning effort for vision-based parsing. Omit to use the model default.'
+    ),
     figureModel: z
       .string()
       .optional()
       .describe('Vision model used only for the optional figure-description pass'),
+    figureReasoningEffort: ReasoningEffortSchema.optional().describe(
+      'Reasoning effort for figure descriptions. Omit to use the model default.'
+    ),
 
     // VLM options
     maxConcurrency: z

@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../client/ai-client';
 import {
   ID_PREFIXES,
   TemplateIdSchema,
@@ -47,6 +48,10 @@ import { SCRIPT_FN_MAX_BYTES } from './script-function';
 import type { StepType } from './steps';
 import { STEP_TYPES } from './steps';
 
+const OptionalReasoningEffortSchema = ReasoningEffortSchema.optional().describe(
+  'Reasoning effort for models that support it. Omit to preserve the current provider default.'
+);
+
 // ============================================================================
 // AI Step Schemas
 // ============================================================================
@@ -63,10 +68,12 @@ export const AiParseConfigSchema = z
     ),
     ocrModel: z.string().optional().describe('OCR provider ID for PDF/image parsing'),
     llmModel: z.string().optional().describe('LLM provider ID for vision-based parsing'),
+    llmReasoningEffort: OptionalReasoningEffortSchema,
     figureModel: z
       .string()
       .optional()
       .describe('Vision model used only for the optional figure-description pass'),
+    figureReasoningEffort: OptionalReasoningEffortSchema,
     maxConcurrency: z
       .number()
       .min(1)
@@ -152,6 +159,7 @@ export const AiExtractConfigSchema = z.object({
   prompt: z.string().optional().describe('Custom prompt template for extraction'),
   provider: z.string().optional().describe('Provider ID (e.g., "openai-gpt4o")'),
   model: z.string().optional().describe('Model override'),
+  reasoningEffort: OptionalReasoningEffortSchema,
   // temperature is intentionally NOT user-controllable — Eigenpal is a
   // deterministic framework so the worker hardcodes `temperature: 0` on
   // every LLM call. Older YAMLs with `temperature: …` parse cleanly
@@ -175,6 +183,7 @@ export const AiExtractConfigSchema = z.object({
     .describe(
       'Provider/model for the grounding pass. Defaults to the workspace default LLM. Any configured provider works; the pass only fails the step when `grounded: true` is set explicitly and no model resolves.'
     ),
+  groundingReasoningEffort: OptionalReasoningEffortSchema,
   groundingExamples: z
     .array(
       z.object({
@@ -256,6 +265,7 @@ export const AiVisionConfigSchema = z.object({
     .describe('Optional instruction refining the extraction. The schema drives it when omitted.'),
   provider: z.string().optional().describe('Provider ID (must support vision).'),
   model: z.string().optional().describe('Model override (must support vision).'),
+  reasoningEffort: OptionalReasoningEffortSchema,
   renderScale: z
     .number()
     .positive()
@@ -341,6 +351,7 @@ export const AiSplitConfigSchema = z.object({
     .describe(
       'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted.'
     ),
+  reasoningEffort: OptionalReasoningEffortSchema,
   windowTokenBudget: z
     .number()
     .int()
@@ -472,6 +483,7 @@ export const AiSegmentConfigSchema = z.object({
     .describe(
       'Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted.'
     ),
+  reasoningEffort: OptionalReasoningEffortSchema,
   windowTokenBudget: z
     .number()
     .int()
@@ -606,6 +618,7 @@ export const AiClassifyConfigSchema = z.object({
       'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted.'
     ),
   model: z.string().optional().describe('Model override (advanced)'),
+  reasoningEffort: OptionalReasoningEffortSchema,
   maxInputTokens: z
     .number()
     .int()
@@ -673,6 +686,7 @@ export const AiClassifyPagesConfigSchema = z
       .optional()
       .describe('Provider ID from eigenpal.config.yaml. Falls back to the tenant default.'),
     model: z.string().optional().describe('Model override (advanced).'),
+    reasoningEffort: OptionalReasoningEffortSchema,
     windowTokenBudget: z
       .number()
       .int()

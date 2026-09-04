@@ -424,7 +424,9 @@ Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or
 | `parseMode` | `"ocr"` \| `"vision"` \| `"native"` \| `"native-or-ocr"` | no |  | Base parser for PDF/image inputs. OCR is the default; vision uses the selected LLM. `native` extracts PDF embedded text only and never calls OCR or vision. `native-or-ocr` extracts native text, runs page-quality diagnostics, and requests OCR when pages have detectable anomalies (empty, U+FFFD, lone surrogates, forbidden controls, unassigned/noncharacter, heavy PUA). Page selection, subset egress, and billing are provider-dependent. Valid-looking wrong text and literal "?" are not flagged. Text and Office files always use local parsing. |
 | `ocrModel` | string | no |  | OCR provider ID for PDF/image parsing |
 | `llmModel` | string | no |  | LLM provider ID for vision-based parsing |
+| `llmReasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `figureModel` | string | no |  | Vision model used only for the optional figure-description pass |
+| `figureReasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `maxConcurrency` | number | no | `3` | Max concurrent VLM batch requests |
 | `pagesPerBatch` | number | no | `5` | Number of page images per VLM request |
 | `pdfRenderScale` | number | no | `1` | Scale factor for rendering PDF pages before VLM parsing. Higher values produce sharper images at larger payload sizes. |
@@ -465,9 +467,11 @@ Extract structured data from text using AI with a JSON schema
 | `prompt` | string | no |  | Custom prompt template for extraction |
 | `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
 | `model` | string | no |  | Model override |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
 | `grounded` | boolean | no |  | Grounding is ON by default: each schema field gets a source span + confidence (high=verbatim, medium=fuzzy, low=ungrounded) under a reserved `_grounding` output key, and fields whose value cannot be located in the source are flagged for human review. Values stay the reliable schema-typed ones. The pass runs through the workspace LLM (any provider) and chunks long documents automatically. Tri-state: unset (default) = on, degrading gracefully to deterministic text alignment (`_grounding._degraded: true`) if no grounding model is available; `true` = strict, the step fails when the grounding model cannot be resolved; `false` = off, no `_grounding` key at all. |
 | `groundingModel` | string | no |  | Provider/model for the grounding pass. Defaults to the workspace default LLM. Any configured provider works; the pass only fails the step when `grounded: true` is set explicitly and no model resolves. |
+| `groundingReasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `groundingExamples` | array<object> | no |  | Optional few-shot examples pinning grounding to verbatim source text per field. |
 | `reviewOn` | `"medium_or_low"` \| `"low_only"` | no |  | Which grounding confidences set needsReview on a field. Default: low_only (only fields whose value could not be located in the source). Use medium_or_low to also flag approximate and derived matches. |
 
@@ -489,6 +493,7 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | `sections` | array<object> | yes |  | Named sections to find in the document |
 | `rules` | string | no |  | Optional natural-language rules appended to the system prompt. E.g. "End-of-section markers like *Koniec prílohy 2* close the current section." |
 | `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted. |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `windowTokenBudget` | integer | no |  | Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count. |
 
 **Output:** `object`
@@ -512,6 +517,7 @@ Separate a concatenated batch (one big scan) into typed document instances using
 | `documentTypes` | array<object> | yes |  | The document-type taxonomy. The LLM tags each detected document with one of these names, or the reserved "unknown" type when none fit. |
 | `rules` | string | no |  | Optional natural-language rules appended to the system prompt. |
 | `provider` | string | no |  | Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted. |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `windowTokenBudget` | integer | no |  | Override the per-window token ceiling. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. |
 
 **Output:** `object`
@@ -536,6 +542,7 @@ Classify a document or text into one of a fixed label set using an LLM. Output e
 | `prompt` | string | no |  | Custom classification instructions appended to the system prompt. Use to clarify edge cases or emphasize evidence the model should weigh. |
 | `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted. |
 | `model` | string | no |  | Model override (advanced) |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text when exceeded. Omit for no limit. |
 
 **Output:** `object`
@@ -561,6 +568,7 @@ Assign zero or more labels to each page independently (multi-label) using an LLM
 | `prompt` | string | no |  | Extra classification guidance appended to the system prompt. |
 | `provider` | string | no |  | Provider ID from eigenpal.config.yaml. Falls back to the tenant default. |
 | `model` | string | no |  | Model override (advanced). |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `windowTokenBudget` | integer | no |  | Per-window token ceiling. Pages are packed into windows under this budget; one LLM call per window. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET (20000). |
 
 **Output:** `object`
@@ -588,6 +596,7 @@ Inspect rendered page images with a vision model and return structured JSON matc
 | `prompt` | string | no |  | Optional instruction refining the extraction. The schema drives it when omitted. |
 | `provider` | string | no |  | Provider ID (must support vision). |
 | `model` | string | no |  | Model override (must support vision). |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
 | `renderScale` | number | no |  | PDF render scale (1.0 = 72 DPI). Raise for small text or weak VLM OCR. Capped at 6 to avoid oversized page rasters. |
 | `imageQuality` | integer | no |  | JPEG quality for rendered pages (default 85). |
 | `maxPages` | integer | no |  | Chunk size: the maximum pages sent to the vision model in a single call. When the inspected range (or the whole document) is larger, it is split into chunks of this size and the per-chunk results are merged by a reduce pass. The reduce follows each field's DESCRIPTION: a boolean described as "present on any page" is OR-ed, one described as "true for every page" is AND-ed, and list fields are concatenated. The merge is most reliable for boolean/scalar claims; for schemas that AGGREGATE long lists across chunks it can still drop or reorder items, so prefer a bounded page range for large list extraction. Default 20, capped at 100. |

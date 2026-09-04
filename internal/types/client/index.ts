@@ -3,6 +3,7 @@
  */
 
 // AI Client
+export { ModelReasoningConfigSchema, REASONING_EFFORTS, ReasoningEffortSchema } from './ai-client';
 export type {
   AIClient,
   AIResponse,
@@ -10,6 +11,8 @@ export type {
   ExtractOptions,
   ExtractResponse,
   ImageInput,
+  ModelReasoningConfig,
+  ReasoningEffort,
   TokenUsage,
   VisionOptions,
 } from './ai-client';

@@ -355,6 +355,7 @@ export {
 } from './parser';
 
 // Client types (AI & OCR interfaces)
+export { ModelReasoningConfigSchema, REASONING_EFFORTS, ReasoningEffortSchema } from './client';
 export type {
   AIClient,
   AIResponse,
@@ -362,6 +363,7 @@ export type {
   ExtractOptions,
   ExtractResponse,
   ImageInput,
+  ModelReasoningConfig,
   OCRClient,
   OCRClientCapabilities,
   OCRClientConfig,
@@ -376,6 +378,7 @@ export type {
   OCRTableCell,
   OCRWord,
   ParagraphRole,
+  ReasoningEffort,
   TokenUsage,
   VisionOptions,
 } from './client';

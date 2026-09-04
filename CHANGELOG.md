@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.14.3
+
+### Patch Changes
+
+- ed3a029: Workflow YAML can configure model-aware reasoning effort on AI steps and LLM judges. Omit the setting to preserve each model's current default.
+
 ## 0.14.0
 
 ### Minor Changes

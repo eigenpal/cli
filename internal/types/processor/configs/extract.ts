@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ReasoningEffortSchema } from '../../client/ai-client';
 
 /**
  * Extract Processor Schemas
@@ -48,6 +49,9 @@ export const ExtractConfigSchema = z.object({
     .optional()
     .describe('Provider ID to use (e.g., "openai-gpt4o", "anthropic-claude")'),
   model: z.string().optional().describe('Model to use (overrides provider default)'),
+  reasoningEffort: ReasoningEffortSchema.optional().describe(
+    'Reasoning effort for the extraction model. Omit to use the model default.'
+  ),
   maxInputTokens: z
     .number()
     .int()
@@ -68,6 +72,9 @@ export const ExtractConfigSchema = z.object({
     .describe(
       'Provider/model for the grounding pass. Defaults to the workspace default LLM. Any configured provider works; the pass only fails the step when `grounded: true` is set explicitly and no model resolves.'
     ),
+  groundingReasoningEffort: ReasoningEffortSchema.optional().describe(
+    'Reasoning effort for the grounding model. Omit to use the model default.'
+  ),
   groundingExamples: z
     .array(
       z.object({

@@ -5,7 +5,7 @@
  * caller's `AIClient` — any configured LLM provider works.
  */
 
-import type { AIClient } from '../client/ai-client';
+import type { AIClient, ReasoningEffort } from '../client/ai-client';
 
 /** Parameters shared by both JSON judge helpers. */
 interface JudgeJsonBaseParams {
@@ -13,6 +13,8 @@ interface JudgeJsonBaseParams {
   client: AIClient;
   /** Optional model override; defaults to `client.defaultModel`. */
   model?: string;
+  /** Optional reasoning effort; omitted calls preserve provider defaults. */
+  reasoningEffort?: ReasoningEffort;
   /** Free-form evaluation criteria injected into the system prompt. */
   promptExtension: string;
   /** Actual workflow execution result (any JSON-serialisable value). */
@@ -112,7 +114,7 @@ function serializeJudgeResponse(response: {
  * Throws on network / parse failures — callers should retry or record an error result.
  */
 export async function judgeScoreJson(params: JudgeJsonBaseParams): Promise<JudgeScoreResult> {
-  const { client, model, promptExtension, actualJson, expectedJson } = params;
+  const { client, model, reasoningEffort, promptExtension, actualJson, expectedJson } = params;
 
   const systemPrompt = buildContinuousJudgeSystemPrompt(promptExtension);
   const userContent = buildJsonUserContent(actualJson, expectedJson);
@@ -121,6 +123,7 @@ export async function judgeScoreJson(params: JudgeJsonBaseParams): Promise<Judge
     schema: SCORE_SCHEMA,
     prompt: systemPrompt,
     model,
+    reasoningEffort,
   });
 
   const rawScore = response.data.score;
@@ -151,7 +154,8 @@ export async function judgeScoreJson(params: JudgeJsonBaseParams): Promise<Judge
 export async function judgeLabelJson(
   params: JudgeJsonBaseParams & { labels: string[] }
 ): Promise<JudgeLabelResult> {
-  const { client, model, promptExtension, labels, actualJson, expectedJson } = params;
+  const { client, model, reasoningEffort, promptExtension, labels, actualJson, expectedJson } =
+    params;
 
   const systemPrompt = buildDiscreteJudgeSystemPrompt(promptExtension, labels);
   const userContent = buildJsonUserContent(actualJson, expectedJson);
@@ -160,6 +164,7 @@ export async function judgeLabelJson(
     schema: buildLabelSchema(labels),
     prompt: systemPrompt,
     model,
+    reasoningEffort,
   });
 
   const label = typeof response.data.label === 'string' ? response.data.label.trim() : '';

@@ -5,6 +5,26 @@
  * - Vision parsing (images → text)
  * - Structured extraction (content → JSON)
  */
+import { z } from 'zod';
+
+export const REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+export const ReasoningEffortSchema = z.enum(REASONING_EFFORTS);
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
+
+export const ModelReasoningConfigSchema = z
+  .object({
+    supportedEfforts: z.array(ReasoningEffortSchema).min(1),
+  })
+  .strict();
+export type ModelReasoningConfig = z.infer<typeof ModelReasoningConfigSchema>;
 
 /**
  * Token usage information
@@ -69,6 +89,8 @@ export interface ExtractOptions {
   prompt?: string;
   /** Model to use (overrides default) */
   model?: string;
+  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  reasoningEffort?: ReasoningEffort;
   /**
    * Best-effort reproducibility seed. OpenAI documents seed as "mostly
    * deterministic" given the same `system_fingerprint`. openai-compatible
@@ -94,6 +116,8 @@ export interface ExtractOptions {
 export interface CompleteOptions {
   /** Model to use (overrides default) */
   model?: string;
+  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  reasoningEffort?: ReasoningEffort;
   /** Cancels the in-flight LLM request when aborted. */
   signal?: AbortSignal;
 }
@@ -101,6 +125,8 @@ export interface CompleteOptions {
 export interface VisionOptions {
   /** Model to use (overrides default) */
   model?: string;
+  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  reasoningEffort?: ReasoningEffort;
   /** Cancels the in-flight LLM request when aborted. */
   signal?: AbortSignal;
   /**
