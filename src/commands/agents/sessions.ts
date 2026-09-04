@@ -31,7 +31,6 @@ export function registerSessionCommands(agent: Command): void {
   addJsonFlag(withBaseUrl(session.command('message <session-id>')))
     .description('Append a message to a builder session.')
     .requiredOption('--text <message>', 'Message text')
-    .option('--wait', 'Reserved; server acknowledges after enqueueing the message')
     .action(action(messageSession));
 
   addJsonFlag(withBaseUrl(session.command('stop <session-id>')))

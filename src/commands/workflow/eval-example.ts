@@ -31,7 +31,6 @@ import { resolveEvalBaseDir } from '../../lib/payload';
 import { dim, info, ui, warn } from '../../lib/ui';
 
 const RUN_POLL_INTERVAL_MS = 2000;
-const RUN_MAX_WAIT_MS = 5 * 60 * 1000;
 /**
  * Extra time to wait for evaluator results after the run reaches terminal.
  * `EIGENPAL_EVAL_GRACE_MS` is a test-only override so integration tests can
@@ -170,7 +169,12 @@ async function resolveExample(
   }
 }
 
-async function pollRunTerminal(client: ApiClient, runId: string): Promise<RunView> {
+async function pollRunTerminal(
+  client: ApiClient,
+  runId: string,
+  intervalMs: number,
+  maxWaitMs: number
+): Promise<RunView> {
   const start = Date.now();
   const base = `/v1/runs/${encodeURIComponent(runId)}`;
   for (;;) {
@@ -179,10 +183,10 @@ async function pollRunTerminal(client: ApiClient, runId: string): Promise<RunVie
     if (run.finished || (status && TERMINAL.has(status))) {
       return (await client.get(`${base}?expand=execution`)) as RunView;
     }
-    if (Date.now() - start > RUN_MAX_WAIT_MS) {
+    if (Date.now() - start > maxWaitMs) {
       return { ...run, status: 'timeout', execution: { status: 'timeout' } };
     }
-    await new Promise((r) => setTimeout(r, RUN_POLL_INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, intervalMs));
   }
 }
 
@@ -247,25 +251,28 @@ export async function runWorkflowExamplesWithEval(
   dir: string,
   workflowIdOrSlug: string,
   workflowId: string,
-  exampleNames: string[]
+  exampleNames: string[],
+  options: { quiet?: boolean; intervalMs?: number; maxWaitMs?: number } = {}
 ): Promise<EvalRunSummary> {
   const hasEvaluators = await fetchHasEvaluators(client, workflowId);
   const mode: GradeMode = hasEvaluators ? 'evaluators' : 'diff';
 
-  info(
-    `Running ${ui.bold(`"${workflowIdOrSlug}"`)} ${ui.dim(`(${workflowId}, ${exampleNames.length} example(s))`)}`
-  );
-  dim(
-    hasEvaluators
-      ? 'Server example run; grading with configured evaluators.'
-      : 'Server example run; no evaluators configured, grading by structural diff vs expected.'
-  );
+  if (!options.quiet) {
+    info(
+      `Running ${ui.bold(`"${workflowIdOrSlug}"`)} ${ui.dim(`(${workflowId}, ${exampleNames.length} example(s))`)}`
+    );
+    dim(
+      hasEvaluators
+        ? 'Server example run; grading with configured evaluators.'
+        : 'Server example run; no evaluators configured, grading by structural diff vs expected.'
+    );
+  }
 
   const evalBaseDir = resolveEvalBaseDir(dir);
   const results: ExampleEvalResult[] = [];
 
   for (const name of exampleNames) {
-    process.stderr.write(`${ui.dim('→')} ${name}\n`);
+    if (!options.quiet) process.stderr.write(`${ui.dim('→')} ${name}\n`);
     try {
       const example = await resolveExample(client, workflowId, name);
       if (!example) {
@@ -281,9 +288,14 @@ export async function runWorkflowExamplesWithEval(
       )) as { id?: string; batchId?: string | null };
       const runId = started.id;
       if (typeof runId !== 'string') throw new Error('Example run did not return a run id');
-      process.stderr.write(`  ${ui.dim(`run: ${runId}`)}\n`);
+      if (!options.quiet) process.stderr.write(`  ${ui.dim(`run: ${runId}`)}\n`);
 
-      const run = await pollRunTerminal(client, runId);
+      const run = await pollRunTerminal(
+        client,
+        runId,
+        options.intervalMs ?? RUN_POLL_INTERVAL_MS,
+        options.maxWaitMs ?? 5 * 60 * 1000
+      );
       const status = run.execution?.status ?? run.status;
       const runOk = status === 'completed';
 
@@ -313,7 +325,9 @@ export async function runWorkflowExamplesWithEval(
         } else {
           // No rollup landed (e.g. the config dispatched no scoring evaluator).
           // Fall back to a structural diff so the example still gets a verdict.
-          warn(`  ${name}: no evaluator score after ${EVAL_GRACE_MS / 1000}s; grading by diff.`);
+          if (!options.quiet) {
+            warn(`  ${name}: no evaluator score after ${EVAL_GRACE_MS / 1000}s; grading by diff.`);
+          }
           gradeByDiff(result, example.expected, runOutput(run));
         }
       } else if (runOk) {
@@ -321,7 +335,7 @@ export async function runWorkflowExamplesWithEval(
       }
 
       results.push(result);
-      reportLine(result);
+      if (!options.quiet) reportLine(result);
 
       // Best-effort local artifact write when run from a project dir.
       if (evalBaseDir) {
@@ -343,12 +357,12 @@ export async function runWorkflowExamplesWithEval(
         mode: 'none',
       };
       results.push(result);
-      reportLine(result);
+      if (!options.quiet) reportLine(result);
     }
   }
 
   const summary = summarize(workflowIdOrSlug, mode, results);
-  process.stderr.write(`\n${formatEvalSummary(summary)}\n`);
+  if (!options.quiet) process.stderr.write(`\n${formatEvalSummary(summary)}\n`);
   return summary;
 }
 

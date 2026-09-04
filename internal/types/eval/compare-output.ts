@@ -26,6 +26,8 @@ export const EXACT_DIFF_ARRAY_ITEMS = ['at-least', 'at-most', 'exactly'] as cons
 export type ExactDiffArrayItems = (typeof EXACT_DIFF_ARRAY_ITEMS)[number];
 
 export interface ExactDiffPathRule {
+  /** Exclude this path and every descendant from comparison. */
+  ignore?: true;
   /** Array matching mode at this path. Omitted = ordered. */
   order?: 'ordered' | 'unordered';
   /**
@@ -157,7 +159,9 @@ function scopeRootForRulePath(path: string): string {
  * output; descendant keys of an ancestor selection are overrides, not extra scopes.
  */
 export function selectExactDiffRulePaths(rules: ExactDiffRules): string[] | null {
-  const keys = Object.keys(rules);
+  const keys = Object.entries(rules)
+    .filter(([, rule]) => rule.ignore !== true)
+    .map(([path]) => path);
   if (keys.length === 0 || keys.includes('$')) return null;
   const roots = keys.filter(
     (key) => !keys.some((other) => other !== key && evalPathIsDescendant(key, other))
@@ -241,6 +245,7 @@ function diagnoseMisappliedRules(
 ): OutputComparisonMismatch[] {
   const mismatches: OutputComparisonMismatch[] = [];
   for (const [path, rule] of Object.entries(rules)) {
+    if (rule.ignore === true) continue;
     const values = valuesAtRulePath(expected, path);
     if (values.length === 0) continue;
     const allScalar = values.every((value) => !isPlainObject(value) && !Array.isArray(value));
@@ -1126,6 +1131,47 @@ export function goldenFileSatisfiedInResult(
   return resultFileNames.some((r) => r === goldenBasename || schemaFileUploadMatchesField(r, stem));
 }
 
+function omitRulePaths(
+  tree: Record<string, unknown> | null | undefined,
+  rules: ExactDiffRules | null
+): Record<string, unknown> | null | undefined {
+  const paths = rules
+    ? Object.entries(rules)
+        .filter(([, rule]) => rule.ignore === true)
+        .map(([path]) => path)
+    : [];
+  if (!tree || paths.length === 0) return tree;
+  if (paths.includes('$')) return {};
+  const clone = structuredClone(tree);
+  for (const path of paths) removeRulePath(clone, tokenizeEvalPath(path));
+  return clone;
+}
+
+function removeRulePath(current: unknown, tokens: string[]): void {
+  const [token, ...rest] = tokens;
+  if (!token) return;
+  if (token === '[]') {
+    if (!Array.isArray(current)) return;
+    if (rest.length === 0) current.length = 0;
+    else for (const item of current) removeRulePath(item, rest);
+    return;
+  }
+  const indexMatch = token.match(/^\[(\d+)\]$/);
+  if (indexMatch) {
+    if (!Array.isArray(current)) return;
+    const index = Number(indexMatch[1]);
+    if (index >= current.length) return;
+    // Preserve indexes so multiple ignored numeric paths cannot shift one
+    // another when rules are applied in declaration order.
+    if (rest.length === 0) delete current[index];
+    else removeRulePath(current[index], rest);
+    return;
+  }
+  if (!isPlainObject(current) || !Object.hasOwn(current, token)) return;
+  if (rest.length === 0) delete current[token];
+  else removeRulePath(current[token], rest);
+}
+
 export function compareOutput(
   expectedData: Record<string, unknown> | null | undefined,
   actualData: Record<string, unknown> | null | undefined,
@@ -1140,6 +1186,8 @@ export function compareOutput(
   const fileFieldSet = new Set(fileFields ?? []);
   const results = resultFileNames ?? [];
   const rules = options.rules ?? null;
+  expectedData = omitRulePaths(expectedData, rules);
+  actualData = omitRulePaths(actualData, rules);
   const trackUnorderedWork =
     (options.unorderedPaths?.length ?? 0) > 0 ||
     (rules != null &&

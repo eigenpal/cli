@@ -7,6 +7,7 @@ import pkg from '../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agents';
 import { authList, authLogin, authLogout, authUse } from './commands/auth';
 import { completion } from './commands/completion';
+import { registerDocsCommands } from './commands/docs';
 import {
   hasGitPassthroughSeparator,
   registerGitCommands,
@@ -176,6 +177,7 @@ registerModelsCommands(program);
 registerRunCommands(program);
 registerRunsCommands(program);
 registerGitCommands(program);
+registerDocsCommands(program);
 
 program
   .command('completion <shell>')

@@ -38,7 +38,10 @@ export const DatasetNameSchema = z
   .string()
   .min(1)
   .max(128)
-  .regex(DATASET_NAME_PATTERN, 'name must be lowercase kebab/snake-case');
+  .regex(DATASET_NAME_PATTERN, 'name must be lowercase kebab/snake-case')
+  .describe(
+    'Example folder name: 1-128 lowercase letters, digits, hyphens, or underscores; must start with a letter or digit.'
+  );
 
 /**
  * `examples/<name>/meta.json` — entirely optional. Omit the file when no
@@ -46,9 +49,23 @@ export const DatasetNameSchema = z
  * eval execution; `rowOrder` is a UI hint; `annotation` is free-form notes.
  */
 export const DatasetMetaSchema = z.object({
-  rowOrder: z.number().int().min(0).optional(),
-  annotation: z.string().max(2000).optional(),
-  overrides: z.record(z.string(), z.unknown()).optional(),
+  rowOrder: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Non-negative display order hint for this example.'),
+  annotation: z
+    .string()
+    .max(2000)
+    .optional()
+    .describe('Free-form example note, limited to 2000 characters.'),
+  overrides: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Per-step output overrides as `{ "steps": { "<stepName>": <outputObject> } }`; overridden steps are skipped or partially merged during evaluation.'
+    ),
 });
 export type DatasetMeta = z.infer<typeof DatasetMetaSchema>;
 
@@ -56,7 +73,9 @@ export type DatasetMeta = z.infer<typeof DatasetMetaSchema>;
 // Dataset import request
 // ---------------------------------------------------------------------------
 
-export const DatasetImportModeSchema = z.enum(['append', 'replace']);
+export const DatasetImportModeSchema = z
+  .enum(['append', 'replace'])
+  .describe('append keeps existing examples; replace removes them before import.');
 export type DatasetImportMode = z.infer<typeof DatasetImportModeSchema>;
 
 /**
@@ -141,6 +160,13 @@ export const EvalResultExportRowSchema = z.object({
   weight: z.number(),
   createdAt: z.string().datetime({ offset: true }),
   error: z.string().nullable(),
+  details: z
+    .unknown()
+    .nullable()
+    .optional()
+    .describe(
+      'Evaluator-specific structured details. Exact-diff includes mismatches with path, expected, and actual values.'
+    ),
 });
 export type EvalResultExportRow = z.infer<typeof EvalResultExportRowSchema>;
 

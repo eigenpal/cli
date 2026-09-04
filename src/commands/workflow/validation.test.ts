@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { countInvokeWorkflowSteps } from './validation';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { countInvokeWorkflowSteps, discoverWorkflowProjectRoots } from './validation';
 
 describe('countInvokeWorkflowSteps', () => {
   test('counts top-level invoke-workflow steps', () => {
@@ -36,8 +39,14 @@ describe('countInvokeWorkflowSteps', () => {
         type: 'control.foreach',
         steps: [{ name: 'loop-invoke', type: 'action.invoke-workflow' }],
       },
+      {
+        name: 'switch',
+        type: 'control.switch',
+        cases: [{ when: 'a', steps: [{ name: 'case-invoke', type: 'action.invoke-workflow' }] }],
+        default: [{ name: 'default-invoke', type: 'action.invoke-workflow' }],
+      },
     ];
-    expect(countInvokeWorkflowSteps(steps)).toBe(3);
+    expect(countInvokeWorkflowSteps(steps)).toBe(5);
   });
 
   test('is robust to non-array / malformed input', () => {
@@ -45,5 +54,34 @@ describe('countInvokeWorkflowSteps', () => {
     expect(countInvokeWorkflowSteps(null)).toBe(0);
     expect(countInvokeWorkflowSteps('nope')).toBe(0);
     expect(countInvokeWorkflowSteps([null, 42, { type: 'action.invoke-workflow' }])).toBe(1);
+  });
+});
+
+describe('discoverWorkflowProjectRoots', () => {
+  test('accepts a repository containing nested workflow projects', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eigenpal-validate-layout-'));
+    try {
+      for (const name of ['invoice', 'summary']) {
+        const project = join(root, 'eigenpal', 'workflows', name);
+        mkdirSync(project, { recursive: true });
+        writeFileSync(join(project, 'workflow.yaml'), `name: ${name}\n`);
+      }
+      expect(discoverWorkflowProjectRoots(root)).toEqual([
+        join(root, 'eigenpal', 'workflows', 'invoice'),
+        join(root, 'eigenpal', 'workflows', 'summary'),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('prefers a flat project at the requested path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eigenpal-validate-flat-'));
+    try {
+      writeFileSync(join(root, 'workflow.yaml'), 'name: flat\n');
+      expect(discoverWorkflowProjectRoots(root)).toEqual([root]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

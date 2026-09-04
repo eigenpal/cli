@@ -407,6 +407,10 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
     return;
   }
 
+  if (!opts.all && !hasToolIds && (opts.yes || !isInteractiveStdout())) {
+    throw new Error('Non-interactive: pass tool ids (e.g. `skill uninstall claude`) or `--all`.');
+  }
+
   const cwd = process.cwd();
   const installedTools = TOOLS.filter((t) => isInstalled(cwd, t));
 
@@ -428,8 +432,6 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
       info(`Not installed (skipping): ${notInstalled.join(', ')}`);
       targets = targets.filter((t) => installedIds.has(t.id));
     }
-  } else if (opts.yes || !isInteractiveStdout()) {
-    throw new Error('Non-interactive: pass tool ids (e.g. `skill uninstall claude`) or `--all`.');
   } else {
     const picked = await multiselect<string>({
       message: 'Select tools to uninstall (only installed tools shown)',

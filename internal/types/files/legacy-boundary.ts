@@ -10,6 +10,11 @@ export const LEGACY_FILE_REF_COMPATIBILITY = [
       'Rerun may remap historical immutable { fileId } trigger inputs while copying those bytes into the new run.',
   },
   {
+    id: 'eval-dataset-file-inputs',
+    description:
+      'Dataset save and eval-run hydration may materialize legacy Studio { fileId, filename, mimeType } inputs into owner-scoped { $file } artifacts.',
+  },
+  {
     id: 'processor-adapter-runtime-handles',
     description:
       'Executor/headless/CLI adapters may normalize local, S3, inline, or fileId runtime handles into private ResolvedProcessorFile objects before processor invocation.',

@@ -45,6 +45,9 @@ export const WorkflowNameSchema = z
   .regex(
     WORKFLOW_NAME_PATTERN,
     'Workflow name must start with a lowercase letter or digit and contain only lowercase letters, digits, "_" or "-".'
+  )
+  .describe(
+    'URL-safe workflow slug: 1-64 lowercase letters, digits, underscores, or hyphens; must start with a letter or digit.'
   );
 
 /**
@@ -93,19 +96,32 @@ export const WorkflowInputPropertySchema: z.ZodType<WorkflowInputProperty> = z.l
       .regex(
         /^[a-zA-Z_][a-zA-Z0-9_]*$/,
         'Property names must start with a letter or underscore and contain only letters, numbers, and underscores'
-      ),
-    type: z.string(),
-    description: z.string().optional(),
-    required: z.boolean().optional(),
-    values: z.array(z.string()).optional(),
+      )
+      .describe('JSON object key, addressable in templates with dot notation.'),
+    type: z.string().describe('One of string, enum, number, integer, boolean, array, or object.'),
+    description: z.string().optional().describe('Human-readable field meaning.'),
+    required: z
+      .boolean()
+      .optional()
+      .describe('Whether this property must be present; defaults to true when omitted.'),
+    values: z.array(z.string()).optional().describe('Allowed strings when type is enum.'),
     items: z
       .object({
-        type: z.string(),
-        values: z.array(z.string()).optional(),
-        properties: z.array(WorkflowInputPropertySchema).optional(),
+        type: z
+          .string()
+          .describe('Array element type: string, enum, number, integer, boolean, or object.'),
+        values: z.array(z.string()).optional().describe('Allowed strings when items.type is enum.'),
+        properties: z
+          .array(WorkflowInputPropertySchema)
+          .optional()
+          .describe('Recursive object fields when items.type is object.'),
       })
-      .optional(),
-    properties: z.array(WorkflowInputPropertySchema).optional(),
+      .optional()
+      .describe('Element definition when type is array.'),
+    properties: z
+      .array(WorkflowInputPropertySchema)
+      .optional()
+      .describe('Recursive fields when type is object.'),
   })
 );
 
@@ -171,39 +187,59 @@ function validateInputProperties(
 export const WorkflowInputDefSchema = z
   .object({
     /** Input variable name */
-    name: z.string().min(1),
+    name: z
+      .string()
+      .min(1)
+      .describe('Top-level input name used as `input.<name>` in template expressions.'),
     /** JSON Schema type */
-    type: z.string(),
+    type: z
+      .string()
+      .describe('One of string, enum, number, integer, boolean, array, object, or file.'),
     /** Human-readable description */
-    description: z.string().optional(),
+    description: z.string().optional().describe('Human-readable input meaning shown to callers.'),
     /** Whether this input is required */
-    required: z.boolean().default(true),
+    required: z.boolean().default(true).describe('Whether callers must provide this input.'),
     /** Default value if not provided */
-    default: z.unknown().optional(),
+    default: z.unknown().optional().describe('Value used when an optional input is omitted.'),
     /**
      * Closed set of allowed values for `type: 'enum'`. Renders as a `<Select>`
      * in the run form and is enforced by the input validator on the /run path.
      * Internally converted to the JSON Schema `{ type: 'string', enum: [...] }`
      * shape, but workflow YAML uses the more natural `type: enum, values: [...]`.
      */
-    values: z.array(z.string()).optional(),
+    values: z
+      .array(z.string())
+      .optional()
+      .describe('Closed set of allowed strings when type is enum.'),
     /** For array types: describes the element type (e.g. { type: 'file' }) */
     items: z
       .object({
-        type: z.string(),
+        type: z
+          .string()
+          .describe('Array element type: string, enum, number, integer, boolean, object, or file.'),
         /** Closed set of allowed values for `items.type: 'enum'` (array of enum). */
-        values: z.array(z.string()).optional(),
+        values: z
+          .array(z.string())
+          .optional()
+          .describe('Closed set of allowed strings when items.type is enum.'),
         /** Element shape for `items.type: 'object'` (array of objects). */
-        properties: z.array(WorkflowInputPropertySchema).optional(),
+        properties: z
+          .array(WorkflowInputPropertySchema)
+          .optional()
+          .describe('Recursive fields when items.type is object.'),
       })
-      .optional(),
+      .optional()
+      .describe('Element definition when type is array.'),
     /**
      * Nested shape for `type: 'object'` inputs. Declares the object's fields so
      * the run-start validator enforces them and downstream steps can reference
      * `{{ input.<name>.<field> }}` with full autocomplete. Optional — an object
      * input without `properties` stays free-form.
      */
-    properties: z.array(WorkflowInputPropertySchema).optional(),
+    properties: z
+      .array(WorkflowInputPropertySchema)
+      .optional()
+      .describe('Recursive field definitions when type is object.'),
     /**
      * External file source (single-tenant only). When set on a `type: 'file'`
      * input, the run is started with a plain string **id** for this field and the
@@ -211,15 +247,31 @@ export const WorkflowInputDefSchema = z
      * before the workflow executes. The name must match a registered resolver
      * (e.g. `'gpfs'`). See `@eigenpal/types/file-source`.
      */
-    source: z.string().min(1).optional(),
+    source: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file.'
+      ),
     /**
      * Optional author hint for the resolved file's type when `source` is set.
      * The resolver response Content-Type and magic-byte detection are used as
      * fallbacks; this hint wins when present. Provide either an extension
      * (`'pdf'`, `'jpg'`) or a full MIME type.
      */
-    mimeType: z.string().min(1).optional(),
-    extension: z.string().min(1).optional(),
+    mimeType: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'MIME hint such as application/pdf for a sourced file; mutually exclusive with extension.'
+      ),
+    extension: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Extension hint such as pdf for a sourced file; mutually exclusive with mimeType.'),
   })
   .superRefine((def, ctx) => {
     // Nested `properties` only make sense on object shapes — anywhere else they
@@ -300,16 +352,19 @@ export type WorkflowInputDef = z.infer<typeof WorkflowInputDefSchema>;
  * Manual trigger method - invoked via UI
  */
 export const ManualTriggerMethodSchema = z.object({
-  type: z.literal('manual'),
+  type: z.literal('manual').describe('Dashboard/manual run trigger.'),
   /**
    * Whether dashboard runs are allowed. Manual is ON by default — omit this
    * field (or set `true`) to keep it enabled. Set `false` to disable manual
    * runs while keeping the workflow's other triggers. Absence of a manual
    * entry in `triggerMethods` ALSO means enabled (default on).
    */
-  enabled: z.boolean().optional(),
+  enabled: z
+    .boolean()
+    .optional()
+    .describe('Set false to disable dashboard runs; manual triggering is enabled by default.'),
   /** Input schema for validation */
-  inputSchema: JsonSchemaSchema.optional(),
+  inputSchema: JsonSchemaSchema.optional().describe('Optional JSON Schema for trigger input.'),
 });
 export type ManualTriggerMethod = z.infer<typeof ManualTriggerMethodSchema>;
 
@@ -317,9 +372,9 @@ export type ManualTriggerMethod = z.infer<typeof ManualTriggerMethodSchema>;
  * API trigger method - invoked via REST API with API key
  */
 export const ApiTriggerMethodSchema = z.object({
-  type: z.literal('api'),
+  type: z.literal('api').describe('Public API run trigger.'),
   /** Input schema for validation */
-  inputSchema: JsonSchemaSchema.optional(),
+  inputSchema: JsonSchemaSchema.optional().describe('Optional JSON Schema for API input.'),
 });
 export type ApiTriggerMethod = z.infer<typeof ApiTriggerMethodSchema>;
 
@@ -327,14 +382,15 @@ export type ApiTriggerMethod = z.infer<typeof ApiTriggerMethodSchema>;
  * Email trigger method - invoked via email
  */
 export const EmailTriggerMethodSchema = z.object({
-  type: z.literal('email'),
+  type: z.literal('email').describe('Inbound email trigger.'),
   /** Whitelist for allowed senders */
   whitelist: z
     .object({
-      domains: z.array(z.string()).optional(),
-      emails: z.array(z.string()).optional(),
+      domains: z.array(z.string()).optional().describe('Allowed sender domains.'),
+      emails: z.array(z.string()).optional().describe('Allowed exact sender email addresses.'),
     })
-    .optional(),
+    .optional()
+    .describe('Optional sender allowlist by exact email address or domain.'),
 });
 export type EmailTriggerMethod = z.infer<typeof EmailTriggerMethodSchema>;
 
@@ -360,9 +416,9 @@ export type TriggerMethods = z.infer<typeof TriggerMethodsSchema>;
 export const WorkflowSettingsSchema = z
   .object({
     /** Default timeout for all steps (ms) */
-    timeout: z.number().positive().optional(),
+    timeout: z.number().positive().optional().describe('Default step timeout in milliseconds.'),
     /** Default retry behavior inherited by executable leaf steps. */
-    retry: WorkflowRetryPolicySchema.optional(),
+    retry: WorkflowRetryPolicySchema.optional().describe('Default durable retry policy for steps.'),
     /** @deprecated Parsed for compatibility; no longer drives execution. */
     retries: z.number().int().min(0).optional(),
     /** @deprecated Parsed for compatibility; no longer drives execution. */
@@ -416,25 +472,38 @@ export const WorkflowDefinitionSchema = z.object({
    */
   name: WorkflowNameSchema,
   /** @deprecated Use triggerMethods / automation_triggers instead of kind. */
-  kind: z.enum(['workflow']).default('workflow').optional(),
+  kind: z
+    .enum(['workflow'])
+    .default('workflow')
+    .optional()
+    .describe('Deprecated compatibility discriminator; omit for new workflows.'),
   /** Semantic version */
-  version: z.string().default('1.0.0'),
+  version: z
+    .string()
+    .default('1.0.0')
+    .describe('Author-provided semantic version label stored with the definition.'),
   /** Human-readable description */
-  description: z.string().optional(),
+  description: z.string().optional().describe('Human-readable purpose of the workflow.'),
   /** Whether the workflow is enabled */
-  enabled: z.boolean().default(true),
+  enabled: z.boolean().default(true).describe('Whether the workflow may be run.'),
 
   /**
    * Array of trigger methods - ways to invoke this workflow
    * Available types: manual, api, email
    */
-  triggerMethods: z.array(TriggerMethodSchema).default([{ type: 'manual' }]),
+  triggerMethods: z
+    .array(TriggerMethodSchema)
+    .default([{ type: 'manual' }])
+    .describe('Ways this workflow can be invoked: manual, api, or email.'),
 
   /** Input variable definitions */
-  inputs: z.array(WorkflowInputDefSchema).optional(),
+  inputs: z
+    .array(WorkflowInputDefSchema)
+    .optional()
+    .describe('Top-level inputs available under `input` in template expressions.'),
 
   /** Steps execute sequentially unless control flow changes order */
-  steps: z.array(StepSchema),
+  steps: z.array(StepSchema).describe('Ordered workflow steps; names must be unique.'),
 
   /**
    * Workflow output. Either:
@@ -442,10 +511,15 @@ export const WorkflowDefinitionSchema = z.object({
    * - a single template expression that resolves to the whole output object
    *   (passthrough, e.g. "{{ steps.invoke.output }}").
    */
-  output: z.union([z.record(z.string(), z.string()), z.string()]).optional(),
+  output: z
+    .union([z.record(z.string(), z.string()), z.string()])
+    .optional()
+    .describe(
+      'Final output as named field-to-template mappings or one passthrough template expression.'
+    ),
 
   /** Global workflow settings */
-  settings: WorkflowSettingsSchema.optional(),
+  settings: WorkflowSettingsSchema.optional().describe('Workflow-wide timeout and retry defaults.'),
 
   /**
    * Default LLM provider id for AI steps (`ai.parse` / `ai.extract` /
@@ -458,7 +532,12 @@ export const WorkflowDefinitionSchema = z.object({
    * Per-step `model:` continues to take precedence; this only fills in the
    * gap when a step doesn't specify one.
    */
-  defaultModel: z.string().optional(),
+  defaultModel: z
+    .string()
+    .optional()
+    .describe(
+      'Default configured LLM provider id used by AI steps when the step does not select one.'
+    ),
 });
 
 export type WorkflowDefinition = z.infer<typeof WorkflowDefinitionSchema>;

@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -39,13 +39,8 @@
   },
   "scripts": {
     "dev": "bun src/cli.ts",
-    "build": "bun run generate:skill && bun build src/cli.ts --outdir dist --target node --format esm && rm -rf dist/templates dist/skill && cp -R src/templates dist/templates && cp -R src/skill dist/skill",
-    "generate": "bun run generate:cli-docs && bun run generate:skill",
-    "generate:check": "bun run generate:cli-docs:check && bun run generate:skill:check",
-    "generate:skill": "bun scripts/generate-skill-reference.ts",
-    "generate:skill:check": "bun scripts/generate-skill-reference.ts --check",
-    "generate:cli-docs": "bun scripts/generate-cli-docs.ts",
-    "generate:cli-docs:check": "bun scripts/generate-cli-docs.ts --check",
+    "build": "bun build src/cli.ts --outdir dist --target node --format esm && rm -rf dist/templates dist/skill && cp -R src/templates dist/templates && cp -R src/skill dist/skill && cp src/docs-bundle.json dist/docs-bundle.json",
+    "test": "bun test src/ scripts/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {},

@@ -48,7 +48,7 @@ export async function uploadReusableFile(
     idempotencyKey?: string;
   }
 ): Promise<ReusableFileUploadResult> {
-  const contentType = input.mimeType ?? guessMimeType(input.filename) ?? 'application/octet-stream';
+  const contentType = input.mimeType || guessMimeType(input.filename) || 'application/octet-stream';
   const idempotencyKey = input.idempotencyKey ?? newIdempotencyKey();
   const negotiation = (await client.post(apiPath('/files/uploads'), {
     filename: input.filename,

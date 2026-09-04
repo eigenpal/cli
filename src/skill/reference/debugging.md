@@ -95,6 +95,7 @@ Drill into one field:
 
 ```bash
 eigenpal runs get <exec-id> --expand execution --json | jq '.stepExecutions[2].output.totalAmount'
+eigenpal runs get <exec-id> --select output.subjects
 ```
 
 ## 3. Common failure modes
@@ -231,10 +232,18 @@ Behavior by current state:
 eigenpal workflow experiment compare <batch-a> <batch-b>
 eigenpal workflow experiment compare <batch-a> <batch-b> --regression-threshold 0.10
 eigenpal workflow experiment compare <batch-a> <batch-b> --json | jq '.summary.regressions'
+eigenpal workflow experiment compare <batch-a> <batch-b> --outputs
+eigenpal workflow experiment results <workflow-id> <batch-id> --summary
+eigenpal workflow experiment results <workflow-id> <batch-id> --failed-only --evaluator fields-match
+eigenpal agents experiment compare <batch-a> <batch-b> --outputs
+eigenpal agents experiment results <agent-id-or-slug> <batch-id> --summary
 ```
 
 Side-by-side score diff per `(example, evaluator)` pair. Highlights
 regressions vs improvements; aggregate stats at the bottom.
+Use `--outputs` to compare the actual JSON outputs by example instead of
+evaluator scores. `experiment results --summary` reports run and evaluator
+rollups; `--failed-only` and `--evaluator` narrow the structured discrepancies.
 
 - `--sort abs-delta-desc` (default — biggest movers first) | `delta-asc`
   (regressions first) | `delta-desc` (improvements first) | `name`

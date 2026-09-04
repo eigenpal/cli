@@ -6,6 +6,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ApiClient } from '../lib/client';
 import { action } from '../lib/format-error';
+import { selectJsonValue } from '../lib/json-select';
 import { requireTypedConfirmation, requireYesInNonInteractive } from '../lib/non-interactive';
 import { resolveWorkflowId } from '../lib/resolve-workflow';
 import {
@@ -78,6 +79,10 @@ export function registerRunsCommands(program: Command): void {
     .description('Get one run.')
     .option('--step <name>', 'For workflow runs, show only this step (or comma-separated list)')
     .option(
+      '--select <path>',
+      'Print only a nested JSON value; implies JSON output (for example output.subjects or output.subjects[].name)'
+    )
+    .option(
       '--expand <sections>',
       'Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error.'
     )
@@ -90,10 +95,10 @@ export function registerRunsCommands(program: Command): void {
 
   addJsonFlag(withBaseUrl(runs.command('compare <reference-run-id> <run-id>')))
     .description(
-      'Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes).'
+      'Compare one run against another. Repeated workflow steps are matched by stable branch/iteration path.'
     )
     .option('--baseline', 'Compare actual outputs from both runs instead of expected artifacts')
-    .option('--step <name>', 'For workflow runs, restrict comparison to one step')
+    .option('--step <name-or-path>', 'For workflow runs, restrict by step name or stable path')
     .option('--out <dir>', 'Write comparison artifacts to this directory')
     .option('--normalize-dates', 'Normalize YYYYMMDD and YYYY-MM-DD tokens in filenames/text')
     .option('--fail-on-diff', 'Exit 1 when comparison status is fail')
@@ -158,7 +163,7 @@ Use \`eigenpal runs reviews update\` first when you need to correct output.
     .option('--json', 'Output a JSON summary of written artifacts')
     .action(action(fetchRunArtifacts));
 
-  addJsonFlag(withBaseUrl(artifacts.command('inspect [run-id] [artifact-path]')))
+  withBaseUrl(artifacts.command('inspect [run-id] [artifact-path]'))
     .description(
       'Inspect a run XLSX artifact as structured JSON (sheet names, headers, typed rows). Use --file for a local workbook.'
     )
@@ -199,6 +204,9 @@ Use \`eigenpal runs reviews update\` first when you need to correct output.
 Examples:
   $ eigenpal runs cancel exec_abc123
   $ eigenpal runs cancel exec_abc123 --yes    # required in scripts and agent terminals
+
+Cancellation is asynchronous. Human output confirms that the request was
+accepted; use \`--json\` to inspect the server response.
 `
     )
     .action(action(cancelRun));
@@ -317,6 +325,11 @@ export async function runExample(
     maxWait: number;
   }
 ) {
+  if (opts.failOnMismatch && !opts.wait) {
+    throw new Error(
+      '--fail-on-mismatch requires --wait because the evaluator verdict is asynchronous'
+    );
+  }
   const client = buildClient(opts);
   const started = (await client.post(
     `/v1/automations/${encodeURIComponent(agentAutomationId(agentId))}/experiments`,
@@ -326,11 +339,11 @@ export async function runExample(
     }
   )) as { id?: string; batchId?: string; runs?: Array<{ id?: string; exampleId?: string }> };
   const runId = started.runs?.[0]?.id;
-  if (opts.failOnMismatch && !opts.wait) {
-    warn('--fail-on-mismatch has no effect without --wait; the evaluator verdict is not awaited.');
+  if (opts.wait && !runId) {
+    throw new Error('Example start response did not include a run id; cannot honor --wait');
   }
   if (opts.wait && runId) {
-    let payload = await pollRun(client, runId, opts.interval, opts.maxWait);
+    let payload = await pollRun(client, runId, opts.interval, opts.maxWait, opts.json);
     const status = (payload as { execution?: { status?: string } }).execution?.status;
     let wait: EvalRollupWait = { kind: 'no-evaluators' };
     if (status === 'completed') {
@@ -494,7 +507,7 @@ function projectionIncludeSource(opts: { include?: string; expand?: string }): s
 
 async function getRun(
   executionId: string,
-  opts: BaseOpts & { include?: string; expand?: string; step?: string }
+  opts: BaseOpts & { include?: string; expand?: string; step?: string; select?: string }
 ) {
   const client = buildClient(opts);
   const run = toLegacyRunView(
@@ -512,24 +525,32 @@ async function getRun(
   if (isWorkflowRun(run)) {
     const steps = filterWorkflowSteps(run.stepExecutions, opts.step);
     const projectionIncludes = workflowStepProjectionIncludes(projectionIncludeSource(opts));
-    if (opts.step) {
-      return printJson({ ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) });
+    const projectedRun = opts.step
+      ? { ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) }
+      : run;
+    if (opts.select) {
+      return printJson(selectJsonValue(projectedRun, opts.select));
     }
     if (opts.json) {
-      return printJson(run);
+      return printJson(projectedRun);
     }
-    console.log(renderFrame(toExecutionSnapshot(run, executionId)));
+    console.log(renderFrame(toExecutionSnapshot(projectedRun, executionId)));
     process.stderr.write(
       `${ui.dim(`use --json for the full payload, then pipe to jq for field projection`)}\n`
     );
     return;
   }
 
+  if (opts.select) return printJson(selectJsonValue(run, opts.select));
   renderRunPayload(run, opts);
 }
 
 type WorkflowStepRow = Record<string, unknown> & {
   stepName?: string;
+  stepPath?: string | null;
+  scopeHash?: string;
+  scopeStack?: Array<Record<string, unknown>>;
+  executionOrder?: number;
   status?: string;
   durationMs?: number | null;
   inputData?: unknown;
@@ -755,8 +776,11 @@ export async function rerunRun(
   const path = `/v1/runs/${encodeURIComponent(executionId)}/rerun${query ? `?${query}` : ''}`;
   let payload: unknown = await client.post(path);
   const rerunId = String((payload as { id?: string }).id ?? '');
+  if (opts.wait && !rerunId) {
+    throw new Error('Rerun response did not include an id; cannot honor --wait');
+  }
   if (opts.wait && rerunId) {
-    payload = await pollRun(client, rerunId, opts.interval, opts.maxWait);
+    payload = await pollRun(client, rerunId, opts.interval, opts.maxWait, opts.json);
     renderRunPayload(payload, opts);
     setExitCodeForFailedTerminalRun(payload);
     return;
@@ -911,7 +935,6 @@ async function inspectRunArtifact(
     ...inspect,
   };
 
-  if (opts.json) return printJson(payload);
   printJson(payload);
 }
 
@@ -1196,6 +1219,7 @@ interface WorkflowComparisonReport {
   comparedWithRunId: string;
   steps: Array<{
     stepName: string;
+    stepPath: string;
     referenceStatus: string;
     targetStatus: string;
     durationDeltaMs: number | null;
@@ -1204,7 +1228,7 @@ interface WorkflowComparisonReport {
   finalOutputState: string;
 }
 
-function compareWorkflowRuns(
+export function compareWorkflowRuns(
   referenceId: string,
   reference: Record<string, unknown>,
   targetId: string,
@@ -1213,9 +1237,13 @@ function compareWorkflowRuns(
 ): WorkflowComparisonReport {
   const referenceSteps = workflowSteps(reference.stepExecutions);
   const targetSteps = workflowSteps(target.stepExecutions);
-  const stepNames = new Set<string>();
-  for (const step of referenceSteps) if (step.stepName) stepNames.add(step.stepName);
-  for (const step of targetSteps) if (step.stepName) stepNames.add(step.stepName);
+  const referenceByPath = new Map(
+    referenceSteps.map((step) => [workflowStepComparisonPath(step), step] as const)
+  );
+  const targetByPath = new Map(
+    targetSteps.map((step) => [workflowStepComparisonPath(step), step] as const)
+  );
+  const stepPaths = new Set([...referenceByPath.keys(), ...targetByPath.keys()]);
   const wanted = stepFilter
     ? new Set(
         stepFilter
@@ -1224,18 +1252,23 @@ function compareWorkflowRuns(
           .filter(Boolean)
       )
     : null;
-  const steps = [...stepNames]
+  const steps = [...stepPaths]
     .sort()
-    .filter((stepName) => !wanted || wanted.has(stepName))
-    .map((stepName) => {
-      const referenceStep = referenceSteps.find((step) => step.stepName === stepName);
-      const targetStep = targetSteps.find((step) => step.stepName === stepName);
+    .map((stepPath) => {
+      const referenceStep = referenceByPath.get(stepPath);
+      const targetStep = targetByPath.get(stepPath);
+      const stepName = String(referenceStep?.stepName ?? targetStep?.stepName ?? stepPath);
+      return { stepPath, stepName, referenceStep, targetStep };
+    })
+    .filter(({ stepName, stepPath }) => !wanted || wanted.has(stepName) || wanted.has(stepPath))
+    .map(({ stepPath, stepName, referenceStep, targetStep }) => {
       const referenceDuration =
         typeof referenceStep?.durationMs === 'number' ? referenceStep.durationMs : null;
       const targetDuration =
         typeof targetStep?.durationMs === 'number' ? targetStep.durationMs : null;
       return {
         stepName,
+        stepPath,
         referenceStatus: String(referenceStep?.status ?? '-'),
         targetStatus: String(targetStep?.status ?? '-'),
         durationDeltaMs:
@@ -1264,6 +1297,30 @@ function compareWorkflowRuns(
   };
 }
 
+function workflowStepComparisonPath(step: WorkflowStepRow): string {
+  const frames = Array.isArray(step.scopeStack) ? step.scopeStack : [];
+  const parts: string[] = [];
+  for (const frame of frames) {
+    const type = String(frame.type ?? '');
+    const stepName = String(frame.stepName ?? '');
+    if (!stepName || type === 'root') continue;
+    if (type === 'parallel-map-iteration' || type === 'foreach-iteration') {
+      const index = typeof frame.iterationIndex === 'number' ? frame.iterationIndex : '?';
+      parts.push(`${stepName}[${index}]`);
+    } else if (type === 'parallel-branch') {
+      parts.push(`${stepName}.${String(frame.branchName ?? '?')}`);
+    } else if (type === 'if-then') {
+      parts.push(`${stepName}.then`);
+    } else if (type === 'if-else') {
+      parts.push(`${stepName}.else`);
+    } else {
+      parts.push(stepName);
+    }
+  }
+  if (step.stepName) parts.push(step.stepName);
+  return parts.join('.') || step.stepPath || step.stepName || step.scopeHash || 'unknown-step';
+}
+
 function renderWorkflowComparisonReport(report: WorkflowComparisonReport): void {
   console.log(
     `${ui.dim('A =')} ${ui.bold(report.comparedWithRunId)}   ${ui.dim('B =')} ${ui.bold(report.runId)}`
@@ -1277,7 +1334,7 @@ function renderWorkflowComparisonReport(report: WorkflowComparisonReport): void 
         ? '-'
         : `${step.durationDeltaMs >= 0 ? '+' : ''}${step.durationDeltaMs}ms`;
     console.log(
-      `${step.stepName.padEnd(28)} ${padColored(colorStatus(step.referenceStatus), step.referenceStatus, 11)} ${padColored(colorStatus(step.targetStatus), step.targetStatus, 11)} ${delta.padEnd(12)} ${colorOutputState(step.outputState)}`
+      `${step.stepPath.padEnd(28)} ${padColored(colorStatus(step.referenceStatus), step.referenceStatus, 11)} ${padColored(colorStatus(step.targetStatus), step.targetStatus, 11)} ${delta.padEnd(12)} ${colorOutputState(step.outputState)}`
     );
   }
   console.log('');
@@ -1361,8 +1418,8 @@ async function listRuns(
     noResolvedAnchor?: boolean;
   };
   const viewRuns = payload.runs.map(toLegacyRunView);
+  if (opts.json) return printJson({ ...payload, runs: viewRuns });
   const rows = opts.compact ? viewRuns.map(compactRunRow) : viewRuns;
-  if (opts.json) return printJson({ ...payload, runs: rows });
   if (payload.scanLimited) warn('Filtered run list scanned only the first matching window.');
   if (payload.noResolvedAnchor) warn('No closed review anchor was found in the scan window.');
   console.log(
@@ -1624,7 +1681,7 @@ async function watchRunCommand(
 ) {
   const client = buildClient(opts);
   if (opts.json) {
-    const payload = await pollRun(client, executionId, opts.interval, opts.maxWait);
+    const payload = await pollRun(client, executionId, opts.interval, opts.maxWait, opts.json);
     renderRunPayload(payload, opts);
     setExitCodeForFailedTerminalRun(payload);
     return;
@@ -1646,7 +1703,11 @@ async function watchRunCommand(
     );
     process.exit(2);
   }
-  if (result.final.status === 'failed' || result.final.status === 'cancelled') {
+  if (
+    result.final.status === 'failed' ||
+    result.final.status === 'cancelled' ||
+    result.final.status === 'rejected'
+  ) {
     process.exitCode = 1;
   }
 }
@@ -1655,7 +1716,11 @@ async function cancelRun(executionId: string, opts: BaseOpts & { yes?: boolean }
   requireYesInNonInteractive(opts.yes, 'Cancel run');
   const client = buildClient(opts);
   const payload = await client.post(`/v1/runs/${encodeURIComponent(executionId)}/cancel`, {});
-  renderRunPayload(payload, opts);
+  if (opts.json) {
+    printJson(payload);
+    return;
+  }
+  success(`Cancellation requested for run ${executionId}.`);
 }
 
 async function downloadTraceText(client: ApiClient, executionId: string): Promise<string> {

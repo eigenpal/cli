@@ -140,6 +140,10 @@ eigenpal
 │   │   └── delete <run-id> <name>
 │   ├── watch <run-id>
 │   └── cancel <run-id>
+├── docs
+│   ├── list|ls [prefix]
+│   ├── search <query>
+│   └── read <topic>
 └── skill
     ├── install
     ├── uninstall [toolIds...]

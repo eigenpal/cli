@@ -1,5 +1,16 @@
 # @eigenpal/cli
 
+## 0.15.0
+
+### Minor Changes
+
+- a74cdc9: Experiment analysis is now built into the CLI for workflows and agents: summarize pass, fail, error, and score totals; filter failures by evaluator; inspect structured discrepancy paths; and compare actual outputs between batches. Run payloads can be projected with `--select`, and repository-level validation discovers nested workflow projects automatically. Polling commands also expose consistent wait limits and reject flag combinations that cannot produce a reliable verdict. Waiting commands now keep human output concise by default; pass `--json` whenever scripts need the terminal payload.
+- a74cdc9: `eigenpal docs` now lists, searches, and reads the complete release-matched platform documentation offline, including detailed evaluator syntax, workflow step guides, CLI reference, and the OpenAPI contract.
+
+### Patch Changes
+
+- a74cdc9: CLI file uploads now send valid content types for Outlook and unknown files, cancellation confirms the asynchronous request clearly, and run comparisons show every repeated workflow step by branch and iteration path.
+
 ## 0.14.3
 
 ### Patch Changes

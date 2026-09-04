@@ -76,8 +76,17 @@ export function countInvokeWorkflowSteps(steps: unknown): number {
     const step = entry as Record<string, unknown>;
     if (step.type === 'action.invoke-workflow') count++;
     count += countInvokeWorkflowSteps(step.steps);
+    count += countInvokeWorkflowSteps(step.body);
     count += countInvokeWorkflowSteps(step.then);
     count += countInvokeWorkflowSteps(step.else);
+    count += countInvokeWorkflowSteps(step.default);
+    if (Array.isArray(step.cases)) {
+      for (const switchCase of step.cases) {
+        if (switchCase && typeof switchCase === 'object') {
+          count += countInvokeWorkflowSteps((switchCase as Record<string, unknown>).steps);
+        }
+      }
+    }
     if (Array.isArray(step.branches)) {
       for (const branch of step.branches) {
         if (branch && typeof branch === 'object') {
@@ -540,6 +549,67 @@ async function onlineInvokeIssues(yamlText: string, opts: OnlineOpt): Promise<Va
   return res.issues ?? [];
 }
 
+/**
+ * Resolve either a flat workflow project or the repository layout used by
+ * checked-in workflow collections: `eigenpal/workflows/<slug>/workflow.yaml`.
+ */
+export function discoverWorkflowProjectRoots(rootPath: string): string[] {
+  const root = resolve(rootPath);
+  if (existsSync(join(root, 'workflow.yaml'))) return [root];
+
+  const candidates = [
+    join(root, 'eigenpal', 'workflows'),
+    join(root, 'workflows'),
+    root.endsWith(join('eigenpal', 'workflows')) ? root : '',
+  ].filter(Boolean);
+  for (const parent of candidates) {
+    if (!existsSync(parent) || !statSync(parent).isDirectory()) continue;
+    const projects = readdirSync(parent, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          !entry.isSymbolicLink() &&
+          existsSync(join(parent, entry.name, 'workflow.yaml'))
+      )
+      .map((entry) => join(parent, entry.name))
+      .sort();
+    if (projects.length > 0) return projects;
+  }
+  return [];
+}
+
+async function validateProjectRoot(root: string, opts: OnlineOpt): Promise<boolean> {
+  const wfFile = join(root, 'workflow.yaml');
+  const wfResult = validateWorkflowYaml(wfFile);
+  const wfPath = relPath(root, wfFile);
+  const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
+  if (wfOk) {
+    printSchemaQualityWarnings(wfPath, wfResult.warnings);
+    printInvokeOnlineHint(wfResult.invokeStepCount, wfResult.templateStepCount, opts.online);
+  }
+  const evOk = printIssues(
+    'evaluators.yaml',
+    relPath(root, join(root, 'evaluators.yaml')),
+    validateEvaluatorsYaml(join(root, 'evaluators.yaml'))
+  );
+  const dsOk = printIssues(
+    'dataset/',
+    relPath(root, join(root, 'dataset')),
+    validateDatasetFolder(join(root, 'dataset'))
+  );
+  const templateOk =
+    wfOk && existsSync(wfFile) ? await runTemplateDiagnostics(wfFile, wfResult.steps, opts) : true;
+  let onlineOk = true;
+  if (wfOk && opts.online && existsSync(wfFile)) {
+    onlineOk = printIssues(
+      'invoke refs (server)',
+      wfPath,
+      await onlineInvokeIssues(readFileSync(wfFile, 'utf-8'), opts)
+    );
+  }
+  return wfOk && evOk && dsOk && templateOk && onlineOk;
+}
+
 /** Register `<parent> validate` (no subcommand): runs all three local checks
  *  against the templated project layout (`./workflow.yaml`, `./evaluators.yaml`,
  *  `./dataset/`). For targeted validation use the per-noun helpers. */
@@ -547,7 +617,7 @@ export function registerAllValidateCommand(parent: Command): void {
   const cmd = parent
     .command('validate [path]')
     .description(
-      'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.'
+      'Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`.'
     )
     .option(
       '--dir <path>',
@@ -564,6 +634,9 @@ export function registerAllValidateCommand(parent: Command): void {
     .addHelpText(
       'after',
       '\nNote\n' +
+        '  When [path] or --dir points at a repository root (or eigenpal/workflows),\n' +
+        '  every discovered workflow project is validated and failures are grouped\n' +
+        '  by project path.\n' +
         '  Local validation cannot resolve action.invoke-workflow targets, tmpl_…\n' +
         '  template ids, or whether selected OCR/vision/text models exist in this\n' +
         '  environment (they live on the server). Run `validate --online` to check\n' +
@@ -577,7 +650,7 @@ export function registerAllValidateCommand(parent: Command): void {
       // file. Validate only that workflow and the schema-quality warnings;
       // skip evaluators/dataset entirely so a quick `validate ./wf.yaml`
       // doesn't error on missing project siblings.
-      if (path) {
+      if (path && (!existsSync(resolve(path)) || !statSync(resolve(path)).isDirectory())) {
         const target = resolve(path);
         const wfResult = validateWorkflowYaml(target);
         const wfOk = printIssues('workflow.yaml', target, wfResult.issues);
@@ -598,40 +671,20 @@ export function registerAllValidateCommand(parent: Command): void {
         return;
       }
 
-      const root = rootDir(opts);
-      const wfFile = join(root, 'workflow.yaml');
-      const wfResult = validateWorkflowYaml(wfFile);
-      const wfPath = relPath(root, wfFile);
-      const wfOk = printIssues('workflow.yaml', wfPath, wfResult.issues);
-      if (wfOk) {
-        printSchemaQualityWarnings(wfPath, wfResult.warnings);
-        printInvokeOnlineHint(wfResult.invokeStepCount, wfResult.templateStepCount, opts.online);
+      const requestedRoot = path ? resolve(path) : rootDir(opts);
+      const projects = discoverWorkflowProjectRoots(requestedRoot);
+      if (projects.length === 0) {
+        if (!(await validateProjectRoot(requestedRoot, opts))) process.exit(1);
+        return;
       }
-      const evOk = printIssues(
-        'evaluators.yaml',
-        relPath(root, join(root, 'evaluators.yaml')),
-        validateEvaluatorsYaml(join(root, 'evaluators.yaml'))
-      );
-      const dsOk = printIssues(
-        'dataset/',
-        relPath(root, join(root, 'dataset')),
-        validateDatasetFolder(join(root, 'dataset'))
-      );
-      // Online invoke check runs only when the local workflow shape is valid —
-      // the server would just re-report the same parse/schema errors otherwise.
-      let onlineOk = true;
-      const templateOk =
-        wfOk && existsSync(wfFile)
-          ? await runTemplateDiagnostics(wfFile, wfResult.steps, opts)
-          : true;
-      if (wfOk && opts.online && existsSync(wfFile)) {
-        onlineOk = printIssues(
-          'invoke refs (server)',
-          wfPath,
-          await onlineInvokeIssues(readFileSync(wfFile, 'utf-8'), opts)
-        );
+      let valid = true;
+      for (const project of projects) {
+        if (projects.length > 1) {
+          process.stderr.write(`${ui.bold(relPath(requestedRoot, project))}\n`);
+        }
+        if (!(await validateProjectRoot(project, opts))) valid = false;
       }
-      if (!wfOk || !evOk || !dsOk || !templateOk || !onlineOk) process.exit(1);
+      if (!valid) process.exit(1);
     })
   );
 }

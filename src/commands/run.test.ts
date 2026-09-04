@@ -56,6 +56,74 @@ function runCli(
 }
 
 describe('root run commands', () => {
+  test('runs get --select reads business output from output.*', async () => {
+    await withRunServer(
+      () =>
+        json({
+          id: 'run_select',
+          type: 'workflow',
+          output: { subjects: [{ name: 'Alpha' }, { name: 'Beta' }] },
+          execution: { status: 'completed' },
+          stepExecutions: [],
+        }),
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'runs',
+            'get',
+            'run_select',
+            '--select',
+            'output.subjects[].name',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout)).toEqual(['Alpha', 'Beta']);
+      }
+    );
+  });
+
+  test('--wait --json emits the last run payload before timeout', async () => {
+    await withRunServer(
+      async (request) => {
+        if (request.method === 'POST') {
+          return json({ id: 'run_wait', type: 'workflow', finished: false }, { status: 201 });
+        }
+        return json({
+          id: 'run_wait',
+          type: 'workflow',
+          finished: false,
+          execution: { status: 'running' },
+        });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'run',
+            'workflows.wait-test',
+            '--wait',
+            '--json',
+            '--max-wait',
+            '0',
+            '--interval',
+            '0',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+        expect(result.status).toBe(2);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          id: 'run_wait',
+          execution: { status: 'running' },
+        });
+        expect(result.stderr).toContain('Timed out waiting for run run_wait');
+      }
+    );
+  });
+
   test('run posts JSON input to the unified runs endpoint', async () => {
     let captured: { pathname: string; body: unknown } | null = null;
     await withRunServer(

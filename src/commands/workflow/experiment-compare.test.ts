@@ -3,11 +3,129 @@ import { describe, expect, test } from 'bun:test';
 import {
   aggregateByEvaluator,
   buildBatchDiff,
+  buildExperimentOutputDiff,
+  diffOutputJson,
+  fetchExperimentOutputs,
   formatDelta,
   normalizeCompareSort,
   renderBatchDiffHuman,
   type CompareInputRow,
 } from './experiment-compare';
+
+describe('experiment output comparison', () => {
+  test('compares actual outputs by example with structured paths', () => {
+    const diff = buildExperimentOutputDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [
+        {
+          executionId: 'run_a1',
+          exampleId: 'evx_1',
+          exampleName: 'invoice',
+          status: 'completed',
+          error: null,
+          output: { subjects: [{ name: 'A', score: 1 }], nullable: null },
+        },
+      ],
+      rowsB: [
+        {
+          executionId: 'run_b1',
+          exampleId: 'evx_1',
+          exampleName: 'invoice',
+          status: 'completed',
+          error: null,
+          output: { subjects: [{ name: 'B', score: 1 }], nullable: 'now-set' },
+        },
+      ],
+    });
+
+    expect(diff.summary).toMatchObject({ sharedExamples: 1, identical: 0, changed: 1 });
+    expect(diff.rows[0].differences).toEqual([
+      { path: '$.subjects[0].name', type: 'changed', expected: 'A', actual: 'B' },
+      { path: '$.nullable', type: 'changed', expected: null, actual: 'now-set' },
+    ]);
+  });
+
+  test('reads run state from the canonical execution envelope', async () => {
+    const client = {
+      async get(path: string) {
+        if (path === '/v1/experiments/evb_a') return { automationId: 'auto_1' };
+        if (path === '/v1/automations/auto_1/experiments/evb_a') {
+          return { runs: [{ id: 'run_a1', exampleName: 'invoice' }] };
+        }
+        if (path === '/v1/runs/run_a1') {
+          return {
+            execution: { status: 'failed' },
+            error: { message: 'unable to fetch document' },
+          };
+        }
+        throw new Error(`Unexpected path: ${path}`);
+      },
+    };
+
+    const result = await fetchExperimentOutputs(client as never, 'evb_a');
+    expect(result.rows).toEqual([
+      {
+        executionId: 'run_a1',
+        exampleId: null,
+        exampleName: 'invoice',
+        status: 'failed',
+        error: { message: 'unable to fetch document' },
+        output: undefined,
+      },
+    ]);
+  });
+
+  test('does not report failed and successful runs without output as identical', () => {
+    const diff = buildExperimentOutputDiff({
+      batchIdA: 'evb_a',
+      batchIdB: 'evb_b',
+      rowsA: [
+        {
+          executionId: 'run_a1',
+          exampleId: 'evx_1',
+          exampleName: 'invoice',
+          status: 'failed',
+          error: 'unable to fetch document',
+          output: undefined,
+        },
+      ],
+      rowsB: [
+        {
+          executionId: 'run_b1',
+          exampleId: 'evx_1',
+          exampleName: 'invoice',
+          status: 'completed',
+          error: null,
+          output: undefined,
+        },
+      ],
+    });
+
+    expect(diff.summary).toMatchObject({
+      sharedExamples: 1,
+      identical: 0,
+      changed: 0,
+      incomparable: 1,
+    });
+    expect(diff.rows[0]).toMatchObject({
+      status: 'incomparable',
+      differences: [
+        {
+          path: '$',
+          type: 'incomparable',
+          expected: { status: 'failed', error: 'unable to fetch document' },
+          actual: { status: 'completed', error: null },
+        },
+      ],
+    });
+  });
+
+  test('reports missing and extra array items', () => {
+    expect(diffOutputJson([1], [1, 2])).toEqual([{ path: '$[1]', type: 'extra', actual: 2 }]);
+    expect(diffOutputJson([1, 2], [1])).toEqual([{ path: '$[1]', type: 'missing', expected: 2 }]);
+  });
+});
 
 describe('normalizeCompareSort', () => {
   test('passes through canonical values', () => {

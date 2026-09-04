@@ -118,15 +118,15 @@ workflow
 
 ### Core
 
-| Command                                                 | Description                                                                                                                                                                                                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                      |
-| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                     |
-| `eigenpal workflow schema [options] <workflow-id>`      | Show the inferred output schema for a workflow (what it returns).                                                                                                                                                                                                        |
-| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                            |
-| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                             |
-| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`. |
-| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                 |
+| Command                                                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                                                                                                                                                                                      |
+| `eigenpal workflow schema [options] <workflow-id>`      | Show the inferred output schema for a workflow (what it returns).                                                                                                                                                                                                                                                                                                                                                                         |
+| `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                                                                                                                                                                             |
+| `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                                                                                                                                                                              |
+| `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`. |
+| `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                                                                                                                                                                                  |
 
 ### Evaluators
 
@@ -170,7 +170,7 @@ workflow
 | `eigenpal workflow experiment\|exp status [options] <workflow-id> <batchId>`      | Aggregate progress for a batch by `batchId`.                                               |
 | `eigenpal workflow experiment\|exp cancel [options] <workflow-id> <batchId>`      | Cancel every execution in a batch. Idempotent.                                             |
 | `eigenpal workflow experiment\|exp results [options] <workflow-id> [batchId]`     | Download eval results in CSV or JSON.                                                      |
-| `eigenpal workflow experiment\|exp compare\|diff [options] <batchIdA> <batchIdB>` | Diff eval scores between two experiment batches.                                           |
+| `eigenpal workflow experiment\|exp compare\|diff [options] <batchIdA> <batchIdB>` | Compare evaluator scores or actual outputs between two experiment batches.                 |
 | `eigenpal workflow experiment\|exp watch [options] <workflow-id> <batchId>`       | Poll until terminal, then auto-pull results — replaces `status --watch` + `results --out`. |
 
 ### Versions
@@ -210,13 +210,13 @@ List workflows the caller can read.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--search <q>`     | no       |         | Filter by name                         |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--search <q>`     | no       |         | Filter by name                       |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow pull [options] <workflow-id>`
 
@@ -267,7 +267,7 @@ Create or update a workflow from a YAML file.
 | `--set-version <semver>`     | no       |         | Push at this exact semver (e.g. 1.4.0). Mutually exclusive with `--bump` and with a top-level `version:` in the YAML. (Named `--set-version` to avoid the global `-v, --version` flag.) |
 | `--allow-external-templates` | no       |         | Allow local template: paths whose real path is outside the workflow project directory (the folder that contains the YAML file). Off by default; ../ and symlink escapes are rejected.   |
 | `--base-url <url>`           | no       |         | Server base URL                                                                                                                                                                         |
-| `--json`                     | no       |         | Output the raw server response as JSON                                                                                                                                                  |
+| `--json`                     | no       |         | Emit machine-readable JSON on stdout                                                                                                                                                    |
 
 ### `eigenpal workflow move [options] <workflow-id>`
 
@@ -281,15 +281,15 @@ Move a workflow to a folder path, creating folders as needed
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--folder <path>`  | yes      |         | Target folder path (`/` for root)      |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--folder <path>`  | yes      |         | Target folder path (`/` for root)    |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow validate [options] [path]`
 
-Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/). With [path] pointing at a YAML file: validates that workflow.yaml. For per-noun targeting use `evaluators validate` or `dataset validate`.
+Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`.
 
 ### Arguments
 
@@ -352,11 +352,11 @@ Overwrite the workflow's evaluator config from a YAML file.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--file <yaml>`    | yes      |         | Path to evaluators YAML file           |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--file <yaml>`    | yes      |         | Path to evaluators YAML file         |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow evaluators validate [options] [path]`
 
@@ -380,12 +380,12 @@ List eval examples for the workflow.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--limit <n>`      | no       | `100`   | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--limit <n>`      | no       | `100`   | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow dataset pull [options] <workflow-id>`
 
@@ -423,7 +423,7 @@ Replace or extend the workflow's dataset from a ZIP or folder.
 | `--mode <append\|replace>` | no       | `"append"` | Import mode (default: append)                                                              |
 | `--yes`                    | no       | `false`    | Skip the destructive confirmation prompt for --mode replace (use in CI)                    |
 | `--base-url <url>`         | no       |            | Server base URL                                                                            |
-| `--json`                   | no       |            | Output the raw server response as JSON                                                     |
+| `--json`                   | no       |            | Emit machine-readable JSON on stdout                                                       |
 
 ### `eigenpal workflow dataset example create [options] <workflow-id>`
 
@@ -446,7 +446,7 @@ Create one eval example without re-uploading the dataset.
 | `--expected-file <path>` | no       |         | Expected output from a JSON file (or `-` for stdin) |
 | `--annotation <text>`    | no       |         | Free-form annotation                                |
 | `--base-url <url>`       | no       |         | Server base URL                                     |
-| `--json`                 | no       |         | Output the raw server response as JSON              |
+| `--json`                 | no       |         | Emit machine-readable JSON on stdout                |
 
 ### `eigenpal workflow dataset example update [options] <workflow-id> <exampleId>`
 
@@ -471,7 +471,7 @@ Patch one eval example. Omitted flags are left alone.
 | `--annotation <text>`    | no       |         | Replace annotation; pass empty string to clear              |
 | `--row-order <n>`        | no       |         | Reorder the row (0-based)                                   |
 | `--base-url <url>`       | no       |         | Server base URL                                             |
-| `--json`                 | no       |         | Output the raw server response as JSON                      |
+| `--json`                 | no       |         | Emit machine-readable JSON on stdout                        |
 
 ### `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`
 
@@ -490,7 +490,7 @@ Delete one eval example by id. Non-TTY shells require --yes.
 | ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
 | `--yes`            | no       | `false` | Required for non-TTY shells; explicit acknowledgment that this is destructive |
 | `--base-url <url>` | no       |         | Server base URL                                                               |
-| `--json`           | no       |         | Output the raw server response as JSON                                        |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                          |
 
 ### `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`
 
@@ -505,10 +505,10 @@ Fetch one eval example with full triggerInput, expectedOutput, and metadata.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow dataset validate [options] [path]`
 
@@ -537,7 +537,7 @@ Upload a DOCX or XLSX file as a new tmpl*… resource with an immutable tmpr*…
 | `--name <name>`        | no       |         | Display name (defaults to the filename without extension) |
 | `--description <text>` | no       |         | Optional description                                      |
 | `--base-url <url>`     | no       |         | Server base URL                                           |
-| `--json`               | no       |         | Output the raw server response as JSON                    |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                      |
 
 ### `eigenpal workflow templates list|ls [options]`
 
@@ -545,12 +545,12 @@ List workspace templates.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow templates get|inspect [options] <template-id>`
 
@@ -564,10 +564,10 @@ Inspect a tmpl*… resource: current tmpr*…, format, checksum, tokens, grammar
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow templates download [options] <template-id>`
 
@@ -600,10 +600,10 @@ Append an immutable revision and advance the tmpl\_… pointer.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow templates delete [options] <template-id>`
 
@@ -617,11 +617,11 @@ Delete the mutable tmpl*… pointer. Pinned tmpr*… revisions remain so workflo
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--yes`            | no       | `false` | Required for non-TTY shells            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--yes`            | no       | `false` | Required for non-TTY shells          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow templates smoke [options] <template>`
 
@@ -641,7 +641,7 @@ Fill a local Office file or a tmpl\_… resource with a JSON fixture and write t
 | `--out <path>`         | yes      |         | Filled DOCX/XLSX output path                                 |
 | `--revision-id <tmpr>` | no       |         | When <template> is a tmpl\_… id, pin this revision           |
 | `--base-url <url>`     | no       |         | Server base URL                                              |
-| `--json`               | no       |         | Output the raw server response as JSON                       |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                         |
 
 ### `eigenpal workflow experiment|exp list|ls [options] <workflow-id>`
 
@@ -655,13 +655,13 @@ List executions for the workflow, newest first.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--batch-id <id>`  | no       |         | Filter by batch                        |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--batch-id <id>`  | no       |         | Filter by batch                      |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow experiment|exp run [options] <workflow-id>`
 
@@ -675,13 +675,14 @@ Start a batch eval against the workflow's dataset.
 
 ### Options
 
-| Flag                | Required | Default | Description                                          |
-| ------------------- | -------- | ------- | ---------------------------------------------------- |
-| `--example-id <id>` | no       | `[]`    | Run only this example (repeatable)                   |
-| `--wait`            | no       | `false` | Poll until terminal; non-zero exit on passRate < 1.0 |
-| `--interval <n>`    | no       | `10`    | Polling interval in seconds (default 10)             |
-| `--base-url <url>`  | no       |         | Server base URL                                      |
-| `--json`            | no       |         | Output the raw server response as JSON               |
+| Flag                   | Required | Default | Description                                          |
+| ---------------------- | -------- | ------- | ---------------------------------------------------- |
+| `--example-id <id>`    | no       | `[]`    | Run only this example (repeatable)                   |
+| `--wait`               | no       | `false` | Poll until terminal; non-zero exit on passRate < 1.0 |
+| `--interval <n>`       | no       | `10`    | Polling interval in seconds (default 10)             |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2 (default 1800)       |
+| `--base-url <url>`     | no       |         | Server base URL                                      |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                 |
 
 ### `eigenpal workflow experiment|exp status [options] <workflow-id> <batchId>`
 
@@ -704,7 +705,7 @@ Aggregate progress for a batch by `batchId`.
 | `--max-wait <seconds>` | no       | `1800`  | Hard ceiling for --watch in seconds (default 1800 = 30 min)                                                                                                      |
 | `--include <kinds>`    | no       | `""`    | Comma-separated extras to attach when --watch terminates: payload (full per-execution snapshot, can be hundreds of KB)                                           |
 | `--base-url <url>`     | no       |         | Server base URL                                                                                                                                                  |
-| `--json`               | no       |         | Output the raw server response as JSON                                                                                                                           |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                                                                                                                             |
 
 ### `eigenpal workflow experiment|exp cancel [options] <workflow-id> <batchId>`
 
@@ -723,7 +724,7 @@ Cancel every execution in a batch. Idempotent.
 | ------------------ | -------- | ------- | --------------------------------------------------------------------- |
 | `--yes`            | no       |         | Required for non-TTY shells (CI, pipes). Acts immediately, no prompt. |
 | `--base-url <url>` | no       |         | Server base URL                                                       |
-| `--json`           | no       |         | Output the raw server response as JSON                                |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                  |
 
 ### `eigenpal workflow experiment|exp results [options] <workflow-id> [batchId]`
 
@@ -738,15 +739,20 @@ Download eval results in CSV or JSON.
 
 ### Options
 
-| Flag                   | Required | Default | Description                                              |
-| ---------------------- | -------- | ------- | -------------------------------------------------------- |
-| `--format <csv\|json>` | yes      |         | Output format                                            |
-| `--out <path>`         | no       |         | Output file. When omitted, the binary streams to stdout. |
-| `--base-url <url>`     | no       |         | Server base URL                                          |
+| Flag                   | Required | Default  | Description                                                                              |
+| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------- |
+| `--format <csv\|json>` | no       | `"json"` | Output format (default json)                                                             |
+| `--out <path>`         | no       |          | Output file. When omitted, the binary streams to stdout.                                 |
+| `--summary`            | no       |          | Show total/pass/fail/error counts, average score, and evaluator rollups                  |
+| `--failed-only`        | no       |          | Keep only failed or errored evaluator results                                            |
+| `--evaluator <name>`   | no       |          | Keep only results from this evaluator                                                    |
+| `--select <path>`      | no       |          | Print only a nested JSON value (for example summary.byEvaluator or discrepancies[].path) |
+| `--base-url <url>`     | no       |          | Server base URL                                                                          |
+| `--json`               | no       |          | Emit machine-readable JSON on stdout                                                     |
 
 ### `eigenpal workflow experiment|exp compare|diff [options] <batchIdA> <batchIdB>`
 
-Diff eval scores between two experiment batches.
+Compare evaluator scores or actual outputs between two experiment batches.
 
 ### Arguments
 
@@ -759,10 +765,11 @@ Diff eval scores between two experiment batches.
 
 | Flag                                                   | Required | Default            | Description                                            |
 | ------------------------------------------------------ | -------- | ------------------ | ------------------------------------------------------ |
+| `--outputs`                                            | no       |                    | Compare actual run outputs instead of evaluator scores |
 | `--sort <abs-delta-desc\|delta-asc\|delta-desc\|name>` | no       | `"abs-delta-desc"` | Row sort order (default: biggest movers first)         |
 | `--regression-threshold <n>`                           | no       | `0.05`             | Δ below this is flagged as a regression (default 0.05) |
 | `--base-url <url>`                                     | no       |                    | Server base URL                                        |
-| `--json`                                               | no       |                    | Output the raw server response as JSON                 |
+| `--json`                                               | no       |                    | Emit machine-readable JSON on stdout                   |
 
 ### `eigenpal workflow experiment|exp watch [options] <workflow-id> <batchId>`
 
@@ -825,7 +832,7 @@ Create a tagged workflow version from YAML or by copying an existing snapshot.
 | `--set-version <semver>`     | no       |         | Bare semver tag such as 1.4.0. Required when copying with --from. For --file, omit this flag if the YAML already has a top-level version: field. (Named --set-version to avoid the global -v, --version flag.) |
 | `--no-activate`              | no       |         | Keep the tagged version off live traffic until you promote it. Default is to make it current. Requires an existing current version.                                                                            |
 | `--base-url <url>`           | no       |         | Server base URL                                                                                                                                                                                                |
-| `--json`                     | no       |         | Output the raw server response as JSON                                                                                                                                                                         |
+| `--json`                     | no       |         | Emit machine-readable JSON on stdout                                                                                                                                                                           |
 
 ### `eigenpal workflow versions promote [options] <workflow-id> <versionId>`
 
@@ -840,10 +847,10 @@ Make an existing tagged workflow version current without creating another snapsh
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow versions restore [options] <workflow-id> <versionId>`
 
@@ -862,7 +869,7 @@ Restore a previous snapshot as a new untagged current version. Does not retag th
 | ------------------ | -------- | ------- | ------------------------------------------------ |
 | `--message <text>` | no       |         | Optional restore note stored on the new snapshot |
 | `--base-url <url>` | no       |         | Server base URL                                  |
-| `--json`           | no       |         | Output the raw server response as JSON           |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout             |
 
 ### `eigenpal workflow step-type list|ls [options]`
 
@@ -870,13 +877,13 @@ List every step type the deployment supports.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--search <q>`     | no       |         | Filter                                 |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--search <q>`     | no       |         | Filter                               |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow step-type get [options] <type>`
 
@@ -900,13 +907,13 @@ List every evaluator type with a one-line description.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--search <q>`     | no       |         | Filter by type, name, or description   |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--search <q>`     | no       |         | Filter by type, name, or description |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow evaluator-type get [options] <type>`
 

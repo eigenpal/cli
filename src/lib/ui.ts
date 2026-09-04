@@ -25,7 +25,7 @@
  * CLI flag because it would just be a verbose alias for the env.
  */
 
-import type { Command } from 'commander';
+import { InvalidArgumentError, type Command } from 'commander';
 import pc from 'picocolors';
 
 export { pc };
@@ -143,17 +143,12 @@ export function table<T extends Record<string, unknown>>(
 }
 
 /**
- * Adds `--json` to a Commander command. With `--json`, the raw server payload
- * goes to stdout (the table is suppressed). For list endpoints this is the
- * `{ data, total }` envelope unchanged — pipe through `jq '.data'` (or
- * `jq '.data | .[].id'` for projection) to extract what you need.
- *
- * Convention: the CLI returns the raw payload and lets `jq` do projection.
- * That mirrors `gh` / `kubectl` and keeps a single canonical wrap helper —
- * scripts that need a column subset already have `jq` in the pipeline.
+ * Adds `--json` to a Commander command. Machine-readable output goes to stdout
+ * and status remains on stderr. Commands may add stable CLI fields to the
+ * server payload; their help documents the exact shape.
  */
 export function addJsonFlag<C extends Command>(cmd: C): C {
-  return cmd.option('--json', 'Output the raw server response as JSON') as C;
+  return cmd.option('--json', 'Emit machine-readable JSON on stdout') as C;
 }
 
 /** Add the standard `--base-url <url>` option to a command. */
@@ -166,7 +161,14 @@ export function withBaseUrl<C extends Command>(cmd: C): C {
  * `--offset`, `--interval`, etc. so call sites don't repeat the lambda.
  */
 export function intArg(value: string): number {
-  return Number.parseInt(value, 10);
+  if (!/^-?\d+$/.test(value)) {
+    throw new InvalidArgumentError('Expected a whole number');
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new InvalidArgumentError('Expected a safe whole number');
+  }
+  return parsed;
 }
 
 /** Shape spread into every list-handler `opts`. Pair with `withPagination`. */
@@ -227,7 +229,7 @@ export function renderListResult<T extends Record<string, unknown>>(
 
   if (opts.json) {
     console.log(JSON.stringify(raw, null, 2));
-    if (rows.length > 0) writeRecordCountHint(rows.length, total, label);
+    if (rows.length > 0) writeRecordCountHint(rows.length, total, label, false);
     return;
   }
 
@@ -235,8 +237,13 @@ export function renderListResult<T extends Record<string, unknown>>(
   if (rows.length > 0) writeRecordCountHint(rows.length, total, label);
 }
 
-function writeRecordCountHint(shown: number, total: number, label: string): void {
+function writeRecordCountHint(
+  shown: number,
+  total: number,
+  label: string,
+  suggestJson = true
+): void {
   process.stderr.write(
-    `${pc.dim(`${shown}${total > shown ? ` of ${total}` : ''} ${label}${total === 1 ? '' : 's'} · use --json for the raw payload`)}\n`
+    `${pc.dim(`${shown}${total > shown ? ` of ${total}` : ''} ${label}${total === 1 ? '' : 's'}${suggestJson ? ' · use --json for machine-readable output' : ''}`)}\n`
   );
 }

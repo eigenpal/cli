@@ -94,6 +94,29 @@ describe('buildRunFormData', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test('uses non-empty MIME types for Outlook and unknown files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'run-form-data-mime-'));
+    try {
+      const messagePath = join(dir, 'message.msg');
+      const unknownPath = join(dir, 'attachment.unknown');
+      await writeFile(messagePath, Buffer.from('outlook'));
+      await writeFile(unknownPath, Buffer.from('unknown'));
+
+      const form = await buildRunFormData({
+        target: 'workflows.invoice',
+        inputFile: [`documents=${messagePath}`, `documents=${unknownPath}`],
+      });
+
+      const parts = multipartFileParts(form, 'documents');
+      expect(parts.map((file) => file.type)).toEqual([
+        'application/vnd.ms-outlook',
+        'application/octet-stream',
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('buildPreparedRunRequest', () => {

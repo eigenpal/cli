@@ -372,7 +372,15 @@ const FILE_ARTIFACT_PREFIX_RX = /^file_[A-Za-z0-9_-]{21}-/;
  */
 export function filenameFromArtifactName(nameOrPath: string): string {
   const base = nameOrPath.split('/').filter(Boolean).at(-1) ?? nameOrPath;
-  return base.replace(FILE_ARTIFACT_PREFIX_RX, '') || base;
+  let filename = base;
+  // Historical reruns could wrap an already-prefixed artifact name. Unwrap
+  // every generated layer so old files recover their original display name.
+  for (let depth = 0; depth < 10; depth++) {
+    const unwrapped = filename.replace(FILE_ARTIFACT_PREFIX_RX, '');
+    if (!unwrapped || unwrapped === filename) break;
+    filename = unwrapped;
+  }
+  return filename || base;
 }
 
 function getDynamicEntry(node: PathObject): readonly [string, PathNode] | undefined {

@@ -65,16 +65,16 @@ runs
 
 ### Core
 
-| Command                                                             | Description                                                                                                                     |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal runs list\|ls [options] [source]`                         | List runs across workflows and agents, optionally scoped to one source.                                                         |
-| `eigenpal runs get [options] <run-id>`                              | Get one run.                                                                                                                    |
-| `eigenpal runs compare\|diff [options] <reference-run-id> <run-id>` | Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes). |
-| `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                                                   |
-| `eigenpal runs promote [options] <run-id>`                          | Promote a run into a dataset example on the run's automation.                                                                   |
-| `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                                                        |
-| `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                                                 |
-| `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                                                   |
+| Command                                                             | Description                                                                                           |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `eigenpal runs list\|ls [options] [source]`                         | List runs across workflows and agents, optionally scoped to one source.                               |
+| `eigenpal runs get [options] <run-id>`                              | Get one run.                                                                                          |
+| `eigenpal runs compare\|diff [options] <reference-run-id> <run-id>` | Compare one run against another. Repeated workflow steps are matched by stable branch/iteration path. |
+| `eigenpal runs rerun [options] <run-id>`                            | Create a new run from a previous run's stored input snapshot.                                         |
+| `eigenpal runs promote [options] <run-id>`                          | Promote a run into a dataset example on the run's automation.                                         |
+| `eigenpal runs trace [options] <run-id>`                            | Print raw trace.jsonl for a run, or write it with --out.                                              |
+| `eigenpal runs watch [options] <run-id>`                            | Watch a run until it reaches a terminal status.                                                       |
+| `eigenpal runs cancel [options] <run-id>`                           | Cancel a run.                                                                                         |
 
 ### Artifacts
 
@@ -122,7 +122,7 @@ List runs across workflows and agents, optionally scoped to one source.
 | `--base-url <url>`             | no       |         | Server base URL                                           |
 | `--limit <n>`                  | no       | `50`    | Page size                                                 |
 | `--offset <n>`                 | no       | `0`     | Page offset                                               |
-| `--json`                       | no       |         | Output the raw server response as JSON                    |
+| `--json`                       | no       |         | Emit machine-readable JSON on stdout                      |
 | `--type <type>`                | no       |         | Filter by run type: workflow\|agent                       |
 | `--status <status>`            | no       |         | Filter by run status                                      |
 | `--source-ref <ref>`           | no       |         | Filter agent runs by source ref                           |
@@ -154,14 +154,15 @@ Get one run.
 | Flag                  | Required | Default    | Description                                                                                                                                                                                 |
 | --------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--base-url <url>`    | no       |            | Server base URL                                                                                                                                                                             |
-| `--json`              | no       |            | Output the raw server response as JSON                                                                                                                                                      |
+| `--json`              | no       |            | Emit machine-readable JSON on stdout                                                                                                                                                        |
 | `--step <name>`       | no       |            | For workflow runs, show only this step (or comma-separated list)                                                                                                                            |
+| `--select <path>`     | no       |            | Print only a nested JSON value; implies JSON output (for example output.subjects or output.subjects[].name)                                                                                 |
 | `--expand <sections>` | no       |            | Comma-separated server expand sections for GET /api/v1/runs/:id: input, usage, execution, debug. Use execution for status/schemaValid; completed runs include top-level output/files/error. |
 | `--include <parts>`   | no       | `"review"` | Comma-separated local workflow step projection fields (error, duration, inputRef, …). Legacy expand names are mapped when possible; use --expand for server sections.                       |
 
 ### `eigenpal runs compare|diff [options] <reference-run-id> <run-id>`
 
-Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compares structured workbook content (not ZIP bytes).
+Compare one run against another. Repeated workflow steps are matched by stable branch/iteration path.
 
 ### Arguments
 
@@ -172,15 +173,15 @@ Compare one run against another run. PDF/DOCX use pdftotext/python3; XLSX compar
 
 ### Options
 
-| Flag                | Required | Default | Description                                                         |
-| ------------------- | -------- | ------- | ------------------------------------------------------------------- |
-| `--base-url <url>`  | no       |         | Server base URL                                                     |
-| `--json`            | no       |         | Output the raw server response as JSON                              |
-| `--baseline`        | no       |         | Compare actual outputs from both runs instead of expected artifacts |
-| `--step <name>`     | no       |         | For workflow runs, restrict comparison to one step                  |
-| `--out <dir>`       | no       |         | Write comparison artifacts to this directory                        |
-| `--normalize-dates` | no       |         | Normalize YYYYMMDD and YYYY-MM-DD tokens in filenames/text          |
-| `--fail-on-diff`    | no       |         | Exit 1 when comparison status is fail                               |
+| Flag                    | Required | Default | Description                                                         |
+| ----------------------- | -------- | ------- | ------------------------------------------------------------------- |
+| `--base-url <url>`      | no       |         | Server base URL                                                     |
+| `--json`                | no       |         | Emit machine-readable JSON on stdout                                |
+| `--baseline`            | no       |         | Compare actual outputs from both runs instead of expected artifacts |
+| `--step <name-or-path>` | no       |         | For workflow runs, restrict by step name or stable path             |
+| `--out <dir>`           | no       |         | Write comparison artifacts to this directory                        |
+| `--normalize-dates`     | no       |         | Normalize YYYYMMDD and YYYY-MM-DD tokens in filenames/text          |
+| `--fail-on-diff`        | no       |         | Exit 1 when comparison status is fail                               |
 
 ### `eigenpal runs rerun [options] <run-id>`
 
@@ -197,7 +198,7 @@ Create a new run from a previous run's stored input snapshot.
 | Flag                   | Required | Default | Description                                                                                                       |
 | ---------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--base-url <url>`     | no       |         | Server base URL                                                                                                   |
-| `--json`               | no       |         | Output the raw server response as JSON                                                                            |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                                                                              |
 | `--version <version>`  | no       |         | Version/source ref for the new run: latest (default), original, or an explicit ref (same grammar as eigenpal run) |
 | `--source-ref <ref>`   | no       |         | Alias for --version                                                                                               |
 | `--wait`               | no       |         | Poll until the rerun reaches a terminal status                                                                    |
@@ -216,11 +217,11 @@ Promote a run into a dataset example on the run's automation.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--name <name>`    | no       |         | Name for the created example           |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--name <name>`    | no       |         | Name for the created example         |
 
 ### `eigenpal runs trace [options] <run-id>`
 
@@ -251,12 +252,12 @@ Watch a run until it reaches a terminal status.
 
 ### Options
 
-| Flag                   | Required | Default | Description                            |
-| ---------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                        |
-| `--json`               | no       |         | Output the raw server response as JSON |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2        |
+| Flag                   | Required | Default | Description                          |
+| ---------------------- | -------- | ------- | ------------------------------------ |
+| `--base-url <url>`     | no       |         | Server base URL                      |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout |
+| `--interval <seconds>` | no       | `2`     | Polling interval in seconds          |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2      |
 
 ### `eigenpal runs cancel [options] <run-id>`
 
@@ -273,7 +274,7 @@ Cancel a run.
 | Flag               | Required | Default | Description                                                        |
 | ------------------ | -------- | ------- | ------------------------------------------------------------------ |
 | `--base-url <url>` | no       |         | Server base URL                                                    |
-| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                               |
 | `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal runs artifacts|artifact list|ls [options] <run-id>`
@@ -288,10 +289,10 @@ List available run artifacts without downloading them.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal runs artifacts|artifact fetch [options] <run-id>`
 
@@ -329,7 +330,6 @@ Inspect a run XLSX artifact as structured JSON (sheet names, headers, typed rows
 | Flag               | Required | Default | Description                                                                        |
 | ------------------ | -------- | ------- | ---------------------------------------------------------------------------------- |
 | `--base-url <url>` | no       |         | Server base URL                                                                    |
-| `--json`           | no       |         | Output the raw server response as JSON                                             |
 | `--file <path>`    | no       |         | Inspect a local .xlsx/.xls file instead of downloading a run artifact              |
 | `--path <path>`    | no       |         | Canonical artifact path from `artifacts list` (alias for positional artifact-path) |
 | `--sheet <names>`  | no       |         | Comma-separated sheet names or zero-based indices to include                       |
@@ -352,7 +352,7 @@ Edit review verdict, status, note, or corrected JSON for a run.
 | Flag                                | Required | Default | Description                            |
 | ----------------------------------- | -------- | ------- | -------------------------------------- |
 | `--base-url <url>`                  | no       |         | Server base URL                        |
-| `--json`                            | no       |         | Output the raw server response as JSON |
+| `--json`                            | no       |         | Emit machine-readable JSON on stdout   |
 | `--status <open\|closed\|wont_fix>` | no       |         | Set review lifecycle status            |
 | `--verdict <correct\|incorrect>`    | no       |         | Set reviewer verdict                   |
 | `--note <text>`                     | no       |         | Set review note                        |
@@ -374,12 +374,12 @@ Mark a run review as closed.
 
 ### Options
 
-| Flag                 | Required | Default | Description                            |
-| -------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`   | no       |         | Server base URL                        |
-| `--json`             | no       |         | Output the raw server response as JSON |
-| `--note <text>`      | no       |         | Set developer close note               |
-| `--note-file <path>` | no       |         | Read developer close note from a file  |
+| Flag                 | Required | Default | Description                           |
+| -------------------- | -------- | ------- | ------------------------------------- |
+| `--base-url <url>`   | no       |         | Server base URL                       |
+| `--json`             | no       |         | Emit machine-readable JSON on stdout  |
+| `--note <text>`      | no       |         | Set developer close note              |
+| `--note-file <path>` | no       |         | Read developer close note from a file |
 
 ### `eigenpal runs reviews|rv clear [options] <run-id>`
 
@@ -396,7 +396,7 @@ Delete review metadata, corrected JSON, and corrected files for a run.
 | Flag               | Required | Default | Description                                                                   |
 | ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
 | `--base-url <url>` | no       |         | Server base URL                                                               |
-| `--json`           | no       |         | Output the raw server response as JSON                                        |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                          |
 | `--yes`            | no       |         | Skip typed-slug confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal runs expected list|ls [options] <run-id>`
@@ -411,10 +411,10 @@ List expected JSON and files attached to a run.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal runs expected pull [options] <run-id>`
 
@@ -446,11 +446,11 @@ Upload a local file as an expected artifact.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--name <name>`    | no       |         | Expected artifact name                 |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--name <name>`    | no       |         | Expected artifact name               |
 
 ### `eigenpal runs expected copy-output [options] <run-id> <output-file>`
 
@@ -465,11 +465,11 @@ Copy a generated output file into expected artifacts.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--name <name>`    | no       |         | Expected artifact name                 |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--name <name>`    | no       |         | Expected artifact name               |
 
 ### `eigenpal runs expected rename [options] <run-id> <old-name> <new-name>`
 
@@ -485,10 +485,10 @@ Rename an expected artifact.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal runs expected delete [options] <run-id> <name>`
 
@@ -506,5 +506,5 @@ Delete an expected artifact.
 | Flag               | Required | Default | Description                                                                   |
 | ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
 | `--base-url <url>` | no       |         | Server base URL                                                               |
-| `--json`           | no       |         | Output the raw server response as JSON                                        |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                          |
 | `--yes`            | no       |         | Skip typed-slug confirmation (required in CI / agent terminals without a TTY) |

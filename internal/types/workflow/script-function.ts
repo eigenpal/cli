@@ -46,8 +46,8 @@ type StepOutput = {
   // example: total: number;
 };
 
-// The parameters below must match the keys of the "inputs" map above,
-// in the same order. Each one receives the resolved value of its
+// The parameters below must match the keys of the "inputs" map above.
+// Their order does not matter. Each receives the resolved value of its
 // template expression. Add an input field above to add a parameter here.
 function script(${typedParams}): StepOutput {
   // TODO: build the output

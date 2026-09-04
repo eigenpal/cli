@@ -1,6 +1,7 @@
 import { type Command } from 'commander';
 import { promises as fs } from 'node:fs';
 import { action } from '../../lib/format-error';
+import { selectJsonValue } from '../../lib/json-select';
 import { requireYesInNonInteractive } from '../../lib/non-interactive';
 import {
   addJsonFlag,
@@ -13,10 +14,19 @@ import {
 } from '../../lib/ui';
 import {
   buildBatchDiff,
+  buildExperimentOutputDiff,
   fetchEvalResults,
+  fetchExperimentOutputs,
   normalizeCompareSort,
   renderBatchDiffHuman,
+  renderExperimentOutputDiffHuman,
 } from '../workflow/experiment-compare';
+import {
+  analyzeExperimentResults,
+  experimentRowsFromDetail,
+  renderExperimentResultsSummary,
+  type ExperimentDetailPayload,
+} from '../workflow/experiment-results';
 import {
   BaseOpts,
   agentAutomationId,
@@ -45,6 +55,7 @@ export function registerExperimentCommands(agent: Command): void {
     .option('--example-id <id>', 'Run one dataset example')
     .option('--wait', 'Poll until the experiment reaches a terminal status')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
     .action(action(runExperiment));
 
   addJsonFlag(withBaseUrl(experiment.command('status <agent-id-or-slug> <batch-id>')))
@@ -52,13 +63,19 @@ export function registerExperimentCommands(agent: Command): void {
     .option('--watch', 'Poll until complete')
     .option('--interval <seconds>', 'Polling interval in seconds', intArg, 2)
     .option('--max-wait <seconds>', 'Maximum wait before exit code 2', intArg, 1800)
-    .option('--include <parts>', 'Reserved for future detailed parts')
     .action(action(experimentStatus));
 
-  withBaseUrl(experiment.command('results <agent-id-or-slug> [batch-id]'))
+  addJsonFlag(withBaseUrl(experiment.command('results <agent-id-or-slug> [batch-id]')))
     .description('Print experiment results as JSON or CSV.')
-    .requiredOption('--format <csv|json>', 'Output format', parseResultsFormat)
+    .option('--format <csv|json>', 'Output format (default json)', parseResultsFormat, 'json')
     .option('--out <path>', 'Write output to file')
+    .option('--summary', 'Show total/pass/fail/error counts, average score, and evaluator rollups')
+    .option('--failed-only', 'Keep only failed or errored evaluator results')
+    .option('--evaluator <name>', 'Keep only results from this evaluator')
+    .option(
+      '--select <path>',
+      'Print only a nested JSON value (for example summary.byEvaluator or discrepancies[].path)'
+    )
     .action(action(experimentResults));
 
   addJsonFlag(withPagination(withBaseUrl(experiment.command('list <agent-id-or-slug>')), 50))
@@ -67,7 +84,8 @@ export function registerExperimentCommands(agent: Command): void {
     .action(action(listExperiments));
 
   addJsonFlag(withBaseUrl(experiment.command('compare <batch-id-a> <batch-id-b>')))
-    .description('Diff eval scores between two experiment batches.')
+    .description('Compare evaluator scores or actual outputs between two experiment batches.')
+    .option('--outputs', 'Compare actual run outputs instead of evaluator scores')
     .option(
       '--sort <abs-delta-desc|delta-asc|delta-desc|name>',
       'Row sort order (default: biggest movers first)',
@@ -89,7 +107,7 @@ export function registerExperimentCommands(agent: Command): void {
 
 async function runExperiment(
   agentId: string,
-  opts: BaseOpts & { exampleId?: string; wait?: boolean; interval: number }
+  opts: BaseOpts & { exampleId?: string; wait?: boolean; interval: number; maxWait: number }
 ) {
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
@@ -100,10 +118,35 @@ async function runExperiment(
     }
   )) as Record<string, unknown> & { id?: string; batchId?: string };
   const experimentId = payload.id ?? payload.batchId;
-  if (opts.wait && experimentId) {
-    payload = await pollExperiment(client, automationId, experimentId, opts.interval, 1800);
+  if (opts.wait && !experimentId) {
+    throw new Error('Experiment start response did not include a batch id; cannot honor --wait');
   }
-  renderGeneric(payload, opts, `Started experiment ${experimentId ?? ''}`);
+  if (opts.wait && experimentId) {
+    payload = await pollExperiment(
+      client,
+      automationId,
+      experimentId,
+      opts.interval,
+      opts.maxWait,
+      opts.json
+    );
+  }
+  const stablePayload = {
+    ...payload,
+    batchId: experimentId,
+    total:
+      (payload as { runCount?: unknown; total?: unknown }).runCount ??
+      (payload as { total?: unknown }).total,
+  };
+  renderGeneric(
+    stablePayload,
+    opts,
+    `${opts.wait ? 'Completed' : 'Started'} experiment ${experimentId ?? ''}`
+  );
+  const failedCount = (payload as { failedCount?: unknown }).failedCount;
+  if (opts.wait && typeof failedCount === 'number' && failedCount > 0) {
+    process.exitCode = 1;
+  }
 }
 
 async function experimentStatus(
@@ -114,20 +157,44 @@ async function experimentStatus(
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
   const payload = opts.watch
-    ? await pollExperiment(client, automationId, batchId, opts.interval, opts.maxWait)
+    ? await pollExperiment(client, automationId, batchId, opts.interval, opts.maxWait, opts.json)
     : await client.get(
         `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
       );
   renderGeneric(payload, opts, `Experiment ${batchId}`);
+  if (opts.watch) {
+    const counts = payload as {
+      failedCount?: unknown;
+      cancelledCount?: unknown;
+      rejectedCount?: unknown;
+    };
+    if (
+      [counts.failedCount, counts.cancelledCount, counts.rejectedCount].some(
+        (count) => typeof count === 'number' && count > 0
+      )
+    ) {
+      process.exitCode = 1;
+    }
+  }
 }
 
 async function experimentResults(
   agentId: string,
   batchId: string | undefined,
-  opts: BaseOpts & { format: 'csv' | 'json'; out?: string }
+  opts: BaseOpts & {
+    format: 'csv' | 'json';
+    out?: string;
+    summary?: boolean;
+    failedOnly?: boolean;
+    evaluator?: string;
+    select?: string;
+  }
 ) {
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
+  if (opts.json && opts.format !== 'json') {
+    throw new Error('--json cannot be combined with --format csv');
+  }
   const selected =
     batchId ??
     String(
@@ -139,6 +206,34 @@ async function experimentResults(
       ).data?.[0]?.id ?? ''
     );
   if (!selected) throw new Error('No experiment batch found');
+  const analyze =
+    opts.summary || opts.failedOnly || opts.evaluator !== undefined || opts.select !== undefined;
+  if (analyze) {
+    if (opts.format !== 'json')
+      throw new Error('Experiment analysis options require --format json');
+    const detail = (await client.get(
+      `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
+    )) as ExperimentDetailPayload;
+    const analysis = analyzeExperimentResults({
+      rows: experimentRowsFromDetail(detail),
+      runs: detail.runs ?? [],
+      evaluator: opts.evaluator,
+      failedOnly: opts.failedOnly,
+    });
+    const output = opts.select ? selectJsonValue(analysis, opts.select) : analysis;
+    if (opts.summary && !opts.json && !opts.out && !opts.select) {
+      renderExperimentResultsSummary(analysis);
+      return;
+    }
+    const content = `${JSON.stringify(output, null, 2)}\n`;
+    if (opts.out) {
+      await fs.writeFile(opts.out, content);
+      success(`Wrote ${opts.out}`);
+    } else {
+      process.stdout.write(content);
+    }
+    return;
+  }
   const payload = (await client.get(
     `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
   )) as { runs: Record<string, unknown>[] };
@@ -182,7 +277,7 @@ async function listExperiments(
 async function compareExperiments(
   batchIdA: string,
   batchIdB: string,
-  opts: BaseOpts & { sort: string; regressionThreshold: number }
+  opts: BaseOpts & { sort: string; regressionThreshold: number; outputs?: boolean }
 ) {
   const sort = normalizeCompareSort(opts.sort);
   const threshold = opts.regressionThreshold;
@@ -194,6 +289,24 @@ async function compareExperiments(
   // routes (runs?batchId + per-run eval-results) so workflow and agent compare
   // share one code path.
   const client = buildClient(opts);
+  if (opts.outputs) {
+    const [outputsA, outputsB] = await Promise.all([
+      fetchExperimentOutputs(client, batchIdA),
+      fetchExperimentOutputs(client, batchIdB),
+    ]);
+    if (outputsA.automationId !== outputsB.automationId) {
+      throw new Error('Experiment batches must belong to the same automation');
+    }
+    const diff = buildExperimentOutputDiff({
+      batchIdA,
+      batchIdB,
+      rowsA: outputsA.rows,
+      rowsB: outputsB.rows,
+    });
+    if (opts.json) return printJson(diff);
+    renderExperimentOutputDiffHuman(diff);
+    return;
+  }
   const [rowsA, rowsB] = await Promise.all([
     fetchEvalResults(client, batchIdA),
     fetchEvalResults(client, batchIdB),

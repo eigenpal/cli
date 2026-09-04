@@ -5,6 +5,7 @@
  * Uses Zod for runtime validation + TypeScript types.
  */
 
+export { AGENT_REFERENCE_TOPICS, type AgentReferenceTopic } from './docs/topic-ids';
 export { PROVIDER_LOGO_DATA, type ProviderLogoName } from './provider-logo-data.generated';
 
 // Core utilities (ID generation, timestamps, pagination, JSON Schema)

@@ -2,7 +2,7 @@ import { isTerminalExecutionStatus } from '@eigenpal/types';
 import { InvalidArgumentError } from 'commander';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ApiClient } from '../../lib/client';
+import { ApiClient, ApiError } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { success } from '../../lib/ui';
 
@@ -74,14 +74,15 @@ export async function pollRun(
   client: ApiClient,
   executionId: string,
   interval: number,
-  maxWait: number
+  maxWait: number,
+  json = false
 ) {
   const started = Date.now();
   const base = `/v1/runs/${encodeURIComponent(executionId)}`;
   for (;;) {
-    // Poll the cheap summary; only fetch the heavy expansions (agent output
-    // is an S3 read server-side) once the run reaches a terminal state.
-    const payload = (await client.get(base)) as {
+    // Request a lightweight primary-DB expansion so a just-created run cannot
+    // disappear briefly behind read-replica lag.
+    const payload = (await client.get(`${base}?expand=execution`)) as {
       finished?: boolean;
       execution?: { status?: string };
     };
@@ -94,6 +95,7 @@ export async function pollRun(
       };
     }
     if (Date.now() - started > maxWait * 1000) {
+      if (json) printJson(payload);
       process.stderr.write(`Timed out waiting for run ${executionId}\n`);
       process.exit(2);
     }
@@ -106,15 +108,28 @@ export async function pollExperiment(
   automationId: string,
   batchId: string,
   interval: number,
-  maxWait: number
+  maxWait: number,
+  json = false
 ) {
   const started = Date.now();
+  let notFoundRetries = 0;
+  let lastPayload: { status?: string } | undefined;
   for (;;) {
-    const payload = (await client.get(
-      `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
-    )) as { status?: string };
+    let payload: { status?: string };
+    try {
+      payload = (await client.get(
+        `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
+      )) as { status?: string };
+      lastPayload = payload;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404 || notFoundRetries >= 2) throw error;
+      notFoundRetries++;
+      await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+      continue;
+    }
     if (payload.status === 'completed') return payload;
     if (Date.now() - started > maxWait * 1000) {
+      if (json) printJson(lastPayload ?? { batchId, status: 'pending' });
       process.stderr.write(`Timed out waiting for experiment ${batchId}\n`);
       process.exit(2);
     }
@@ -141,7 +156,12 @@ export function setExitCodeForFailedTerminalRun(payload: unknown): void {
     error?: unknown;
   } | null;
   const status = run?.execution?.status;
-  if (status === 'failed' || status === 'cancelled' || (run?.finished === true && run?.error)) {
+  if (
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'rejected' ||
+    (run?.finished === true && run?.error)
+  ) {
     process.exitCode = 1;
   }
 }

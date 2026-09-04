@@ -452,6 +452,105 @@ describe('workflow experiment run (no --wait)', () => {
   });
 });
 
+describe('workflow experiment run --wait', () => {
+  test('--json emits one stable terminal payload without progress noise', async () => {
+    await withApiServer(
+      async (request) => {
+        const resolved = resolveWorkflowRoute(request, 'wf_exp1');
+        if (resolved) return resolved;
+        const url = new URL(request.url);
+        if (request.method === 'POST' && url.pathname === '/v1/automations/wf_exp1/experiments') {
+          return jsonResponse({ id: 'evb_wait', runs: [{ id: 'run_1' }], total: 1 });
+        }
+        if (
+          request.method === 'GET' &&
+          url.pathname === '/v1/automations/wf_exp1/experiments/evb_wait'
+        ) {
+          return jsonResponse({
+            id: 'evb_wait',
+            status: 'completed',
+            completedCount: 1,
+            runCount: 1,
+            failedCount: 0,
+            passRate: 1,
+            evalScore: 0.9,
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'workflow',
+            'experiment',
+            'run',
+            'wf_exp1',
+            '--wait',
+            '--json',
+            '--interval',
+            '0',
+            '--base-url',
+            baseUrl,
+          ],
+          baseUrl
+        );
+        expect(result.status).toBe(0);
+        expect(result.stderr).toBe('');
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          id: 'evb_wait',
+          batchId: 'evb_wait',
+          total: 1,
+          status: 'completed',
+        });
+      }
+    );
+  });
+
+  test('human output stays human after waiting', async () => {
+    await withApiServer(
+      async (request) => {
+        const resolved = resolveWorkflowRoute(request, 'wf_exp1');
+        if (resolved) return resolved;
+        const url = new URL(request.url);
+        if (request.method === 'POST' && url.pathname === '/v1/automations/wf_exp1/experiments') {
+          return jsonResponse({ id: 'evb_human', total: 1 });
+        }
+        if (
+          request.method === 'GET' &&
+          url.pathname === '/v1/automations/wf_exp1/experiments/evb_human'
+        ) {
+          return jsonResponse({
+            status: 'completed',
+            completedCount: 1,
+            runCount: 1,
+            failedCount: 0,
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'workflow',
+            'experiment',
+            'run',
+            'wf_exp1',
+            '--wait',
+            '--interval',
+            '0',
+            '--base-url',
+            baseUrl,
+          ],
+          baseUrl
+        );
+        expect(result.status).toBe(0);
+        expect(result.stdout).not.toContain('{"status"');
+        expect(stripAnsi(result.stderr)).toContain('Experiment evb_human completed');
+      }
+    );
+  });
+});
+
 describe('workflow experiment status (spot check, no --watch)', () => {
   test('a batch that stays empty after retries exits 1 with a "no executions" error', async () => {
     let statusGets = 0;

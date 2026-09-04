@@ -99,7 +99,7 @@ Trim the folder to one file, or switch the input to the array form.
 ```yaml
 steps:
   - name: parse # required, unique within the workflow
-    type: ai.document-parser # see `reference/step-types.md`; introspect with `step-type get`
+    type: ai.parse # see `reference/step-types.md`; introspect with `step-type get`
     if: '{{ input.skipParse != true }}' # optional — Liquid expression; falsy skips the step
     forEach: '{{ input.documents }}' # optional — runs the step over each item; output is array
     with: # step-specific config — schema depends on `type`
@@ -301,6 +301,7 @@ that hurt downstream typing. Common ones:
 | `weak-script-return`         | A `transform.script` returns `any` or `unknown`. Replace with a concrete shape or a literal union. |
 | `untyped-object`             | A `type: object` field has no `properties`. The LLM has no guidance on what to emit.         |
 | `untyped-array-items`        | A `type: array` field has no `items:` declared.                                              |
+| `unknown-step-reference`     | A Liquid expression references a step that is not in scope, often because it is inside a control container. |
 
 Warnings do not block the push. They print to stderr as `! …` lines. Run
 `eigenpal workflow validate` locally to surface them before pushing.
@@ -508,32 +509,1466 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | string | yes |  |  |
-| `kind` | `"workflow"` | no | `"workflow"` |  |
-| `version` | string | no | `"1.0.0"` |  |
-| `description` | string | no |  |  |
-| `enabled` | boolean | no | `true` |  |
-| `triggerMethods` | array<object> | no | `[{"type":"manual"}]` |  |
-| `inputs` | array<object> | no |  |  |
-| `steps` | array<unknown> | yes |  |  |
-| `output` | record<string, string> \| string | no |  |  |
-| `settings` | object | no |  |  |
-| `defaultModel` | string | no |  |  |
+| `name` | string | yes |  | URL-safe workflow slug: 1-64 lowercase letters, digits, underscores, or hyphens; must start with a letter or digit. |
+| `version` | string | no | `"1.0.0"` | Author-provided semantic version label stored with the definition. |
+| `description` | string | no |  | Human-readable purpose of the workflow. |
+| `enabled` | boolean | no | `true` | Whether the workflow may be run. |
+| `triggerMethods` | array<object> | no | `[{"type":"manual"}]` | Ways this workflow can be invoked: manual, api, or email. |
+| `inputs` | array<object> | no |  | Top-level inputs available under `input` in template expressions. |
+| `steps` | array<unknown> | yes |  | Ordered workflow steps; names must be unique. |
+| `output` | record<string, string> \| string | no |  | Final output as named field-to-template mappings or one passthrough template expression. |
+| `settings` | object | no |  | Workflow-wide timeout and retry defaults. |
+| `defaultModel` | string | no |  | Default configured LLM provider id used by AI steps when the step does not select one. |
 
 
 ## Per-input fields
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | string | yes |  |  |
-| `type` | string | yes |  |  |
-| `description` | string | no |  |  |
-| `required` | boolean | no | `true` |  |
-| `default` | unknown | no |  |  |
-| `values` | array<string> | no |  |  |
-| `items` | object | no |  |  |
-| `properties` | array<unknown> | no |  |  |
-| `source` | string | no |  |  |
-| `mimeType` | string | no |  |  |
-| `extension` | string | no |  |  |
+| `name` | string | yes |  | Top-level input name used as `input.<name>` in template expressions. |
+| `type` | string | yes |  | One of string, enum, number, integer, boolean, array, object, or file. |
+| `description` | string | no |  | Human-readable input meaning shown to callers. |
+| `required` | boolean | no | `true` | Whether callers must provide this input. |
+| `default` | unknown | no |  | Value used when an optional input is omitted. |
+| `values` | array<string> | no |  | Closed set of allowed strings when type is enum. |
+| `items` | object | no |  | Element definition when type is array. |
+| `properties` | array<unknown> | no |  | Recursive field definitions when type is object. |
+| `source` | string | no |  | Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file. |
+| `mimeType` | string | no |  | MIME hint such as application/pdf for a sourced file; mutually exclusive with extension. |
+| `extension` | string | no |  | Extension hint such as pdf for a sourced file; mutually exclusive with mimeType. |
+
+
+## Nested input property fields
+
+Object inputs and object array items use this recursive shape. File inputs are top-level only.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | string | yes |  | JSON object key, addressable in templates with dot notation. |
+| `type` | string | yes |  | One of string, enum, number, integer, boolean, array, or object. |
+| `description` | string | no |  | Human-readable field meaning. |
+| `required` | boolean | no |  | Whether this property must be present; defaults to true when omitted. |
+| `values` | array<string> | no |  | Allowed strings when type is enum. |
+| `items` | object | no |  | Element definition when type is array. |
+| `properties` | array<unknown> | no |  | Recursive fields when type is object. |
+
+
+## Trigger method variants
+
+### `manual`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `type` | `"manual"` | yes |  | Dashboard/manual run trigger. |
+| `enabled` | boolean | no |  | Set false to disable dashboard runs; manual triggering is enabled by default. |
+| `inputSchema` | record<string, unknown> | no |  | Optional JSON Schema for trigger input. |
+
+
+### `api`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `type` | `"api"` | yes |  | Public API run trigger. |
+| `inputSchema` | record<string, unknown> | no |  | Optional JSON Schema for API input. |
+
+
+### `email`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `type` | `"email"` | yes |  | Inbound email trigger. |
+| `whitelist` | object | no |  | Optional sender allowlist by exact email address or domain. |
+
+
+## Workflow settings
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `timeout` | number | no |  | Default step timeout in milliseconds. |
+| `retry` | `"automatic"` \| `"never"` \| object | no |  | Default durable retry policy for steps. |
+| `retries` | integer | no |  |  |
+| `retryDelay` | number | no |  |  |
+
+
+## Complete machine-readable workflow schema
+
+This JSON Schema is generated from the same Zod schema used to parse workflow YAML. YAML keys and nesting are identical.
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "URL-safe workflow slug: 1-64 lowercase letters, digits, underscores, or hyphens; must start with a letter or digit."
+    },
+    "kind": {
+      "description": "Deprecated compatibility discriminator; omit for new workflows.",
+      "default": "workflow",
+      "type": "string",
+      "enum": [
+        "workflow"
+      ]
+    },
+    "version": {
+      "default": "1.0.0",
+      "description": "Author-provided semantic version label stored with the definition.",
+      "type": "string"
+    },
+    "description": {
+      "description": "Human-readable purpose of the workflow.",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "description": "Whether the workflow may be run.",
+      "type": "boolean"
+    },
+    "triggerMethods": {
+      "default": [
+        {
+          "type": "manual"
+        }
+      ],
+      "description": "Ways this workflow can be invoked: manual, api, or email.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "manual",
+                "description": "Dashboard/manual run trigger."
+              },
+              "enabled": {
+                "description": "Set false to disable dashboard runs; manual triggering is enabled by default.",
+                "type": "boolean"
+              },
+              "inputSchema": {
+                "description": "Optional JSON Schema for trigger input.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "api",
+                "description": "Public API run trigger."
+              },
+              "inputSchema": {
+                "description": "Optional JSON Schema for API input.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "email",
+                "description": "Inbound email trigger."
+              },
+              "whitelist": {
+                "description": "Optional sender allowlist by exact email address or domain.",
+                "type": "object",
+                "properties": {
+                  "domains": {
+                    "description": "Allowed sender domains.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "emails": {
+                    "description": "Allowed exact sender email addresses.",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "inputs": {
+      "description": "Top-level inputs available under `input` in template expressions.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Top-level input name used as `input.<name>` in template expressions."
+          },
+          "type": {
+            "type": "string",
+            "description": "One of string, enum, number, integer, boolean, array, object, or file."
+          },
+          "description": {
+            "description": "Human-readable input meaning shown to callers.",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "description": "Whether callers must provide this input.",
+            "type": "boolean"
+          },
+          "default": {
+            "description": "Value used when an optional input is omitted."
+          },
+          "values": {
+            "description": "Closed set of allowed strings when type is enum.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "description": "Element definition when type is array.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Array element type: string, enum, number, integer, boolean, object, or file."
+              },
+              "values": {
+                "description": "Closed set of allowed strings when items.type is enum.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "properties": {
+                "description": "Recursive fields when items.type is object.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/__schema0"
+                }
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "properties": {
+            "description": "Recursive field definitions when type is object.",
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/__schema0"
+            }
+          },
+          "source": {
+            "description": "Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file.",
+            "type": "string",
+            "minLength": 1
+          },
+          "mimeType": {
+            "description": "MIME hint such as application/pdf for a sourced file; mutually exclusive with extension.",
+            "type": "string",
+            "minLength": 1
+          },
+          "extension": {
+            "description": "Extension hint such as pdf for a sourced file; mutually exclusive with mimeType.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "required"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/__schema1"
+      },
+      "description": "Ordered workflow steps; names must be unique."
+    },
+    "output": {
+      "description": "Final output as named field-to-template mappings or one passthrough template expression.",
+      "anyOf": [
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "settings": {
+      "description": "Workflow-wide timeout and retry defaults.",
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "description": "Default step timeout in milliseconds.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "retry": {
+          "description": "Default durable retry policy for steps.",
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "automatic"
+            },
+            {
+              "type": "string",
+              "const": "never"
+            },
+            {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "automatic"
+                    },
+                    "maxAttempts": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 10
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "never"
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          ]
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retryDelay": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "defaultModel": {
+      "description": "Default configured LLM provider id used by AI steps when the step does not select one.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "enabled",
+    "triggerMethods",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+          "description": "JSON object key, addressable in templates with dot notation."
+        },
+        "type": {
+          "type": "string",
+          "description": "One of string, enum, number, integer, boolean, array, or object."
+        },
+        "description": {
+          "description": "Human-readable field meaning.",
+          "type": "string"
+        },
+        "required": {
+          "description": "Whether this property must be present; defaults to true when omitted.",
+          "type": "boolean"
+        },
+        "values": {
+          "description": "Allowed strings when type is enum.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "items": {
+          "description": "Element definition when type is array.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Array element type: string, enum, number, integer, boolean, or object."
+            },
+            "values": {
+              "description": "Allowed strings when items.type is enum.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "properties": {
+              "description": "Recursive object fields when items.type is object.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema0"
+              }
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "properties": {
+          "description": "Recursive fields when type is object.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema0"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ai.parse",
+                "ai.extract",
+                "ai.split",
+                "ai.segment",
+                "ai.classify",
+                "ai.classify-pages",
+                "ai.vision"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "transform.set",
+                "transform.remove",
+                "transform.combine",
+                "transform.split",
+                "transform.merge",
+                "transform.template",
+                "transform.pdf-embed",
+                "transform.xlsx-to-json",
+                "transform.json-to-xlsx",
+                "transform.script",
+                "transform.text-chunker",
+                "transform.regex-extract"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "action.http",
+                "action.invoke-workflow",
+                "action.website-reader"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.wait"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "type",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.fail"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "condition": {
+              "type": "string"
+            },
+            "statusCode": {
+              "type": "integer",
+              "minimum": 400,
+              "maximum": 599
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.block"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "blockName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "inputs": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "blockName"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.if"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "condition": {
+              "type": "string"
+            },
+            "then": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema1"
+              }
+            },
+            "else": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema1"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "condition",
+            "then"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.switch"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "on": {
+              "type": "string"
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "when": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/__schema1"
+                    }
+                  }
+                },
+                "required": [
+                  "when",
+                  "steps"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "default": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema1"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "on",
+            "cases"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.parallel"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "steps": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/__schema1"
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "steps"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "branches"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.foreach"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "items": {
+              "type": "string"
+            },
+            "as": {
+              "type": "string"
+            },
+            "indexAs": {
+              "type": "string"
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema1"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "items",
+            "as",
+            "steps"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "control.parallel_map"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "items": {
+              "type": "string"
+            },
+            "as": {
+              "type": "string"
+            },
+            "indexAs": {
+              "type": "string"
+            },
+            "concurrency": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/__schema1"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "items",
+            "as",
+            "steps"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}
+```
 <!-- GENERATED:WORKFLOW_REFERENCE END -->

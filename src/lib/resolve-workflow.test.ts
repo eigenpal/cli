@@ -1,7 +1,13 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ApiClient, ApiError, HtmlResponseError } from './client';
 import { resolveWorkflowId } from './resolve-workflow';
+
+const originalFetch = global.fetch;
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -34,7 +40,7 @@ describe('resolveWorkflowId', () => {
       expect(out).toBe('wf_abc');
       expect(seenUrls).toEqual(['http://localhost:9999/api/workflows/wf_abc']);
     } finally {
-      global.fetch = fetch;
+      global.fetch = originalFetch;
     }
   });
 
@@ -53,7 +59,7 @@ describe('resolveWorkflowId', () => {
       expect(out).toBe('wf_xyz');
       expect(seenUrls).toEqual(['http://localhost:9999/api/workflows?name=my-extraction']);
     } finally {
-      global.fetch = fetch;
+      global.fetch = originalFetch;
     }
   });
 
@@ -64,7 +70,7 @@ describe('resolveWorkflowId', () => {
         /not found on the server.*Push it first/
       );
     } finally {
-      global.fetch = fetch;
+      global.fetch = originalFetch;
     }
   });
 
@@ -75,7 +81,7 @@ describe('resolveWorkflowId', () => {
         /"never-pushed".*not found on the server/
       );
     } finally {
-      global.fetch = fetch;
+      global.fetch = originalFetch;
     }
   });
 
@@ -99,7 +105,7 @@ describe('resolveWorkflowId', () => {
       );
       expect(call).toBe(2);
     } finally {
-      global.fetch = fetch;
+      global.fetch = originalFetch;
     }
   });
 
@@ -114,7 +120,7 @@ describe('resolveWorkflowId', () => {
           message: 'fetch failed',
         });
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -129,7 +135,7 @@ describe('resolveWorkflowId', () => {
       try {
         await expect(resolveWorkflowId(client, 'wf_abc')).rejects.toBeInstanceOf(HtmlResponseError);
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -142,7 +148,7 @@ describe('resolveWorkflowId', () => {
         expect(err).toBeInstanceOf(ApiError);
         expect((err as ApiError).status).toBe(401);
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -155,7 +161,7 @@ describe('resolveWorkflowId', () => {
         expect(err).toBeInstanceOf(ApiError);
         expect((err as ApiError).status).toBe(500);
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
   });
@@ -171,7 +177,7 @@ describe('resolveWorkflowId', () => {
           message: 'fetch failed',
         });
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -188,7 +194,7 @@ describe('resolveWorkflowId', () => {
           HtmlResponseError
         );
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -201,7 +207,7 @@ describe('resolveWorkflowId', () => {
         expect(err).toBeInstanceOf(ApiError);
         expect((err as ApiError).status).toBe(401);
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
 
@@ -214,7 +220,7 @@ describe('resolveWorkflowId', () => {
         expect(err).toBeInstanceOf(ApiError);
         expect((err as ApiError).status).toBe(500);
       } finally {
-        global.fetch = fetch;
+        global.fetch = originalFetch;
       }
     });
   });

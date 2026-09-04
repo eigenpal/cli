@@ -142,3 +142,154 @@ For bulk changes, edit the local folder and re-push with
 `eigenpal workflow dataset example {get,create,update,delete}`. File uploads
 still go through `dataset push`; CRUD only handles JSON input and
 `expected.json`-style outputs.
+
+<!-- GENERATED:DATASET_REFERENCE START -->
+## Schema reference
+
+_Generated from `@eigenpal/types/src/eval/dataset-archive.ts`, `expected-error.ts`, and `scoped-file-ref.ts`. Do not hand-edit between the GENERATED fences — run `bun run --cwd packages/cli generate:skill`._
+
+### Archive layout (canonical)
+
+```text
+examples/<name>/input.json                REQUIRED — full run input object
+examples/<name>/input/<file>              OPTIONAL — referenced from input.json
+examples/<name>/expected.json             OPTIONAL — success output or `{ "$error": ... }`
+examples/<name>/expected/<file>           OPTIONAL — referenced from expected.json
+examples/<name>/meta.json                 OPTIONAL — see `DatasetMetaSchema` below
+```
+
+Importers reject any archive containing a top-level `manifest.json` (legacy layout). Example folder names must match:
+
+`^[a-z0-9][a-z0-9-_]*$`
+
+### `input.json` file references
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `$file` | string | yes |  | Owner-relative artifact path |
+
+
+Input files live under `input/` and are referenced as `{ "$file": "input/<path>" }`. Expected files use the `expected/` prefix in `expected.json`.
+
+### `expected.json` — success-expected output
+
+When grading success, `expected.json` is a JSON object mirroring the workflow `output:` shape. File values use `{ "$file": "expected/<path>" }`.
+
+### `expected.json` — failure-expected (`$error`)
+
+Failure-expected examples store a single top-level `$error` object. At least one of `code`, `messageContains`, or `step` is required:
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `code` | integer | no |  |  |
+| `messageContains` | string | no |  |  |
+| `step` | string | no |  |  |
+
+
+### `meta.json` (`DatasetMetaSchema`)
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `rowOrder` | integer | no |  | Non-negative display order hint for this example. |
+| `annotation` | string | no |  | Free-form example note, limited to 2000 characters. |
+| `overrides` | record<string, unknown> | no |  | Per-step output overrides as `{ "steps": { "<stepName>": <outputObject> } }`; overridden steps are skipped or partially merged during evaluation. |
+
+
+### Import mode (`DatasetImportModeSchema`)
+
+Allowed values: `"append"` \| `"replace"`
+
+- `append` — add examples to the existing dataset.
+- `replace` — wipe existing examples and import the archive fresh.
+
+### Validation rules enforced at import
+
+- Every example requires `input.json` as a JSON object (may be `{}`).
+- Files under `input/` must be referenced from `input.json`; unreferenced files are rejected.
+- Files under `expected/` must be referenced from `expected.json` when present.
+- File reference paths cannot use `..`, absolute paths, backslashes, or null bytes.
+- `$error` examples are supported for workflow datasets only; agent datasets reject them.
+- Archives larger than 500 MB are rejected at import.
+
+### Complete machine-readable component schemas
+
+`meta.json`:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "rowOrder": {
+      "description": "Non-negative display order hint for this example.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "annotation": {
+      "description": "Free-form example note, limited to 2000 characters.",
+      "type": "string",
+      "maxLength": 2000
+    },
+    "overrides": {
+      "description": "Per-step output overrides as `{ \"steps\": { \"<stepName>\": <outputObject> } }`; overridden steps are skipped or partially merged during evaluation.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+
+Failure-expected `$error` object:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "integer",
+      "minimum": 400,
+      "maximum": 599
+    },
+    "messageContains": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "step": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+
+Scoped `$file` reference:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "$file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Owner-relative artifact path"
+    }
+  },
+  "required": [
+    "$file"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- GENERATED:DATASET_REFERENCE END -->

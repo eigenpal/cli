@@ -65,7 +65,7 @@ export async function buildPreparedRunRequest(
       fieldName: spec.fieldName,
       content: data,
       filename: path.basename(spec.filePath),
-      mimeType: guessMimeType(path.basename(spec.filePath)) ?? 'application/octet-stream',
+      mimeType: guessMimeType(path.basename(spec.filePath)) || 'application/octet-stream',
     });
   }
 
@@ -77,7 +77,7 @@ export async function buildPreparedRunRequest(
       fieldName: file.fieldName,
       content,
       filename: file.filename,
-      mimeType: file.mimeType ?? guessMimeType(file.filename) ?? 'application/octet-stream',
+      mimeType: file.mimeType || guessMimeType(file.filename) || 'application/octet-stream',
     });
   }
 
@@ -192,7 +192,7 @@ function appendFilePart(
   mimeType?: string
 ) {
   assertValidFileFieldName(fieldName);
-  const type = mimeType ?? guessMimeType(filename) ?? 'application/octet-stream';
+  const type = mimeType || guessMimeType(filename) || 'application/octet-stream';
   form.append(`files.${fieldName}`, new Blob([content as BlobPart], { type }), filename);
 }
 

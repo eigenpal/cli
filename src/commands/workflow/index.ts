@@ -27,6 +27,7 @@ import { ApiClient as Client } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
 import { formatEigenpalDirIfAvailable } from '../../lib/format-eigenpal';
 import { action } from '../../lib/format-error';
+import { selectJsonValue } from '../../lib/json-select';
 import {
   cleanupCreatedWorkspaceTemplates,
   finalizeCreatedWorkspaceTemplates,
@@ -56,10 +57,19 @@ import { clearEvalOutputs } from './clear';
 import { registerEvaluatorTypeCommands } from './evaluator-type';
 import {
   buildBatchDiff,
+  buildExperimentOutputDiff,
   fetchEvalResults,
+  fetchExperimentOutputs,
   normalizeCompareSort,
   renderBatchDiffHuman,
+  renderExperimentOutputDiffHuman,
 } from './experiment-compare';
+import {
+  analyzeExperimentResults,
+  experimentRowsFromDetail,
+  renderExperimentResultsSummary,
+  type ExperimentDetailPayload,
+} from './experiment-results';
 import { registerStepExecCommands } from './step-exec';
 import { registerTemplateCommands } from './templates';
 import {
@@ -1685,6 +1695,7 @@ function registerExperimentCommands(parent: Command): void {
     )
     .option('--wait', 'Poll until terminal; non-zero exit on passRate < 1.0', false)
     .option('--interval <n>', 'Polling interval in seconds (default 10)', intArg, 10)
+    .option('--max-wait <seconds>', 'Maximum wait before exit code 2 (default 1800)', intArg, 1800)
     .addHelpText(
       'after',
       `
@@ -1708,6 +1719,7 @@ returns immediately with \`{ batchId, total }\`; poll
           exampleId: string[];
           wait: boolean;
           interval: number;
+          maxWait: number;
           json?: boolean;
         }
       ) => {
@@ -1739,6 +1751,7 @@ returns immediately with \`{ batchId, total }\`; poll
           return;
         }
         const intervalMs = Math.max(1, opts.interval) * 1000;
+        const deadline = Date.now() + Math.max(1, opts.maxWait) * 1000;
         while (true) {
           const status = (await client.get(
             `/v1/automations/${workflowId}/experiments/${experimentId}`
@@ -1753,7 +1766,23 @@ returns immediately with \`{ batchId, total }\`; poll
             total: number;
           };
           if (status.status === 'completed') {
-            printJson(status);
+            if (opts.json) {
+              printJson({
+                ...status,
+                batchId: experimentId,
+                total: status.runCount ?? status.total,
+              });
+            } else {
+              const completed = status.completedCount ?? status.completed;
+              const runTotal = status.runCount ?? status.total;
+              const score =
+                typeof status.evalScore === 'number'
+                  ? ` average=${status.evalScore.toFixed(3)}`
+                  : '';
+              success(
+                `Experiment ${ui.bold(experimentId)} completed (${completed}/${runTotal}${score})`
+              );
+            }
             // Only fail-exit when the server reported a numeric passRate. A
             // workflow with no graded examples returns `passRate: undefined`,
             // which is not the same as 0 — treat it as "nothing to grade,
@@ -1765,9 +1794,22 @@ returns immediately with \`{ batchId, total }\`; poll
               process.exit(1);
             return;
           }
-          console.error(
-            `${ui.dim(`[${experimentId}]`)} ${status.completedCount ?? status.completed}/${status.runCount ?? status.total} ${ui.dim(`(status=${status.status})`)}`
-          );
+          if (!opts.json) {
+            console.error(
+              `${ui.dim(`[${experimentId}]`)} ${status.completedCount ?? status.completed}/${status.runCount ?? status.total} ${ui.dim(`(status=${status.status})`)}`
+            );
+          }
+          if (Date.now() >= deadline) {
+            if (opts.json) {
+              printJson({
+                ...status,
+                batchId: experimentId,
+                total: status.runCount ?? status.total,
+              });
+            }
+            error(`Timed out waiting for experiment ${experimentId} after ${opts.maxWait}s`);
+            process.exit(2);
+          }
           await new Promise((r) => setTimeout(r, intervalMs));
         }
       }
@@ -1820,6 +1862,10 @@ returns immediately with \`{ batchId, total }\`; poll
       ) => {
         if (opts.short && opts.watch) {
           error('--short and --watch are mutually exclusive (short is for spot-check polling).');
+          process.exit(2);
+        }
+        if (opts.short && opts.json) {
+          error('--short and --json are mutually exclusive (short is human spot-check output).');
           process.exit(2);
         }
         const includes = new Set(
@@ -2003,9 +2049,16 @@ Behavior:
   const resultsCmd = experiment
     .command('results <workflow-id> [batchId]')
     .description(descriptionFor('workflow_get_experiment_results'))
-    .requiredOption('--format <csv|json>', 'Output format', parseExportFormat)
-    .option('--out <path>', 'Output file. When omitted, the binary streams to stdout.');
-  withBaseUrl(resultsCmd).action(
+    .option('--format <csv|json>', 'Output format (default json)', parseExportFormat, 'json')
+    .option('--out <path>', 'Output file. When omitted, the binary streams to stdout.')
+    .option('--summary', 'Show total/pass/fail/error counts, average score, and evaluator rollups')
+    .option('--failed-only', 'Keep only failed or errored evaluator results')
+    .option('--evaluator <name>', 'Keep only results from this evaluator')
+    .option(
+      '--select <path>',
+      'Print only a nested JSON value (for example summary.byEvaluator or discrepancies[].path)'
+    );
+  addJsonFlag(withBaseUrl(resultsCmd)).action(
     action(
       async (
         workflow: string,
@@ -2013,9 +2066,48 @@ Behavior:
         opts: WorkflowCommandConfig & {
           format: 'csv' | 'json';
           out?: string;
+          summary?: boolean;
+          failedOnly?: boolean;
+          evaluator?: string;
+          select?: string;
+          json?: boolean;
         }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        if (opts.json && opts.format !== 'json') {
+          throw new Error('--json cannot be combined with --format csv');
+        }
+        const analyze =
+          opts.summary ||
+          opts.failedOnly ||
+          opts.evaluator !== undefined ||
+          opts.select !== undefined;
+        if (analyze) {
+          if (!batchId) {
+            throw new Error(
+              '--summary, --failed-only, --evaluator, and --select require a single experiment batch id'
+            );
+          }
+          if (opts.format !== 'json') {
+            throw new Error('Experiment analysis options require --format json');
+          }
+          const detailPayload = (await client.get(
+            `/v1/automations/${workflowId}/experiments/${encodeURIComponent(batchId)}`
+          )) as ExperimentDetailPayload;
+          const analysis = analyzeExperimentResults({
+            rows: experimentRowsFromDetail(detailPayload),
+            runs: detailPayload.runs ?? [],
+            evaluator: opts.evaluator,
+            failedOnly: opts.failedOnly,
+          });
+          const selected = opts.select ? selectJsonValue(analysis, opts.select) : analysis;
+          if (opts.summary && !opts.json && !opts.out && !opts.select) {
+            renderExperimentResultsSummary(analysis);
+            return;
+          }
+          await writeOrPrint(opts.out, `${JSON.stringify(selected, null, 2)}\n`);
+          return;
+        }
         const params = new URLSearchParams({ format: opts.format });
         const exportPath = batchId
           ? `/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`
@@ -2032,7 +2124,8 @@ Behavior:
   // implied — two batch ids uniquely identify the experiments.
   const compareCmd = experiment
     .command('compare <batchIdA> <batchIdB>')
-    .description('Diff eval scores between two experiment batches.')
+    .description('Compare evaluator scores or actual outputs between two experiment batches.')
+    .option('--outputs', 'Compare actual run outputs instead of evaluator scores')
     .option(
       '--sort <abs-delta-desc|delta-asc|delta-desc|name>',
       'Row sort order (default: biggest movers first)',
@@ -2068,6 +2161,7 @@ batches must belong to the same workflow within the caller's tenant.
         opts: WorkflowCommandConfig & {
           sort: string;
           regressionThreshold: number;
+          outputs?: boolean;
           json?: boolean;
         }
       ) => {
@@ -2077,6 +2171,24 @@ batches must belong to the same workflow within the caller's tenant.
           throw new Error('--regression-threshold must be a non-negative number');
         }
         const client = buildClient(opts);
+        if (opts.outputs) {
+          const [outputsA, outputsB] = await Promise.all([
+            fetchExperimentOutputs(client, batchIdA),
+            fetchExperimentOutputs(client, batchIdB),
+          ]);
+          if (outputsA.automationId !== outputsB.automationId) {
+            throw new Error('Experiment batches must belong to the same automation');
+          }
+          const outputDiff = buildExperimentOutputDiff({
+            batchIdA,
+            batchIdB,
+            rowsA: outputsA.rows,
+            rowsB: outputsB.rows,
+          });
+          if (opts.json) printJson(outputDiff);
+          else renderExperimentOutputDiffHuman(outputDiff);
+          return;
+        }
         const [bodyA, bodyB] = await Promise.all([
           fetchEvalResults(client, batchIdA),
           fetchEvalResults(client, batchIdB),

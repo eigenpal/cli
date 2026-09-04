@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { formatDuration, renderListResult, table } from './ui';
+import { formatDuration, intArg, renderListResult, table } from './ui';
 
 describe('table', () => {
   test('renders header, separator, and rows aligned to widest cell', () => {
@@ -79,6 +79,7 @@ describe('renderListResult', () => {
     expect(JSON.parse(captured.stdout)).toEqual(payload);
     // stderr still shows the count hint so the user sees pagination state
     expect(stripAnsi(captured.stderr)).toContain('2 records');
+    expect(stripAnsi(captured.stderr)).not.toContain('use --json');
   });
 
   test('human mode renders table to stdout and hint to stderr', () => {
@@ -102,7 +103,7 @@ describe('renderListResult', () => {
     expect(stdoutLines[2]).toBe('a   foo ');
     expect(stdoutLines[3]).toBe('b   bar ');
     expect(stripAnsi(captured.stderr)).toContain('2 records');
-    expect(stripAnsi(captured.stderr)).toContain('--json for the raw payload');
+    expect(stripAnsi(captured.stderr)).toContain('--json for machine-readable output');
   });
 
   test('shows "of N" hint when only a page of total is returned', () => {
@@ -137,6 +138,15 @@ describe('renderListResult', () => {
     });
     expect(stripAnsi(captured.stdout).trim()).toBe('(no rows)');
     expect(captured.stderr).toBe('');
+  });
+});
+
+describe('intArg', () => {
+  test('accepts whole numbers and rejects partial or non-numeric values', () => {
+    expect(intArg('42')).toBe(42);
+    expect(intArg('-1')).toBe(-1);
+    expect(() => intArg('5min')).toThrow('Expected a whole number');
+    expect(() => intArg('abc')).toThrow('Expected a whole number');
   });
 });
 

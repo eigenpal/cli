@@ -1067,7 +1067,7 @@ export const TransformJsonToXlsxOutputSchema = JsonToXlsxOutputSchema;
  *
  * Three rules, all enforced at YAML push time and edit time:
  *   1. Function name MUST be `script`.
- *   2. Parameter list MUST equal `Object.keys(inputs)` in order.
+ *   2. Parameter names MUST equal the keys of `inputs`; order is irrelevant.
  *   3. **Return type annotation `: R` is required.** R becomes this step's
  *      output schema (no separate `outputSchema:` field exists). R drives
  *      both downstream autocomplete and runtime AJV validation of the
@@ -1084,7 +1084,7 @@ export const TransformScriptConfigSchema = z
       .record(z.string(), z.string())
       .optional()
       .describe(
-        'Named inputs mapped from template expressions. Keys become the function parameter list in declaration order: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.'
+        'Named inputs mapped from template expressions. Keys become function parameters; parameter order is independent of YAML/JSON key order: `inputs: { items, taxRate }` accepts `function script(taxRate: …, items: …): R { … }`.'
       ),
 
     function: z
@@ -1095,7 +1095,7 @@ export const TransformScriptConfigSchema = z
         `script function is too long (max ${(SCRIPT_FN_MAX_BYTES / 1000).toFixed(0)}k characters)`
       )
       .describe(
-        "TypeScript function declaration. Must be `function script(args): R { … }` where the parameter list equals `Object.keys(inputs)` in order and `R` is a return type annotation. The annotation IS this step's output schema."
+        "TypeScript function declaration. Must be `function script(args): R { … }` where parameter names exactly match the configured input keys in any order and `R` is a return type annotation. The annotation IS this step's output schema."
       ),
 
     timeout: z
@@ -1907,7 +1907,7 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     category: 'transform',
     name: 'Script',
     description:
-      "Execute a TypeScript function in a QuickJS sandbox. Input keys become the function's parameter list, in declaration order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` ⇒ `function script(items: …, taxRate: …): R { … }`.",
+      "Execute a TypeScript function in a QuickJS sandbox. Input keys become function parameters in any order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` accepts `function script(taxRate: …, items: …): R { … }`.",
     configSchema: TransformScriptConfigSchema,
     outputSchema: TransformScriptOutputSchema,
     configInWith: true,

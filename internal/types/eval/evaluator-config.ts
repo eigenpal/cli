@@ -18,7 +18,9 @@ import {
  * weighted mean per execution.
  */
 
-export const EvaluatorTypeSchema = z.enum(['exact-diff', 'llm-judge', 'custom-script']);
+export const EvaluatorTypeSchema = z
+  .enum(['exact-diff', 'llm-judge', 'custom-script'])
+  .describe('Evaluator implementation selected by each evaluators.yaml entry.');
 export type EvaluatorType = z.infer<typeof EvaluatorTypeSchema>;
 
 const ScoreInUnitInterval = z
@@ -103,6 +105,12 @@ export const ExactDiffMatchBySchema = z
 
 export const ExactDiffPathRuleSchema = z
   .object({
+    ignore: z
+      .literal(true)
+      .optional()
+      .describe(
+        'Exclude this path and every descendant from comparison. Cannot be combined with other settings on the same rule.'
+      ),
     order: z
       .enum(['ordered', 'unordered'])
       .optional()
@@ -131,6 +139,17 @@ export const ExactDiffPathRuleSchema = z
   })
   .strict()
   .superRefine((rule, ctx) => {
+    if (rule.ignore === true) {
+      const otherFields = Object.keys(rule).filter((field) => field !== 'ignore');
+      if (otherFields.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ignore'],
+          message: '`ignore: true` cannot be combined with other settings on the same rule',
+        });
+      }
+      return;
+    }
     if (rule.matchBy === undefined) return;
     if (rule.order !== 'unordered') {
       ctx.addIssue({
@@ -150,7 +169,7 @@ export const ExactDiffConfigSchema = z
       .record(z.string(), ExactDiffPathRuleSchema)
       .optional()
       .describe(
-        'Per-path comparison rules. Keys select compared paths (`$` = full output). More-specific keys inherit then override parent rules. `{}` selects a path using inherited platform defaults. Do not mix with legacy `paths`, `unorderedPaths`, `numericTolerance`, or `allowExtraFields`.'
+        'Per-path comparison rules. Non-ignored keys select compared paths (`$` = full output); an ignore-only map means full output minus those paths. More-specific keys inherit then override parent rules. `{}` selects a path using inherited platform defaults; `{ ignore: true }` excludes it. Do not mix with legacy `paths`, `unorderedPaths`, `numericTolerance`, or `allowExtraFields`.'
       ),
     numericTolerance: z
       .number()
@@ -229,6 +248,22 @@ export const ExactDiffConfigSchema = z
         });
       }
     }
+    const ignoredPaths = Object.entries(config.rules ?? {})
+      .filter(([, rule]) => rule.ignore === true)
+      .map(([path]) => path);
+    for (const [path, rule] of Object.entries(config.rules ?? {})) {
+      if (rule.ignore === true) continue;
+      const ignoredAncestor = ignoredPaths.find(
+        (ignoredPath) => ignoredPath !== path && evalPathIsDescendant(path, ignoredPath)
+      );
+      if (ignoredAncestor) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rules', path],
+          message: `cannot select \`${path}\` because ignored ancestor \`${ignoredAncestor}\` removes it before comparison`,
+        });
+      }
+    }
   })
   .default({});
 export type ExactDiffConfig = z.infer<typeof ExactDiffConfigSchema>;
@@ -237,6 +272,8 @@ export interface NormalizedExactDiffConfig {
   rules: ExactDiffRules;
   /** Compared roots, or `null` when `$` / empty rules means the full output. */
   scopedPaths: string[] | null;
+  /** Paths removed from both expected and actual before comparison. */
+  ignoredPaths: string[];
   passThreshold?: number;
 }
 
@@ -286,6 +323,9 @@ export function normalizeExactDiffConfig(config: ExactDiffConfig): NormalizedExa
   return {
     rules,
     scopedPaths,
+    ignoredPaths: Object.entries(rules)
+      .filter(([, rule]) => rule.ignore === true)
+      .map(([path]) => path),
     ...(typeof config.passThreshold === 'number' ? { passThreshold: config.passThreshold } : {}),
   };
 }
@@ -461,17 +501,26 @@ export const EvaluatorBaseEntrySchema = z.object({
 });
 
 export const EvaluatorConfigSchema = z.discriminatedUnion('type', [
-  EvaluatorBaseEntrySchema.extend({ type: z.literal('exact-diff'), config: ExactDiffConfigSchema }),
-  EvaluatorBaseEntrySchema.extend({ type: z.literal('llm-judge'), config: LlmJudgeConfigSchema }),
   EvaluatorBaseEntrySchema.extend({
-    type: z.literal('custom-script'),
-    config: CustomScriptConfigSchema,
+    type: z.literal('exact-diff').describe('Deterministic structured-output comparison.'),
+    config: ExactDiffConfigSchema.describe('Configuration for exact-diff.'),
+  }),
+  EvaluatorBaseEntrySchema.extend({
+    type: z.literal('llm-judge').describe('Model-graded semantic comparison.'),
+    config: LlmJudgeConfigSchema.describe('Configuration for llm-judge.'),
+  }),
+  EvaluatorBaseEntrySchema.extend({
+    type: z.literal('custom-script').describe('Typed deterministic scoring script.'),
+    config: CustomScriptConfigSchema.describe('Configuration for custom-script.'),
   }),
 ]);
 export type EvaluatorConfig = z.infer<typeof EvaluatorConfigSchema>;
 
 export const EvalConfigYamlSchema = z.object({
-  evaluators: z.array(EvaluatorConfigSchema).default([]),
+  evaluators: z
+    .array(EvaluatorConfigSchema)
+    .default([])
+    .describe('Evaluator entries run after each experiment execution.'),
   /**
    * Single workflow-level pass threshold in [0, 1] and the source of truth for
    * pass/fail across the worker and the dashboards: a run passes when its
@@ -481,7 +530,9 @@ export const EvalConfigYamlSchema = z.object({
    * gate of older per-evaluator configs), so always resolve through that helper
    * rather than reading this field directly.
    */
-  passThreshold: ScoreInUnitInterval.optional(),
+  passThreshold: ScoreInUnitInterval.optional().describe(
+    'Workflow-level pass threshold for the weighted mean score. When omitted, legacy evaluator thresholds are combined for compatibility, otherwise the platform default is 0.7.'
+  ),
 });
 export type EvalConfigYaml = z.infer<typeof EvalConfigYamlSchema>;
 

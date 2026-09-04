@@ -108,7 +108,7 @@ function readCanonicalInput(
         argument: key,
         filename,
         content: readFileSync(filePath),
-        mimeType: guessMimeType(filename),
+        mimeType: guessMimeType(filename) || 'application/octet-stream',
       });
     }
   }
@@ -126,7 +126,7 @@ function materializeNestedFileRefs(exampleDir: string, inputPath: string, value:
     return {
       $inline: {
         filename,
-        mimeType: guessMimeType(filename) ?? 'application/octet-stream',
+        mimeType: guessMimeType(filename) || 'application/octet-stream',
         base64: readFileSync(filePath).toString('base64'),
       },
     };

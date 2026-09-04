@@ -37,4 +37,4 @@ List configured text, vision, and OCR models. This is a catalog inventory from t
 | --------------------- | -------- | ------- | -------------------------------------------------------------------------- |
 | `--capability <kind>` | no       |         | Filter to `text`, `vision`, or `ocr` (matches the API `capability` query). |
 | `--base-url <url>`    | no       |         | Server base URL                                                            |
-| `--json`              | no       |         | Output the raw server response as JSON                                     |
+| `--json`              | no       |         | Emit machine-readable JSON on stdout                                       |

@@ -13,7 +13,7 @@ Create a new run from a previous run's stored input snapshot.
 | Flag                   | Required | Default    | Description                                                              |
 | ---------------------- | -------- | ---------- | ------------------------------------------------------------------------ |
 | `--base-url <url>`     | no       |            | Server base URL                                                          |
-| `--json`               | no       |            | Output the raw server response as JSON                                   |
+| `--json`               | no       |            | Emit machine-readable JSON on stdout                                     |
 | `--version <version>`  | no       | `"latest"` | Version/source ref for the new run: latest, original, or an explicit ref |
 | `--wait`               | no       |            | Poll until the rerun reaches a terminal status                           |
 | `--interval <seconds>` | no       | `2`        | Polling interval in seconds                                              |

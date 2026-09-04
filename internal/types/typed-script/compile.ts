@@ -41,8 +41,9 @@ export interface CompileOptions {
   /** Which surface this script is for. Decides the canonical name +
    *  parameter list + required return type. */
   kind: 'transform' | 'evaluator';
-  /** For `kind: 'transform'`, the param names must equal `Object.keys(inputs)`
-   *  in declaration order. Ignored for `kind: 'evaluator'`. */
+  /** For `kind: 'transform'`, the param names must equal the keys of `inputs`.
+   *  Order is intentionally ignored because persisted JSON objects do not
+   *  preserve authoring order. Ignored for `kind: 'evaluator'`. */
   paramNames?: readonly string[];
   /** For `kind: 'transform'`, optional pre-resolved JSON Schemas for type
    *  references the user can use in their annotations. Lets the
@@ -189,13 +190,20 @@ export function compileTypedScript(opts: CompileOptions): CompileSuccess | Compi
     });
   }
   const actualParamNames = actualParams as string[];
-  if (
-    actualParamNames.length !== expectedParams.length ||
-    actualParamNames.some((n, i) => n !== expectedParams[i])
-  ) {
+  const parametersMismatch =
+    opts.kind === 'evaluator'
+      ? actualParamNames.length !== expectedParams.length ||
+        actualParamNames.some((name, index) => name !== expectedParams[index])
+      : actualParamNames.length !== expectedParams.length ||
+        new Set(actualParamNames).size !== actualParamNames.length ||
+        actualParamNames.some((name) => !expectedParams.includes(name));
+  if (parametersMismatch) {
     return failWith({
       kind: 'wrong-shape',
-      message: `Parameter list must be \`(${expectedParams.join(', ')})\` in this order (got \`(${actualParamNames.join(', ')})\`).`,
+      message:
+        opts.kind === 'evaluator'
+          ? `Parameter list must be \`(${expectedParams.join(', ')})\` in this order (got \`(${actualParamNames.join(', ')})\`).`
+          : `Parameter names must match the configured inputs \`(${expectedParams.join(', ')})\`; their order does not matter (got \`(${actualParamNames.join(', ')})\`).`,
       line: fn.loc?.start.line,
       column: fn.loc?.start.column,
     });

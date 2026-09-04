@@ -165,14 +165,14 @@ agents
 
 ### Experiment
 
-| Command                                                                             | Description                                      |
-| ----------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `eigenpal agents experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.       |
-| `eigenpal agents experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                           |
-| `eigenpal agents experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.         |
-| `eigenpal agents experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                                |
-| `eigenpal agents experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Diff eval scores between two experiment batches. |
-| `eigenpal agents experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment.  |
+| Command                                                                             | Description                                                                |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `eigenpal agents experiment\|exp run [options] <agent-id-or-slug>`                  | Start an experiment over dataset examples.                                 |
+| `eigenpal agents experiment\|exp status [options] <agent-id-or-slug> <batch-id>`    | Get experiment status.                                                     |
+| `eigenpal agents experiment\|exp results [options] <agent-id-or-slug> [batch-id]`   | Print experiment results as JSON or CSV.                                   |
+| `eigenpal agents experiment\|exp list\|ls [options] <agent-id-or-slug>`             | List experiments.                                                          |
+| `eigenpal agents experiment\|exp compare\|diff [options] <batch-id-a> <batch-id-b>` | Compare evaluator scores or actual outputs between two experiment batches. |
+| `eigenpal agents experiment\|exp cancel [options] <agent-id-or-slug> <batch-id>`    | Cancel every active execution in an experiment.                            |
 
 ### Session
 
@@ -198,13 +198,13 @@ List agents.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--search <q>`     | no       |         | Search by slug, name, or description   |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--search <q>`     | no       |         | Search by slug, name, or description |
 
 ### `eigenpal agents validate [options] [dir]`
 
@@ -218,9 +218,9 @@ Validate a local agent package (layout, manifest, schemas, and Git source rules)
 
 ### Options
 
-| Flag     | Required | Default | Description                            |
-| -------- | -------- | ------- | -------------------------------------- |
-| `--json` | no       |         | Output the raw server response as JSON |
+| Flag     | Required | Default | Description                          |
+| -------- | -------- | ------- | ------------------------------------ |
+| `--json` | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents clone [options]`
 
@@ -334,10 +334,10 @@ Check organization source repository health.
 
 ### Options
 
-| Flag          | Required | Default | Description                            |
-| ------------- | -------- | ------- | -------------------------------------- |
-| `--json`      | no       |         | Output the raw server response as JSON |
-| `--dir <dir>` | no       |         | Directory to inspect                   |
+| Flag          | Required | Default | Description                          |
+| ------------- | -------- | ------- | ------------------------------------ |
+| `--json`      | no       |         | Emit machine-readable JSON on stdout |
+| `--dir <dir>` | no       |         | Directory to inspect                 |
 
 ### `eigenpal agents status [options]`
 
@@ -345,10 +345,10 @@ Show source repo and package status.
 
 ### Options
 
-| Flag          | Required | Default | Description                            |
-| ------------- | -------- | ------- | -------------------------------------- |
-| `--json`      | no       |         | Output the raw server response as JSON |
-| `--dir <dir>` | no       |         | Directory to inspect                   |
+| Flag          | Required | Default | Description                          |
+| ------------- | -------- | ------- | ------------------------------------ |
+| `--json`      | no       |         | Emit machine-readable JSON on stdout |
+| `--dir <dir>` | no       |         | Directory to inspect                 |
 
 ### `eigenpal agents deps [options]`
 
@@ -356,10 +356,10 @@ List package workspace dependencies.
 
 ### Options
 
-| Flag          | Required | Default | Description                            |
-| ------------- | -------- | ------- | -------------------------------------- |
-| `--json`      | no       |         | Output the raw server response as JSON |
-| `--dir <dir>` | no       |         | Directory to inspect                   |
+| Flag          | Required | Default | Description                          |
+| ------------- | -------- | ------- | ------------------------------------ |
+| `--json`      | no       |         | Emit machine-readable JSON on stdout |
+| `--dir <dir>` | no       |         | Directory to inspect                 |
 
 ### `eigenpal agents clean [options]`
 
@@ -383,10 +383,10 @@ Show Git-backed automation details.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents versions [options] <package>`
 
@@ -400,10 +400,10 @@ List package release versions.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents release [options] <version> [dir]`
 
@@ -455,7 +455,7 @@ List live files for an agent.
 | Flag               | Required | Default | Description                                |
 | ------------------ | -------- | ------- | ------------------------------------------ |
 | `--base-url <url>` | no       |         | Server base URL                            |
-| `--json`           | no       |         | Output the raw server response as JSON     |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout       |
 | `--path <prefix>`  | no       |         | Only list files beneath this relative path |
 
 ### `eigenpal agents file get [options] <agent-id-or-slug> <remote-path>`
@@ -471,11 +471,11 @@ Download one live agent file.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--out <file>`     | no       |         | Output file path                       |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--out <file>`     | no       |         | Output file path                     |
 
 ### `eigenpal agents file diff [options] <agent-id-or-slug> <remote-path> <local-path>`
 
@@ -491,10 +491,10 @@ Compare one live agent file against a local file.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents secrets|secret list|ls [options]`
 
@@ -502,10 +502,10 @@ List secret names declared in secrets.enc.yaml (never prints values).
 
 ### Options
 
-| Flag          | Required | Default | Description                            |
-| ------------- | -------- | ------- | -------------------------------------- |
-| `--json`      | no       |         | Output the raw server response as JSON |
-| `--dir <dir>` | no       |         | Directory to inspect                   |
+| Flag          | Required | Default | Description                          |
+| ------------- | -------- | ------- | ------------------------------------ |
+| `--json`      | no       |         | Emit machine-readable JSON on stdout |
+| `--dir <dir>` | no       |         | Directory to inspect                 |
 
 ### `eigenpal agents secrets|secret set [options] <name>`
 
@@ -588,12 +588,12 @@ List dataset examples for an agent.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents dataset push [options] <agent-id-or-slug>`
 
@@ -610,7 +610,7 @@ Upload dataset examples from a local dataset directory or zip archive.
 | Flag                       | Required | Default    | Description                                                                        |
 | -------------------------- | -------- | ---------- | ---------------------------------------------------------------------------------- |
 | `--base-url <url>`         | no       |            | Server base URL                                                                    |
-| `--json`                   | no       |            | Output the raw server response as JSON                                             |
+| `--json`                   | no       |            | Emit machine-readable JSON on stdout                                               |
 | `--file <path>`            | yes      |            | Dataset directory or .zip archive                                                  |
 | `--mode <append\|replace>` | no       | `"append"` | Upload mode                                                                        |
 | `--yes`                    | no       |            | Skip typed-slug confirmation for --mode replace (required in CI / agent terminals) |
@@ -646,7 +646,7 @@ Validate a local dataset directory against the canonical examples/<name> layout.
 
 | Flag                | Required | Default | Description                                                                             |
 | ------------------- | -------- | ------- | --------------------------------------------------------------------------------------- |
-| `--json`            | no       |         | Output the raw server response as JSON                                                  |
+| `--json`            | no       |         | Emit machine-readable JSON on stdout                                                    |
 | `--agent-dir <dir>` | no       | `"."`   | Agent package directory with optional input/output schemas for extra value-level checks |
 
 ### `eigenpal agents experiment|exp run [options] <agent-id-or-slug>`
@@ -664,10 +664,11 @@ Start an experiment over dataset examples.
 | Flag                   | Required | Default | Description                                         |
 | ---------------------- | -------- | ------- | --------------------------------------------------- |
 | `--base-url <url>`     | no       |         | Server base URL                                     |
-| `--json`               | no       |         | Output the raw server response as JSON              |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout                |
 | `--example-id <id>`    | no       |         | Run one dataset example                             |
 | `--wait`               | no       |         | Poll until the experiment reaches a terminal status |
 | `--interval <seconds>` | no       | `2`     | Polling interval in seconds                         |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2                     |
 
 ### `eigenpal agents experiment|exp status [options] <agent-id-or-slug> <batch-id>`
 
@@ -682,14 +683,13 @@ Get experiment status.
 
 ### Options
 
-| Flag                   | Required | Default | Description                            |
-| ---------------------- | -------- | ------- | -------------------------------------- |
-| `--base-url <url>`     | no       |         | Server base URL                        |
-| `--json`               | no       |         | Output the raw server response as JSON |
-| `--watch`              | no       |         | Poll until complete                    |
-| `--interval <seconds>` | no       | `2`     | Polling interval in seconds            |
-| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2        |
-| `--include <parts>`    | no       |         | Reserved for future detailed parts     |
+| Flag                   | Required | Default | Description                          |
+| ---------------------- | -------- | ------- | ------------------------------------ |
+| `--base-url <url>`     | no       |         | Server base URL                      |
+| `--json`               | no       |         | Emit machine-readable JSON on stdout |
+| `--watch`              | no       |         | Poll until complete                  |
+| `--interval <seconds>` | no       | `2`     | Polling interval in seconds          |
+| `--max-wait <seconds>` | no       | `1800`  | Maximum wait before exit code 2      |
 
 ### `eigenpal agents experiment|exp results [options] <agent-id-or-slug> [batch-id]`
 
@@ -704,11 +704,16 @@ Print experiment results as JSON or CSV.
 
 ### Options
 
-| Flag                   | Required | Default | Description          |
-| ---------------------- | -------- | ------- | -------------------- |
-| `--base-url <url>`     | no       |         | Server base URL      |
-| `--format <csv\|json>` | yes      |         | Output format        |
-| `--out <path>`         | no       |         | Write output to file |
+| Flag                   | Required | Default  | Description                                                                              |
+| ---------------------- | -------- | -------- | ---------------------------------------------------------------------------------------- |
+| `--base-url <url>`     | no       |          | Server base URL                                                                          |
+| `--json`               | no       |          | Emit machine-readable JSON on stdout                                                     |
+| `--format <csv\|json>` | no       | `"json"` | Output format (default json)                                                             |
+| `--out <path>`         | no       |          | Write output to file                                                                     |
+| `--summary`            | no       |          | Show total/pass/fail/error counts, average score, and evaluator rollups                  |
+| `--failed-only`        | no       |          | Keep only failed or errored evaluator results                                            |
+| `--evaluator <name>`   | no       |          | Keep only results from this evaluator                                                    |
+| `--select <path>`      | no       |          | Print only a nested JSON value (for example summary.byEvaluator or discrepancies[].path) |
 
 ### `eigenpal agents experiment|exp list|ls [options] <agent-id-or-slug>`
 
@@ -722,17 +727,17 @@ List experiments.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--batch-id <id>`  | no       |         | Filter to one batch id                 |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--batch-id <id>`  | no       |         | Filter to one batch id               |
 
 ### `eigenpal agents experiment|exp compare|diff [options] <batch-id-a> <batch-id-b>`
 
-Diff eval scores between two experiment batches.
+Compare evaluator scores or actual outputs between two experiment batches.
 
 ### Arguments
 
@@ -746,7 +751,8 @@ Diff eval scores between two experiment batches.
 | Flag                                                   | Required | Default            | Description                                            |
 | ------------------------------------------------------ | -------- | ------------------ | ------------------------------------------------------ |
 | `--base-url <url>`                                     | no       |                    | Server base URL                                        |
-| `--json`                                               | no       |                    | Output the raw server response as JSON                 |
+| `--json`                                               | no       |                    | Emit machine-readable JSON on stdout                   |
+| `--outputs`                                            | no       |                    | Compare actual run outputs instead of evaluator scores |
 | `--sort <abs-delta-desc\|delta-asc\|delta-desc\|name>` | no       | `"abs-delta-desc"` | Row sort order (default: biggest movers first)         |
 | `--regression-threshold <n>`                           | no       | `0.05`             | Δ below this is flagged as a regression (default 0.05) |
 
@@ -766,7 +772,7 @@ Cancel every active execution in an experiment.
 | Flag               | Required | Default | Description                                                        |
 | ------------------ | -------- | ------- | ------------------------------------------------------------------ |
 | `--base-url <url>` | no       |         | Server base URL                                                    |
-| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                               |
 | `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal agents session list|ls [options] <agent-id-or-slug>`
@@ -781,12 +787,12 @@ List builder sessions for an agent.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--limit <n>`      | no       | `50`    | Page size                              |
-| `--offset <n>`     | no       | `0`     | Page offset                            |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--limit <n>`      | no       | `50`    | Page size                            |
+| `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents session get [options] <session-id>`
 
@@ -800,10 +806,10 @@ Get a builder session and messages.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal agents session start [options] <agent-id-or-slug>`
 
@@ -817,11 +823,11 @@ Start a builder session.
 
 ### Options
 
-| Flag               | Required | Default | Description                            |
-| ------------------ | -------- | ------- | -------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                        |
-| `--json`           | no       |         | Output the raw server response as JSON |
-| `--title <title>`  | no       |         | Session title                          |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--title <title>`  | no       |         | Session title                        |
 
 ### `eigenpal agents session message [options] <session-id>`
 
@@ -835,12 +841,11 @@ Append a message to a builder session.
 
 ### Options
 
-| Flag               | Required | Default | Description                                                |
-| ------------------ | -------- | ------- | ---------------------------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                                            |
-| `--json`           | no       |         | Output the raw server response as JSON                     |
-| `--text <message>` | yes      |         | Message text                                               |
-| `--wait`           | no       |         | Reserved; server acknowledges after enqueueing the message |
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--text <message>` | yes      |         | Message text                         |
 
 ### `eigenpal agents session stop [options] <session-id>`
 
@@ -857,7 +862,7 @@ Stop a builder session.
 | Flag               | Required | Default | Description                                                        |
 | ------------------ | -------- | ------- | ------------------------------------------------------------------ |
 | `--base-url <url>` | no       |         | Server base URL                                                    |
-| `--json`           | no       |         | Output the raw server response as JSON                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                               |
 | `--yes`            | no       |         | Skip confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal agents env pull [options] [target]`

@@ -67,6 +67,9 @@ async function getAgentFile(
   remotePath: string,
   opts: BaseOpts & { out?: string }
 ): Promise<void> {
+  if (opts.json && opts.out) {
+    throw new Error('--json and --out are mutually exclusive');
+  }
   const client = buildClient(opts);
   const payload = await readAgentFile(client, agentId, remotePath);
   if (opts.json) return printJson(payload);

@@ -84,6 +84,42 @@ interface EvalResultsExportPayload {
   results: CompareInputRow[];
 }
 
+export interface ExperimentOutputRow {
+  executionId: string;
+  exampleId: string | null;
+  exampleName: string | null;
+  status: string | null;
+  error: unknown;
+  output: unknown;
+}
+
+export interface ExperimentOutputMismatch {
+  path: string;
+  type: 'changed' | 'missing' | 'extra' | 'incomparable';
+  expected?: unknown;
+  actual?: unknown;
+}
+
+export interface ExperimentOutputDiff {
+  batchA: string;
+  batchB: string;
+  rows: Array<{
+    example: string;
+    executionA: string;
+    executionB: string;
+    status: 'identical' | 'changed' | 'incomparable';
+    differences: ExperimentOutputMismatch[];
+  }>;
+  summary: {
+    sharedExamples: number;
+    identical: number;
+    changed: number;
+    incomparable: number;
+    onlyInA: string[];
+    onlyInB: string[];
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers (testable)
 // ---------------------------------------------------------------------------
@@ -212,6 +248,107 @@ export function buildBatchDiff(args: {
   };
 }
 
+export function buildExperimentOutputDiff(args: {
+  batchIdA: string;
+  batchIdB: string;
+  rowsA: ExperimentOutputRow[];
+  rowsB: ExperimentOutputRow[];
+}): ExperimentOutputDiff {
+  const a = new Map(args.rowsA.map((row) => [exampleLabelOf(row), row] as const));
+  const b = new Map(args.rowsB.map((row) => [exampleLabelOf(row), row] as const));
+  const shared = [...a.keys()].filter((example) => b.has(example)).sort();
+  const rows = shared.map((example) => {
+    const rowA = a.get(example)!;
+    const rowB = b.get(example)!;
+    const comparable =
+      rowA.status === 'completed' &&
+      rowB.status === 'completed' &&
+      rowA.output !== undefined &&
+      rowB.output !== undefined;
+    if (!comparable) {
+      return {
+        example,
+        executionA: rowA.executionId,
+        executionB: rowB.executionId,
+        status: 'incomparable' as const,
+        differences: [
+          {
+            path: '$',
+            type: 'incomparable' as const,
+            expected: { status: rowA.status, error: rowA.error },
+            actual: { status: rowB.status, error: rowB.error },
+          },
+        ],
+      };
+    }
+    const differences = diffOutputJson(rowA.output, rowB.output);
+    return {
+      example,
+      executionA: rowA.executionId,
+      executionB: rowB.executionId,
+      status: differences.length === 0 ? ('identical' as const) : ('changed' as const),
+      differences,
+    };
+  });
+  return {
+    batchA: args.batchIdA,
+    batchB: args.batchIdB,
+    rows,
+    summary: {
+      sharedExamples: shared.length,
+      identical: rows.filter((row) => row.status === 'identical').length,
+      changed: rows.filter((row) => row.status === 'changed').length,
+      incomparable: rows.filter((row) => row.status === 'incomparable').length,
+      onlyInA: [...a.keys()].filter((example) => !b.has(example)).sort(),
+      onlyInB: [...b.keys()].filter((example) => !a.has(example)).sort(),
+    },
+  };
+}
+
+export function diffOutputJson(
+  expected: unknown,
+  actual: unknown,
+  path = '$',
+  limit = 200
+): ExperimentOutputMismatch[] {
+  if (Object.is(expected, actual)) return [];
+  if (Array.isArray(expected) && Array.isArray(actual)) {
+    const differences: ExperimentOutputMismatch[] = [];
+    for (let index = 0; index < Math.max(expected.length, actual.length); index++) {
+      if (differences.length >= limit) break;
+      const child = `${path}[${index}]`;
+      if (index >= expected.length) {
+        differences.push({ path: child, type: 'extra', actual: actual[index] });
+      } else if (index >= actual.length) {
+        differences.push({ path: child, type: 'missing', expected: expected[index] });
+      } else {
+        differences.push(
+          ...diffOutputJson(expected[index], actual[index], child, limit - differences.length)
+        );
+      }
+    }
+    return differences;
+  }
+  if (isObject(expected) && isObject(actual)) {
+    const differences: ExperimentOutputMismatch[] = [];
+    for (const key of new Set([...Object.keys(expected), ...Object.keys(actual)])) {
+      if (differences.length >= limit) break;
+      const child = path === '$' ? `$.${key}` : `${path}.${key}`;
+      if (!Object.hasOwn(expected, key)) {
+        differences.push({ path: child, type: 'extra', actual: actual[key] });
+      } else if (!Object.hasOwn(actual, key)) {
+        differences.push({ path: child, type: 'missing', expected: expected[key] });
+      } else {
+        differences.push(
+          ...diffOutputJson(expected[key], actual[key], child, limit - differences.length)
+        );
+      }
+    }
+    return differences;
+  }
+  return [{ path, type: 'changed', expected, actual }];
+}
+
 /**
  * Group `rows` by evaluator, fold deltas. Replaces the Python one-liner
  * users were writing on every iteration. Sorted by mean |Δ| desc; evaluators
@@ -298,7 +435,7 @@ function sortDiffRows(rows: BatchDiffRow[], sort: CompareSort): void {
   }
 }
 
-function exampleLabelOf(row: CompareInputRow): string {
+function exampleLabelOf(row: { exampleId: string | null; exampleName: string | null }): string {
   if (row.exampleName && row.exampleName.length > 0) return row.exampleName;
   if (row.exampleId) return row.exampleId;
   return '(unknown)';
@@ -417,6 +554,42 @@ export function renderBatchDiffHuman(diff: BatchDiffResult): void {
   );
 }
 
+export function renderExperimentOutputDiffHuman(diff: ExperimentOutputDiff): void {
+  process.stderr.write(
+    `${ui.dim('A =')} ${ui.bold(diff.batchA)}   ${ui.dim('B =')} ${ui.bold(diff.batchB)}\n\n`
+  );
+  const visible = diff.rows.flatMap((row) =>
+    row.differences.map((difference) => ({
+      example: row.example,
+      path: difference.path,
+      type: difference.type,
+      expected: compactValue(difference.expected),
+      actual: compactValue(difference.actual),
+    }))
+  );
+  if (visible.length > 0) {
+    console.log(
+      table(visible, [
+        { key: 'example', header: 'example' },
+        { key: 'path', header: 'path' },
+        { key: 'type', header: 'change' },
+        { key: 'expected', header: 'A' },
+        { key: 'actual', header: 'B' },
+      ])
+    );
+  } else {
+    process.stderr.write(`${ui.dim('No actual-output differences in shared examples.')}\n`);
+  }
+  process.stderr.write(
+    `\n${ui.dim('shared:')} ${diff.summary.sharedExamples}  ` +
+      `${ui.ok(`identical: ${diff.summary.identical}`)}  ` +
+      `${ui.warn(`changed: ${diff.summary.changed}`)}  ` +
+      `${ui.warn(`incomparable: ${diff.summary.incomparable}`)}  ` +
+      `${ui.dim('only in A:')} ${diff.summary.onlyInA.length}  ` +
+      `${ui.dim('only in B:')} ${diff.summary.onlyInB.length}\n`
+  );
+}
+
 // ---------------------------------------------------------------------------
 // API helper (small I/O wrapper kept here so the compare command's only
 // remaining responsibility in index.ts is Commander wiring)
@@ -439,4 +612,70 @@ export async function fetchEvalResults(
     );
   }
   return raw;
+}
+
+export async function fetchExperimentOutputs(
+  client: ApiClient,
+  experimentId: string
+): Promise<{ automationId: string; rows: ExperimentOutputRow[] }> {
+  const ref = (await client.get(`/v1/experiments/${encodeURIComponent(experimentId)}`)) as {
+    automationId: string;
+  };
+  const detail = (await client.get(
+    `/v1/automations/${encodeURIComponent(ref.automationId)}/experiments/${encodeURIComponent(experimentId)}`
+  )) as {
+    runs?: Array<{
+      id: string;
+      exampleId?: string | null;
+      exampleName?: string | null;
+    }>;
+  };
+  const runs = detail.runs ?? [];
+  const rows = await mapWithConcurrency(runs, 6, async (run) => {
+    const payload = (await client.get(`/v1/runs/${encodeURIComponent(run.id)}`)) as {
+      status?: string | null;
+      error?: unknown;
+      output?: unknown;
+      execution?: { status?: string | null; error?: unknown };
+      result?: { status?: string | null; error?: unknown; output?: unknown };
+    };
+    return {
+      executionId: run.id,
+      exampleId: run.exampleId ?? null,
+      exampleName: run.exampleName ?? null,
+      status: payload.execution?.status ?? payload.status ?? payload.result?.status ?? null,
+      error: payload.error ?? payload.execution?.error ?? payload.result?.error ?? null,
+      output: payload.output !== undefined ? payload.output : payload.result?.output,
+    };
+  });
+  return { automationId: ref.automationId, rows };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function compactValue(value: unknown): string {
+  if (value === undefined) return '—';
+  const rendered = JSON.stringify(value);
+  if (rendered === undefined) return String(value);
+  return rendered.length > 80 ? `${rendered.slice(0, 77)}…` : rendered;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  fn: (value: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (cursor < values.length) {
+        const index = cursor++;
+        results[index] = await fn(values[index]);
+      }
+    })
+  );
+  return results;
 }

@@ -27,6 +27,7 @@ export const EXT_MIME: Record<string, string> = {
   '.doc': 'application/msword',
   '.xls': 'application/vnd.ms-excel',
   '.rtf': 'application/rtf',
+  '.msg': 'application/vnd.ms-outlook',
   '.json': 'application/json',
   '.xml': 'application/xml',
   '.html': 'text/html',

@@ -56,6 +56,26 @@ Commands that can prompt or block (always inspect `--help` for the exact flag):
 If a command fails with “requires --yes when run non-interactively”, re-run with
 `--yes` only when the action is intentional — never to blindly retry.
 
+## Read Authoritative Docs Before Authoring
+
+The CLI bundles release-matched platform documentation. Search it before guessing
+workflow fields, evaluator rules, dataset paths, or command flags:
+
+```bash
+eigenpal docs search "unordered matchBy"
+eigenpal docs read reference/workflow-yaml
+eigenpal docs read reference/step-types
+eigenpal docs read reference/evaluators
+eigenpal docs read reference/dataset-format
+eigenpal docs read reference/cli/workflow
+eigenpal docs read api-reference/openapi
+```
+
+The `reference/*` topics contain generated schemas from the same code that
+validates workflows. Step behavior and examples are available under
+`steps/<category>/<name>`, for example `steps/ai/extract`. Use
+`eigenpal docs list --source agent-reference` to enumerate bundled references.
+
 ## Choose A Command
 
 - `eigenpal workflow` manages YAML workflow definitions, datasets, evaluators,
@@ -414,6 +434,19 @@ Exit codes:
 | 2 | Invalid invocation, unsupported option, timeout, or deadline |
 
 Status messages go to stderr. Pipeable data goes to stdout.
+
+Flag contract:
+
+- `--json` emits the primary payload. `--select <path>` emits one nested value
+  as JSON and is preferable to `--json | jq` for stable paths.
+- `--wait` blocks a command that starts work; `--watch` follows an existing
+  resource. Polling timeouts exit 2.
+- `--format` selects an export or code-generation encoding, not JSON mode.
+- `runs get --expand` requests server detail sections. `--include` is
+  command-specific; never reuse values from another command without checking
+  `--help`.
+- `--out` may be a file or a directory depending on the command; the option
+  description identifies which.
 
 ## References
 

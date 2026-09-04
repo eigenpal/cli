@@ -138,8 +138,11 @@ async function runTarget(
   }
   const runId = String((payload as { id?: string }).id ?? '');
   let waitedForTerminalRun = false;
+  if (opts.wait && !runId) {
+    throw new Error('Run start response did not include an id; cannot honor --wait');
+  }
   if (opts.wait && runId) {
-    payload = await pollRun(client, runId, opts.interval, opts.maxWait);
+    payload = await pollRun(client, runId, opts.interval, opts.maxWait, opts.json);
     waitedForTerminalRun = true;
   }
   renderRunPayload(payload, opts);
