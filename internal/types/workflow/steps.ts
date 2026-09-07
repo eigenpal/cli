@@ -43,6 +43,7 @@ export const ACTION_STEP_TYPES = [
   'action.http',
   'action.invoke-workflow',
   'action.website-reader',
+  'action.email',
 ] as const;
 
 // Control step types
@@ -95,6 +96,7 @@ export const StepTypeValue = {
   ACTION_HTTP: 'action.http',
   ACTION_INVOKE_WORKFLOW: 'action.invoke-workflow',
   ACTION_WEBSITE_READER: 'action.website-reader',
+  ACTION_EMAIL: 'action.email',
   // Control
   CONTROL_IF: 'control.if',
   CONTROL_SWITCH: 'control.switch',

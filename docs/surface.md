@@ -114,6 +114,13 @@ eigenpal
 │       └── pull [target]
 ├── models
 │   └── list|ls
+├── email-servers|email-server
+│   ├── list|ls
+│   ├── get <id>
+│   ├── create
+│   ├── update <id>
+│   ├── delete <id>
+│   └── test <id>
 ├── run <target>
 ├── rerun <run-id>
 ├── runs

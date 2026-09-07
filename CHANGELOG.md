@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.0
+
+### Minor Changes
+
+- 4464686: Manage organization email servers with `eigenpal email-servers`: list and inspect `ems_…` servers, create or update Resend and SMTP providers (including an optional SMTP CA PEM), delete servers, and send a live test message with `--to`. Secrets are read from stdin, a file, or a secure prompt — never from command-line flags.
+
 ## 0.15.0
 
 ### Minor Changes

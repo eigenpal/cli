@@ -5025,6 +5025,252 @@ Output schema:
 ```
 
 
+#### `action.email` — Send Email
+
+Send an email with optional attachments via a selected email server. At most 10 recipients combined across to, cc, and bcc.
+
+**Behavior and examples:** `eigenpal docs read steps/action/email`
+
+**Durable retry:** This control step is not retried durably.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `server` | string | yes |  | Outbound email server id (`ems_…`) |
+| `to` | string \| array<string> | yes |  | Primary recipient(s). String, comma-separated list, or nonempty string array. Combined with cc and bcc, at most 10 recipients. |
+| `cc` | string \| array<string> | no |  | Carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and bcc, at most 10 recipients. |
+| `bcc` | string \| array<string> | no |  | Blind carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and cc, at most 10 recipients. |
+| `replyTo` | string | no |  | Reply-To address (supports template expressions) |
+| `subject` | string | yes |  | Email subject |
+| `text` | string | yes |  | Plain-text email body (max 50KiB) |
+| `attachments` | array<string \| object> | no |  | Optional same-run attachments as { fileId, filename? } or a bare fileId string (12MiB combined) |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `serverId` | string | yes |  | Email server that sent (or would have sent) the message |
+| `messageId` | string \| null | yes |  | Provider message id. Null when delivery was skipped (evaluation runs). |
+| `provider` | `"resend"` \| `"smtp"` \| null | yes |  | Email provider that sent the message. Null when delivery was skipped. |
+| `to` | array<string> | yes |  | Normalized To recipients |
+| `cc` | array<string> | yes |  | Normalized Cc recipients |
+| `bcc` | array<string> | yes |  | Normalized Bcc recipients |
+| `attachmentCount` | integer | yes |  | Number of attachments sent |
+| `totalBytes` | integer | yes |  | Total attachment size in bytes |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "server": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^ems_[A-Za-z0-9_-]+$",
+      "description": "Outbound email server id (`ems_…`)"
+    },
+    "to": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ],
+      "description": "Primary recipient(s). String, comma-separated list, or nonempty string array. Combined with cc and bcc, at most 10 recipients."
+    },
+    "cc": {
+      "description": "Carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and bcc, at most 10 recipients.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "bcc": {
+      "description": "Blind carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and cc, at most 10 recipients.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "replyTo": {
+      "description": "Reply-To address (supports template expressions)",
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Email subject"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plain-text email body (max 50KiB)"
+    },
+    "attachments": {
+      "description": "Optional same-run attachments as { fileId, filename? } or a bare fileId string (12MiB combined)",
+      "maxItems": 10,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "description": "File id or template expression that resolves to a file id"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "File id or template expression that resolves to a file id"
+              },
+              "filename": {
+                "description": "Optional download filename override",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "fileId"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "server",
+    "to",
+    "subject",
+    "text"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "serverId": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^ems_[A-Za-z0-9_-]+$",
+      "description": "Email server that sent (or would have sent) the message"
+    },
+    "messageId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Provider message id. Null when delivery was skipped (evaluation runs)."
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "resend",
+            "smtp"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Email provider that sent the message. Null when delivery was skipped."
+    },
+    "to": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Normalized To recipients"
+    },
+    "cc": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Normalized Cc recipients"
+    },
+    "bcc": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Normalized Bcc recipients"
+    },
+    "attachmentCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Number of attachments sent"
+    },
+    "totalBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Total attachment size in bytes"
+    }
+  },
+  "required": [
+    "serverId",
+    "messageId",
+    "provider",
+    "to",
+    "cc",
+    "bcc",
+    "attachmentCount",
+    "totalBytes"
+  ],
+  "additionalProperties": false
+}
+```
+
+
 ### Control steps — flow control
 
 #### `control.if` — Condition

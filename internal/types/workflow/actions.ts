@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Action types for action steps
  */
-export const ActionTypeSchema = z.enum(['http', 'invoke-workflow', 'website-reader']);
+export const ActionTypeSchema = z.enum(['http', 'invoke-workflow', 'website-reader', 'email']);
 export type ActionType = z.infer<typeof ActionTypeSchema>;
 
 /**
@@ -13,6 +13,7 @@ export const ActionTypeValue = {
   HTTP: 'http',
   INVOKE_WORKFLOW: 'invoke-workflow',
   WEBSITE_READER: 'website-reader',
+  EMAIL: 'email',
 } as const;
 
 /**

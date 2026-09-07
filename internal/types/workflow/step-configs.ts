@@ -21,6 +21,7 @@ import {
   toJsonSchema,
   type JsonSchema7Type,
 } from '../core/common';
+import { EmailServerIdSchema } from '../email-servers';
 import {
   PARSE_OUTPUT_FORMAT_DESCRIPTION,
   ParseModeSchema,
@@ -43,10 +44,16 @@ import {
   refineXlsxToJsonHeaderRowColumns,
 } from '../processor/configs/xlsx-to-json';
 import { compileTypedScript } from '../typed-script';
+import {
+  ACTION_EMAIL_RECIPIENT_LIMIT_MESSAGE,
+  actionEmailRecipientCountExceedsLimit,
+} from './email-recipients';
 import type { StepRetryCapability } from './retry';
 import { SCRIPT_FN_MAX_BYTES } from './script-function';
 import type { StepType } from './steps';
 import { STEP_TYPES } from './steps';
+
+export { ACTION_EMAIL_MAX_RECIPIENTS } from './email-recipients';
 
 const OptionalReasoningEffortSchema = ReasoningEffortSchema.optional().describe(
   'Reasoning effort for models that support it. Omit to preserve the current provider default.'
@@ -1495,6 +1502,99 @@ export const ActionWebsiteReaderOutputSchema = z.object({
   url: z.string().describe('Final URL after redirects'),
 });
 
+/**
+ * action.email - Send an email via a tenant email server (`ems_…`).
+ * Config goes in step.with. Recipient fields accept a single address/template,
+ * a comma-separated list, or an array. At most 10 recipients combined across
+ * to, cc, and bcc; template expressions count as one slot at authoring time.
+ */
+export const ACTION_EMAIL_MAX_ATTACHMENTS = 10;
+export const ACTION_EMAIL_MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
+export const ACTION_EMAIL_BODY_MAX_BYTES = 50 * 1024;
+
+const emailBodyMaxBytes = (value: string) =>
+  new TextEncoder().encode(value).byteLength <= ACTION_EMAIL_BODY_MAX_BYTES;
+
+const ActionEmailRecipientListSchema = z.array(z.string().min(1));
+
+const ActionEmailToSchema = z.union([
+  z.string().min(1, 'To is required'),
+  ActionEmailRecipientListSchema.min(1, 'To requires at least one recipient'),
+]);
+
+const ActionEmailOptionalRecipientsSchema = z.union([
+  z.string().min(1),
+  ActionEmailRecipientListSchema,
+]);
+
+export const ActionEmailAttachmentSchema = z.union([
+  z.string().min(1).describe('File id or template expression that resolves to a file id'),
+  z.object({
+    fileId: z.string().min(1).describe('File id or template expression that resolves to a file id'),
+    filename: z.string().min(1).optional().describe('Optional download filename override'),
+  }),
+]);
+
+export const ActionEmailConfigSchema = z
+  .object({
+    server: EmailServerIdSchema.describe('Outbound email server id (`ems_…`)'),
+    to: ActionEmailToSchema.describe(
+      'Primary recipient(s). String, comma-separated list, or nonempty string array. Combined with cc and bcc, at most 10 recipients.'
+    ),
+    cc: ActionEmailOptionalRecipientsSchema.optional().describe(
+      'Carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and bcc, at most 10 recipients.'
+    ),
+    bcc: ActionEmailOptionalRecipientsSchema.optional().describe(
+      'Blind carbon-copy recipient(s). String, comma-separated list, or string array. Combined with to and cc, at most 10 recipients.'
+    ),
+    replyTo: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Reply-To address (supports template expressions)'),
+    subject: z.string().min(1, 'Subject is required').describe('Email subject'),
+    text: z
+      .string()
+      .min(1, 'Body is required')
+      .refine(emailBodyMaxBytes, {
+        message: `Email body must be at most ${ACTION_EMAIL_BODY_MAX_BYTES} bytes`,
+      })
+      .describe('Plain-text email body (max 50KiB)'),
+    attachments: z
+      .array(ActionEmailAttachmentSchema)
+      .max(ACTION_EMAIL_MAX_ATTACHMENTS, `At most ${ACTION_EMAIL_MAX_ATTACHMENTS} attachments`)
+      .optional()
+      .describe(
+        'Optional same-run attachments as { fileId, filename? } or a bare fileId string (12MiB combined)'
+      ),
+  })
+  .superRefine((config, ctx) => {
+    if (actionEmailRecipientCountExceedsLimit(config)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: ACTION_EMAIL_RECIPIENT_LIMIT_MESSAGE,
+        path: ['to'],
+      });
+    }
+  });
+
+export const ActionEmailOutputSchema = z.object({
+  serverId: EmailServerIdSchema.describe('Email server that sent (or would have sent) the message'),
+  messageId: z
+    .string()
+    .nullable()
+    .describe('Provider message id. Null when delivery was skipped (evaluation runs).'),
+  provider: z
+    .enum(['resend', 'smtp'])
+    .nullable()
+    .describe('Email provider that sent the message. Null when delivery was skipped.'),
+  to: z.array(z.string()).describe('Normalized To recipients'),
+  cc: z.array(z.string()).describe('Normalized Cc recipients'),
+  bcc: z.array(z.string()).describe('Normalized Bcc recipients'),
+  attachmentCount: z.number().int().nonnegative().describe('Number of attachments sent'),
+  totalBytes: z.number().int().nonnegative().describe('Total attachment size in bytes'),
+});
+
 // ============================================================================
 // Control Step Schemas
 // ============================================================================
@@ -1732,6 +1832,10 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
     replaySafety: 'safe',
     automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
   },
+  'action.email': {
+    replaySafety: 'requires-idempotency',
+    automaticCategories: [],
+  },
   'control.if': CONTROL_RETRY_CAPABILITY,
   'control.switch': CONTROL_RETRY_CAPABILITY,
   'control.foreach': CONTROL_RETRY_CAPABILITY,
@@ -1959,6 +2063,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     description: 'Fetch a webpage and convert content to markdown',
     configSchema: ActionWebsiteReaderConfigSchema,
     outputSchema: ActionWebsiteReaderOutputSchema,
+    configInWith: true,
+  },
+  'action.email': {
+    type: 'action.email',
+    category: 'action',
+    name: 'Send Email',
+    description:
+      'Send an email with optional attachments via a selected email server. At most 10 recipients combined across to, cc, and bcc.',
+    configSchema: ActionEmailConfigSchema,
+    outputSchema: ActionEmailOutputSchema,
     configInWith: true,
   },
 
@@ -2203,6 +2317,9 @@ export type ActionHttpConfig = z.infer<typeof ActionHttpConfigSchema>;
 export type ActionInvokeWorkflowConfig = z.infer<typeof ActionInvokeWorkflowConfigSchema>;
 export type ActionWebsiteReaderConfig = z.infer<typeof ActionWebsiteReaderConfigSchema>;
 export type ActionWebsiteReaderOutput = z.infer<typeof ActionWebsiteReaderOutputSchema>;
+export type ActionEmailConfig = z.infer<typeof ActionEmailConfigSchema>;
+export type ActionEmailOutput = z.infer<typeof ActionEmailOutputSchema>;
+export type ActionEmailAttachment = z.infer<typeof ActionEmailAttachmentSchema>;
 export type ControlIfConfig = z.infer<typeof ControlIfConfigSchema>;
 export type ControlSwitchConfig = z.infer<typeof ControlSwitchConfigSchema>;
 export type ControlSwitchOutput = z.infer<typeof ControlSwitchOutputSchema>;

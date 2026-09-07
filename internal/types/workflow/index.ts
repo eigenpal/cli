@@ -7,6 +7,13 @@
 // Step config schemas (single source of truth for step configurations)
 export {
   // Action step schemas
+  ACTION_EMAIL_BODY_MAX_BYTES,
+  ACTION_EMAIL_MAX_ATTACHMENTS,
+  ACTION_EMAIL_MAX_ATTACHMENT_BYTES,
+  ACTION_EMAIL_MAX_RECIPIENTS,
+  ActionEmailAttachmentSchema,
+  ActionEmailConfigSchema,
+  ActionEmailOutputSchema,
   ActionHttpConfigSchema,
   ActionHttpOutputSchema,
   ActionInvokeWorkflowConfigSchema,
@@ -63,6 +70,9 @@ export {
   listStepTypes,
   listStepTypesByCategory,
   validateStepConfig,
+  type ActionEmailAttachment,
+  type ActionEmailConfig,
+  type ActionEmailOutput,
   type ActionHttpConfig,
   type ActionInvokeWorkflowConfig,
   // Types
@@ -90,6 +100,14 @@ export {
   type TransformTextChunkerConfig,
   type TransformTextChunkerOutput,
 } from './step-configs';
+
+export {
+  ACTION_EMAIL_RECIPIENT_LIMIT_MESSAGE,
+  actionEmailRecipientCountExceedsLimit,
+  countActionEmailRecipients,
+  countDeterministicEmailRecipients,
+  type ActionEmailRecipientFields,
+} from './email-recipients';
 
 // Action types
 export { ACTION_TYPES, ActionTypeSchema, ActionTypeValue, type ActionType } from './actions';
@@ -289,3 +307,10 @@ export {
   type InvokeExecutionMode,
   type InvokeWorkflowTargetRef,
 } from './invoke-workflow-contract';
+
+// action.email server-id collection (publish gate batch lookup)
+export {
+  collectActionEmailServerIds,
+  collectActionEmailServerRefs,
+  type ActionEmailServerRef,
+} from './email-action-refs';

@@ -1215,7 +1215,8 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
               "enum": [
                 "action.http",
                 "action.invoke-workflow",
-                "action.website-reader"
+                "action.website-reader",
+                "action.email"
               ]
             },
             "name": {

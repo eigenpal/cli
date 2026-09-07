@@ -480,6 +480,9 @@ export * from './api/display-path';
 
 export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/sample-rank';
 
+// Organization-managed outbound email servers
+export * from './email-servers';
+
 // Organization-managed outbound webhook contracts
 export * from './webhooks';
 

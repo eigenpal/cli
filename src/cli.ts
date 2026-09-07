@@ -8,6 +8,7 @@ import { registerAgentCommands } from './commands/agents';
 import { authList, authLogin, authLogout, authUse } from './commands/auth';
 import { completion } from './commands/completion';
 import { registerDocsCommands } from './commands/docs';
+import { registerEmailServersCommands } from './commands/email-servers';
 import {
   hasGitPassthroughSeparator,
   registerGitCommands,
@@ -174,6 +175,7 @@ authCmd
 registerWorkflowCommands(program);
 registerAgentCommands(program);
 registerModelsCommands(program);
+registerEmailServersCommands(program);
 registerRunCommands(program);
 registerRunsCommands(program);
 registerGitCommands(program);
