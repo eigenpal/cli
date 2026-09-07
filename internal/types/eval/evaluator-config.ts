@@ -347,7 +347,7 @@ export const LlmJudgeConfigSchema = z
         "Which LLM grades the output. Falls back to the workspace's default LLM provider when unset."
       ),
     reasoningEffort: ReasoningEffortSchema.optional().describe(
-      'Reasoning effort for models that support it. Omit to preserve the current provider default.'
+      "Reasoning effort for models that support it. Omit to use the selected model's default."
     ),
     mode: JudgeModeSchema.default('continuous').describe(
       'Continuous = the LLM returns a free-form score in [0, 1]. Discrete = the LLM picks one of your labels and the score is looked up from the table.'

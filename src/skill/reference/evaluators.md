@@ -356,7 +356,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `model` | string | no |  | Which LLM grades the output. Falls back to the workspace's default LLM provider when unset. |
-| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to preserve the current provider default. |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
 | `mode` | `"continuous"` \| `"discrete"` | no | `"continuous"` | Continuous = the LLM returns a free-form score in [0, 1]. Discrete = the LLM picks one of your labels and the score is looked up from the table. |
 | `labels` | record<string, number> | no |  | Allowed labels and the score each maps to. Required in discrete mode. The judge MUST return one of these labels; each score must be in [0, 1]. |
 | `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
@@ -562,7 +562,7 @@ Generated from the same discriminated union used by evaluator validation; YAML k
                     "minLength": 1
                   },
                   "reasoningEffort": {
-                    "description": "Reasoning effort for models that support it. Omit to preserve the current provider default.",
+                    "description": "Reasoning effort for models that support it. Omit to use the selected model's default.",
                     "type": "string",
                     "enum": [
                       "none",

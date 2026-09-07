@@ -261,9 +261,11 @@ export interface OCRClient {
  * OCR Client configuration
  */
 export interface OCRClientConfig {
-  provider: 'azure' | 'google' | 'aws' | 'tesseract' | 'openparser';
+  provider: 'azure' | 'google' | 'aws' | 'tesseract' | 'openparser' | 'paddle';
   apiKey?: string;
   endpoint?: string;
   region?: string;
   model?: string;
+  requestTimeout?: number;
+  maxConcurrentRequests?: number;
 }

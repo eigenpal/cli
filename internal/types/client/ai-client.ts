@@ -22,7 +22,20 @@ export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>;
 export const ModelReasoningConfigSchema = z
   .object({
     supportedEfforts: z.array(ReasoningEffortSchema).min(1),
+    /**
+     * Effort used by the provider API when a request omits the setting.
+     * An execution surface may deliberately apply its own documented default.
+     */
+    defaultEffort: ReasoningEffortSchema.optional(),
   })
+  .refine(
+    (config) =>
+      config.defaultEffort === undefined || config.supportedEfforts.includes(config.defaultEffort),
+    {
+      message: 'defaultEffort must be included in supportedEfforts',
+      path: ['defaultEffort'],
+    }
+  )
   .strict();
 export type ModelReasoningConfig = z.infer<typeof ModelReasoningConfigSchema>;
 
@@ -89,7 +102,7 @@ export interface ExtractOptions {
   prompt?: string;
   /** Model to use (overrides default) */
   model?: string;
-  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  /** Provider reasoning effort. Omit to use the selected model's default. */
   reasoningEffort?: ReasoningEffort;
   /**
    * Best-effort reproducibility seed. OpenAI documents seed as "mostly
@@ -116,7 +129,7 @@ export interface ExtractOptions {
 export interface CompleteOptions {
   /** Model to use (overrides default) */
   model?: string;
-  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  /** Provider reasoning effort. Omit to use the selected model's default. */
   reasoningEffort?: ReasoningEffort;
   /** Cancels the in-flight LLM request when aborted. */
   signal?: AbortSignal;
@@ -125,7 +138,7 @@ export interface CompleteOptions {
 export interface VisionOptions {
   /** Model to use (overrides default) */
   model?: string;
-  /** Provider reasoning effort. Omit to preserve the model's existing default behavior. */
+  /** Provider reasoning effort. Omit to use the selected model's default. */
   reasoningEffort?: ReasoningEffort;
   /** Cancels the in-flight LLM request when aborted. */
   signal?: AbortSignal;

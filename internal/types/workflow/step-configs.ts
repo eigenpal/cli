@@ -56,7 +56,7 @@ import { STEP_TYPES } from './steps';
 export { ACTION_EMAIL_MAX_RECIPIENTS } from './email-recipients';
 
 const OptionalReasoningEffortSchema = ReasoningEffortSchema.optional().describe(
-  'Reasoning effort for models that support it. Omit to preserve the current provider default.'
+  "Reasoning effort for models that support it. Omit to use the selected model's default."
 );
 
 // ============================================================================

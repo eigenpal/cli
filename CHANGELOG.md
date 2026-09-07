@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.1
+
+### Patch Changes
+
+- e0c01f7: CLI archive handling now rejects malformed ZIP64 data safely instead of risking an unbounded processing loop.
+
 ## 0.16.0
 
 ### Minor Changes

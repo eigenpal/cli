@@ -13,7 +13,7 @@ interface JudgeJsonBaseParams {
   client: AIClient;
   /** Optional model override; defaults to `client.defaultModel`. */
   model?: string;
-  /** Optional reasoning effort; omitted calls preserve provider defaults. */
+  /** Optional reasoning effort; omit to use the selected model's default. */
   reasoningEffort?: ReasoningEffort;
   /** Free-form evaluation criteria injected into the system prompt. */
   promptExtension: string;
