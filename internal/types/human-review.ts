@@ -1052,12 +1052,28 @@ export function valueAtHumanReviewPointer(data: unknown, pointer: string): unkno
   }, data);
 }
 
+function isHumanReviewScalar(value: unknown): value is HumanReviewScalar {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  );
+}
+
+/**
+ * Captured JSON null is absence, not a closed scalar type. Null may become a
+ * string/number/boolean (and vice versa); the effective schema decides whether
+ * that edit is valid. Other scalar type changes stay rejected here so a number
+ * cannot silently become a string before schema validation runs.
+ */
 function sameRuntimeScalarType(
   original: HumanReviewScalar,
   next: unknown
 ): next is HumanReviewScalar {
-  if (original === null) return next === null;
-  return typeof next === typeof original && (typeof next !== 'number' || Number.isFinite(next));
+  if (!isHumanReviewScalar(next)) return false;
+  if (original === null || next === null) return true;
+  return typeof next === typeof original;
 }
 
 export function validateHumanReviewEffectiveSchema(
