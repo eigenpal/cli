@@ -1,0 +1,62 @@
+name: __NAME__
+version: 1.0.0
+description: Extract payment fields, then require explicit review of critical paths only.
+
+triggerMethods:
+  - type: api
+
+inputs:
+  - name: document
+    type: file
+    description: Invoice PDF or image
+
+steps:
+  - name: parse
+    type: ai.parse
+    with:
+      input: '{{ input.document }}'
+
+  - name: extract
+    type: ai.extract
+    with:
+      input: '{{ steps.parse.output.text }}'
+      schema:
+        type: object
+        properties:
+          vendor:
+            type: string
+          total:
+            type: number
+          iban:
+            type: string
+          reference:
+            type: string
+        required: [vendor, total, iban, reference]
+        additionalProperties: false
+
+  - name: review-critical-fields
+    type: control.human_review
+    with:
+      data: '{{ steps.extract.output }}'
+      instructions: Confirm payment amount and beneficiary IBAN before release.
+      selection:
+        mode: explicit
+        include:
+          - /total
+          - /iban
+      fieldMetadata:
+        /total:
+          label: Invoice total
+          review: always
+        /iban:
+          label: Beneficiary IBAN
+        /vendor:
+          label: Vendor
+      files:
+        includeRunInputs: true
+
+output:
+  vendor: '{{ steps.review-critical-fields.output.vendor }}'
+  total: '{{ steps.review-critical-fields.output.total }}'
+  iban: '{{ steps.review-critical-fields.output.iban }}'
+  reference: '{{ steps.review-critical-fields.output.reference }}'

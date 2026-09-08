@@ -167,6 +167,16 @@ function* iterateSteps(steps: unknown): Iterable<StepLike> {
   }
 }
 
+/** Whether any step in the definition is `control.human_review`, including nested containers. */
+export function definitionContainsHumanReview(
+  definition: { steps?: unknown[] } | undefined
+): boolean {
+  for (const step of iterateSteps(definition?.steps)) {
+    if (step.type === 'control.human_review') return true;
+  }
+  return false;
+}
+
 /** Every invoke target reference (name or id) with its execution mode. */
 export function collectInvokeWorkflowTargets(
   definition: { steps?: unknown[] } | undefined

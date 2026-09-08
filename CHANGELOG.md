@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.2
+
+### Minor Changes
+
+- d46a558: Workflow authoring now includes human-review guidance and ready-to-use templates for confidence-based exception review and explicit approval of critical fields.
+
 ## 0.16.1
 
 ### Patch Changes

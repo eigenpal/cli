@@ -14,6 +14,7 @@ export {
   SourcePackageSegmentSchema,
   SourcePackageTypeSchema,
   SourceVersionRefSchema,
+  WorkflowRunVersionRefSchema,
   WorkspaceDependencySchema,
   dottedPackageNameToPath,
   formatHostedSourceExportPath,
@@ -37,6 +38,7 @@ export {
   type SourcePackagePath,
   type SourcePackageType,
   type SourceVersionRef,
+  type WorkflowRunVersionRef,
   type WorkspaceDependency,
 } from './grammar';
 

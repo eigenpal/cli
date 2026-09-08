@@ -12,6 +12,7 @@
  *   bun packages/cli/scripts/generate-skill-reference.ts --check  # diff-only, exit 1 on drift
  */
 
+import { HumanReviewEvaluationFixtureSchema } from '@eigenpal/types';
 import {
   renderDatasetArchiveReference,
   renderEvaluatorCatalog,
@@ -22,6 +23,7 @@ import {
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { toJSONSchema } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,6 +31,17 @@ const SKILL_DIR = join(__dirname, '..', 'src', 'skill', 'reference');
 const CLI_DOCS_SRC = join(__dirname, '..', 'docs');
 const CLI_DOCS_DEST = join(SKILL_DIR, 'cli');
 const REPO_ROOT = join(__dirname, '..', '..', '..');
+
+function renderDatasetMetaReview(): string {
+  const schema = toJSONSchema(HumanReviewEvaluationFixtureSchema);
+  return [
+    'Schema for `meta.json` → `review` (from `HumanReviewEvaluationFixtureSchema` in `@eigenpal/types`):',
+    '',
+    '```json',
+    JSON.stringify(schema, null, 2),
+    '```',
+  ].join('\n');
+}
 
 interface Generation {
   file: string;
@@ -53,7 +66,10 @@ const GENERATIONS: Generation[] = [
   },
   {
     file: 'dataset-format.md',
-    blocks: { DATASET_REFERENCE: renderDatasetArchiveReference() },
+    blocks: {
+      DATASET_META_REVIEW: renderDatasetMetaReview(),
+      DATASET_REFERENCE: renderDatasetArchiveReference(),
+    },
   },
 ];
 

@@ -21,7 +21,7 @@ dataset/
     │   ├── expected.json                   OPTIONAL — expected output or { "$error": ... }
     │   ├── expected/
     │   │   └── Invoice.docx                referenced by expected.json
-    │   └── meta.json                       OPTIONAL — { rowOrder?, annotation?, overrides? }
+    │   └── meta.json                       OPTIONAL — { rowOrder?, annotation?, overrides?, review? }
     │
     └── unsupported-format/
         ├── input.json
@@ -96,6 +96,163 @@ reference is resolved into the S3 file descriptor the worker consumes.
 ```
 
 Each file is uploaded to S3 and the original filename is preserved.
+
+## Human review fixtures (`meta.json`)
+
+When a workflow includes `control.human_review`, attach optional `review`
+fixtures to `examples/<name>/meta.json`. Evaluation runs simulate review and
+never pause — fixtures assert selection routing and optional simulated edits.
+
+```json
+{
+  "review": {
+    "version": 1,
+    "steps": {
+      "review-invoice": {
+        "fields": {
+          "/total": {
+            "expectedRoute": "review",
+            "expectedReason": "low_confidence",
+            "expectedValue": 42
+          }
+        },
+        "simulate": {
+          "outcome": "approved",
+          "edits": { "/total": 42 }
+        }
+      }
+    }
+  }
+}
+```
+
+Keys under `steps` match the human review step name. `expectedRoute` is `review`
+or `skip`. `expectedReason` matches selection reason codes such as
+`low_confidence`, `always`, or `threshold_met`. `simulate.outcome` is currently
+`approved`; `simulate.edits` applies reviewer corrections during the simulated
+path. Omit `simulate` to assert routing only.
+
+<!-- GENERATED:DATASET_META_REVIEW START -->
+Schema for `meta.json` → `review` (from `HumanReviewEvaluationFixtureSchema` in `@eigenpal/types`):
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "steps": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "expectedRoute": {
+                  "type": "string",
+                  "enum": [
+                    "review",
+                    "skip"
+                  ]
+                },
+                "expectedReason": {
+                  "type": "string",
+                  "enum": [
+                    "always",
+                    "explicit",
+                    "low_confidence",
+                    "missing_confidence",
+                    "all",
+                    "reviewer_edit",
+                    "threshold_met",
+                    "never",
+                    "excluded",
+                    "unmatched",
+                    "missing_confidence_skip"
+                  ]
+                },
+                "expectedValue": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "simulate": {
+            "type": "object",
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "approved"
+              },
+              "edits": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "steps"
+  ],
+  "additionalProperties": false
+}
+```
+<!-- GENERATED:DATASET_META_REVIEW END -->
 
 ## Validate before pushing
 
@@ -193,6 +350,7 @@ Failure-expected examples store a single top-level `$error` object. At least one
 | `rowOrder` | integer | no |  | Non-negative display order hint for this example. |
 | `annotation` | string | no |  | Free-form example note, limited to 2000 characters. |
 | `overrides` | record<string, unknown> | no |  | Per-step output overrides as `{ "steps": { "<stepName>": <outputObject> } }`; overridden steps are skipped or partially merged during evaluation. |
+| `review` | object | no |  | Optional human-review evaluation fixture: expected field routes and simulated approvals or edits for this example. |
 
 
 ### Import mode (`DatasetImportModeSchema`)
@@ -238,6 +396,121 @@ Allowed values: `"append"` \| `"replace"`
         "type": "string"
       },
       "additionalProperties": {}
+    },
+    "review": {
+      "description": "Optional human-review evaluation fixture: expected field routes and simulated approvals or edits for this example.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "const": 1
+        },
+        "steps": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "expectedRoute": {
+                      "type": "string",
+                      "enum": [
+                        "review",
+                        "skip"
+                      ]
+                    },
+                    "expectedReason": {
+                      "type": "string",
+                      "enum": [
+                        "always",
+                        "explicit",
+                        "low_confidence",
+                        "missing_confidence",
+                        "all",
+                        "reviewer_edit",
+                        "threshold_met",
+                        "never",
+                        "excluded",
+                        "unmatched",
+                        "missing_confidence_skip"
+                      ]
+                    },
+                    "expectedValue": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "simulate": {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "const": "approved"
+                  },
+                  "edits": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "version",
+        "steps"
+      ],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

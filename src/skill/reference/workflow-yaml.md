@@ -1411,6 +1411,102 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
           "properties": {
             "type": {
               "type": "string",
+              "const": "control.human_review"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "if": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retry": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "inherit"
+                },
+                {
+                  "type": "string",
+                  "const": "automatic"
+                },
+                {
+                  "type": "string",
+                  "const": "never"
+                },
+                {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "automatic"
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "never"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              ]
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "retryDelay": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "with": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "with"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
               "const": "control.fail"
             },
             "name": {

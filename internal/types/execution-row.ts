@@ -198,6 +198,7 @@ export const EXECUTION_AGENT_CANCEL_REQUESTABLE_STATUSES = [
   'created',
   'pending',
   'running',
+  'waiting',
 ] as const satisfies readonly ExecutionStatus[];
 
 /** Queued agent rows (not leased): {@link createAgentExecutionsRepo}.failQueuedCancel applies here. */
@@ -216,12 +217,13 @@ export const EXECUTION_AGENT_REAP_SCAN_STATUSES = [
 
 /**
  * Agent rows included in cluster metrics breakdown by status.
- * Omits `waiting` (not used on the agent queue today).
+ * Includes `waiting` for parked human-review continuations (not active concurrency).
  */
 export const EXECUTION_AGENT_METRICS_STATUSES = [
   'created',
   'pending',
   'running',
+  'waiting',
   'finalizing',
   'completed',
   'failed',
@@ -247,7 +249,7 @@ export const EXECUTION_FAILED_OR_CANCELLED_STATUSES = [
  * - `created` — Row inserted; worker-visible prep (e.g. agent sandbox wiring) before enqueue.
  * - `pending` — Eligible for dequeue / lease; not actively executing.
  * - `running` — Worker holds a lease and is executing.
- * - `waiting` — Workflow runtime paused (human/tool/step continuation); not used by all types.
+ * - `waiting` — Runtime paused for human/tool continuation (workflow step or agent review). Lease-free; excluded from active concurrency.
  * - `finalizing` — Run finished in sandbox but post-run side effects / uploads still run.
  * - `completed` — Successful terminal state.
  * - `failed` — Error or timeout terminal state.

@@ -25,7 +25,7 @@ implement at runtime. Server-side validation errors point you here.
 - `transform.*` — deterministic data transforms (set, remove, combine, split, merge,
   script, template, pdf-embed, xlsx-to-json, json-to-xlsx). WASM sandboxed where applicable.
 - `action.*` — external side effects (HTTP, invoke another workflow, website reader).
-- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, fail).
+- `control.*` — flow control (if, foreach, parallel, parallel_map, wait, human_review, fail).
 
 The full per-type catalog with field tables is auto-generated below from
 `STEP_SCHEMAS`. The high-level map above tells you which family you want;
@@ -40,6 +40,7 @@ the catalog tells you what fields it takes.
 | Pull a typed object from text     | `ai.extract` with `config.schema`                 |
 | Pick one label from a fixed set   | `ai.classify` with `config.labels`                |
 | Reject bad inputs with a 4xx code | `control.fail` (often after `ai.classify`)        |
+| Pause for human field review      | `control.human_review` (top-level only; see below)  |
 | Sum / filter / regex              | `transform.script` (NOT Liquid)                   |
 | Render a DOCX or XLSX template (YAML workflow) | `transform.template` with `tmpl_...` or `./file.xlsx` |
 | Fill a DOCX or XLSX template (runtime agent)   | fill-template platform skill         |
@@ -157,6 +158,70 @@ $ eigenpal workflow step-type get ai.extract | jq '.outputSchema'
 
 Reference user-supplied schema fields the same way:
 `{{ steps.extract.output.extracted.invoiceNumber }}`.
+
+## Human review — top-level gate only
+
+`control.human_review` pauses the run until a reviewer confirms or corrects
+selected scalar fields, then resumes with the reviewed object or array. Place
+it as a **top-level sequential step** only — nested placement inside
+`control.if`, `control.foreach`, `control.parallel`, `control.parallel_map`, or
+`control.switch` is rejected at publish time.
+
+Config lives in `step.with` (unlike most other `control.*` steps). Wire data
+from an upstream extract or transform, choose a selection mode, and attach run
+files for context:
+
+```yaml
+- name: review-invoice
+  type: control.human_review
+  with:
+    data: '{{ steps.extract.output }}'
+    metadataFrom: ai.extract
+    instructions: Confirm vendor and total before posting.
+    selection:
+      mode: confidence
+      threshold: medium
+      missingConfidence: review
+      fields:
+        /vendor:
+          review: always
+        /total:
+          threshold: high
+    fieldMetadata:
+      /vendor:
+        label: Vendor name
+      /total:
+        label: Invoice total
+    files:
+      includeRunInputs: true
+      attachments:
+        - '{{ steps.render.output.files[0] }}'
+```
+
+When `metadataFrom: ai.extract` is set and `data` is the whole extract output
+(`{{ steps.<name>.output }}`), the step strips the reserved `_grounding` key,
+derives categorical confidence (`low`, `medium`, `high`) per field, and reuses
+the extract schema when `schema` is omitted.
+
+**Selection:** three modes — `confidence` (review fields below threshold),
+`explicit` (review matched include/exclude paths), and `all` (every scalar
+leaf). Thresholds accept numeric `0`–`1` or categorical `low|medium|high`;
+equality auto-approves. Per-path overrides live under `selection.fields` with
+`review: always|never|skip` and optional per-field `threshold`. Prefer
+`selection.fields` over the legacy `fieldMetadata.review`.
+
+**Output:** the complete reviewed data in the same shape as `data`. Reference
+downstream fields directly: `{{ steps.review-invoice.output.vendor }}`.
+
+**Evaluations:** evaluation runs always simulate review and never pause the
+run. Use `meta.json` `review` fixtures to assert routing, reasons, and
+simulated reviewer edits — see `reference/dataset-format.md`. Empty selection
+continues immediately without creating a task.
+
+**Limits:** 2 MiB review JSON, 10k scalar leaves, 1 MiB metadata, 2k required
+fields, 100 attachments.
+
+Use `eigenpal workflow step-type get control.human_review` for the full schema.
 
 ## Control containers — nested step shape and scoping
 
@@ -1400,7 +1465,7 @@ Extract structured data from text using AI with a JSON schema
 
 **Output:** `record<string, unknown>`
 
-> Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run.
+> Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.
 
 ##### Complete machine-readable schemas
 
@@ -1559,7 +1624,7 @@ Output schema:
     "type": "string"
   },
   "additionalProperties": {},
-  "description": "Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run."
+  "description": "Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding[\"line_items.0.amount\"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON."
 }
 ```
 
@@ -4802,7 +4867,7 @@ Execute another workflow and return its output
 | `execution` | `"inline"` \| `"child"` | no |  | inline: run target steps in this execution (default). child: spawn a separate run with lineage. |
 | `input` | record<string, unknown> | no |  | Input record keyed by the invoked workflow's declared inputs |
 | `wait` | boolean | no |  | Child mode only. Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
-| `timeout` | number | no |  | Child mode only. Max wait time in ms when waiting (default: 300000) |
+| `timeout` | number | no |  | Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout. |
 | `pollInterval` | number | no |  | Child mode only. How often to poll status in ms when waiting (default: 1000) |
 
 **Output:** `record<string, unknown>`
@@ -4849,7 +4914,7 @@ Config schema:
       "type": "boolean"
     },
     "timeout": {
-      "description": "Child mode only. Max wait time in ms when waiting (default: 300000)",
+      "description": "Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout.",
       "type": "number"
     },
     "pollInterval": {
@@ -5765,6 +5830,446 @@ Output schema:
     "waited"
   ],
   "additionalProperties": false
+}
+```
+
+
+#### `control.human_review` — Human Review
+
+Pause the run for selective field confirmation or correction, then continue with the reviewed data.
+
+**Behavior and examples:** `eigenpal docs read steps/control/human_review`
+
+**Durable retry:** This control step is not retried durably.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `data` | string \| record<string, unknown> \| array<unknown> | yes |  | Structured data or a template expression resolving to an object or array |
+| `schema` | record<string, unknown> | no |  | Optional JSON Schema for validating edits and exposing downstream autocomplete. When omitted with metadataFrom: ai.extract and a direct whole-output data expression, the extract step schema is reused. |
+| `metadataFrom` | `"ai.extract"` | no |  | Producer adapter. `ai.extract` derives field confidence from `_grounding` and strips that reserved key from review data. Grounding is not stripped unless this is set. |
+| `fieldMetadata` | record<string, object> | no | `{}` | RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias. |
+| `selection` | object | yes |  | Field selection policy resolved once when the task is created |
+| `files` | object | no | `{"includeRunInputs":true,"attachments":[]}` | Run input files and optional current-run attachments for reviewers |
+| `instructions` | string | no |  | Free-form guidance shown above the review workspace |
+
+**Output:** `unknown`
+
+> The complete reviewed data in the same object or array shape as the input.
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "data": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        {
+          "type": "array",
+          "items": {}
+        }
+      ],
+      "description": "Structured data or a template expression resolving to an object or array"
+    },
+    "schema": {
+      "description": "Optional JSON Schema for validating edits and exposing downstream autocomplete. When omitted with metadataFrom: ai.extract and a direct whole-output data expression, the extract step schema is reused.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "metadataFrom": {
+      "type": "string",
+      "enum": [
+        "ai.extract"
+      ],
+      "description": "Producer adapter. `ai.extract` derives field confidence from `_grounding` and strips that reserved key from review data. Grounding is not stripped unless this is set."
+    },
+    "fieldMetadata": {
+      "description": "RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias.",
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "review": {
+            "default": "auto",
+            "type": "string",
+            "enum": [
+              "auto",
+              "always",
+              "never"
+            ]
+          },
+          "display": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "include": {
+              "description": "RFC 6901 pointers or wildcard patterns (for example `/items/*/amount`)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "exclude": {
+              "description": "RFC 6901 pointers removed after include expansion",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "fields": {
+              "description": "Per-field selection policy keyed by exact pointers or wildcard patterns. Exact beats the most specific wildcard; equally specific overlapping wildcards are rejected.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "review": {
+                    "type": "string",
+                    "enum": [
+                      "always",
+                      "never",
+                      "skip"
+                    ]
+                  },
+                  "threshold": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "mode": {
+              "type": "string",
+              "const": "confidence",
+              "description": "Review fields below threshold or missing confidence"
+            },
+            "threshold": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "minLength": 1
+                }
+              ],
+              "description": "Fields with confidence strictly below this value require review. Equality auto-approves. Numeric 0–1 or categorical low|medium|high. Template strings are resolved at runtime."
+            },
+            "missingConfidence": {
+              "description": "Whether unscored or type-mismatched fields require review (default review)",
+              "default": "review",
+              "type": "string",
+              "enum": [
+                "review",
+                "skip"
+              ]
+            }
+          },
+          "required": [
+            "mode",
+            "threshold"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "include": {
+              "description": "RFC 6901 pointers or wildcard patterns (for example `/items/*/amount`)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "exclude": {
+              "description": "RFC 6901 pointers removed after include expansion",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "fields": {
+              "description": "Per-field selection policy keyed by exact pointers or wildcard patterns. Exact beats the most specific wildcard; equally specific overlapping wildcards are rejected.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "review": {
+                    "type": "string",
+                    "enum": [
+                      "always",
+                      "never",
+                      "skip"
+                    ]
+                  },
+                  "threshold": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "mode": {
+              "type": "string",
+              "const": "explicit",
+              "description": "Review only paths matched by include/exclude"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "include": {
+              "description": "RFC 6901 pointers or wildcard patterns (for example `/items/*/amount`)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "exclude": {
+              "description": "RFC 6901 pointers removed after include expansion",
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 512
+              }
+            },
+            "fields": {
+              "description": "Per-field selection policy keyed by exact pointers or wildcard patterns. Exact beats the most specific wildcard; equally specific overlapping wildcards are rejected.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "review": {
+                    "type": "string",
+                    "enum": [
+                      "always",
+                      "never",
+                      "skip"
+                    ]
+                  },
+                  "threshold": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "mode": {
+              "type": "string",
+              "const": "all",
+              "description": "Review every scalar leaf unless excluded or review: never"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Field selection policy resolved once when the task is created"
+    },
+    "files": {
+      "description": "Run input files and optional current-run attachments for reviewers",
+      "default": {
+        "includeRunInputs": true,
+        "attachments": []
+      },
+      "type": "object",
+      "properties": {
+        "includeRunInputs": {
+          "description": "Attach every authorized run input file to the review task",
+          "default": true,
+          "type": "boolean"
+        },
+        "attachments": {
+          "description": "Additional current-run file or artifact template expressions",
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "instructions": {
+      "description": "Free-form guidance shown above the review workspace",
+      "type": "string",
+      "maxLength": 10000
+    }
+  },
+  "required": [
+    "data",
+    "selection"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "The complete reviewed data in the same object or array shape as the input."
 }
 ```
 

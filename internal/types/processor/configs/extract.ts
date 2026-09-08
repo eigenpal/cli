@@ -18,19 +18,31 @@ export const ExtractInputSchema = z
       .string()
       .optional()
       .describe('Text content (alternative to content, e.g., from document parser)'),
+    /**
+     * Optional structured document from ai.parse (or a ParsedDocument).
+     * Kept as unknown here so input validation does not weaken the type;
+     * the worker validates `@openparser/schema` ParsedDocument at the use
+     * boundary.
+     */
+    structured: z
+      .unknown()
+      .optional()
+      .describe(
+        'Optional structured document (ParsedDocument or parser-owned structured output). Validated at the extract use boundary.'
+      ),
     contentType: z.enum(['text', 'image']).default('text'),
     /** Base64 image data (required if contentType is 'image') */
     imageData: z.string().optional(),
     imageMimeType: z.string().optional(),
   })
-  .refine((data) => data.content || data.text, {
-    message: 'Either content or text must be provided',
+  .refine((data) => data.content || data.text || data.structured !== undefined, {
+    message: 'Either content, text, or structured must be provided',
   });
 
 export const ExtractOutputSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run.'
+    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.'
   );
 
 /**

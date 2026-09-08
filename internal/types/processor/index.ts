@@ -10,6 +10,7 @@ export {
   SpanKind,
   TraceStatus,
   noopTracingContext,
+  type ExtractSidecarBundle,
   type ProcessorDefinition,
   type ProcessorExecutionContext,
   type ProcessorLogger,
@@ -27,8 +28,13 @@ export {
 } from './normalize-extract-input';
 
 // Grounding result types (produced by the worker, consumed by the app)
-export { stripGroundingMetadata } from './grounding';
-export type { FieldGrounding, GroundingConfidence, GroundingResult } from './grounding';
+export { dottedPathToJsonPointer, stripGroundingMetadata, valueAtDottedPath } from './grounding';
+export type {
+  FieldGrounding,
+  FieldGroundingCitation,
+  GroundingConfidence,
+  GroundingResult,
+} from './grounding';
 
 // Execution status
 export {

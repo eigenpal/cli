@@ -214,6 +214,15 @@ function validateStepConfigsRecursive(
       continue;
     }
 
+    if (step.type === 'control.human_review' && pathPrefix.length > 1) {
+      issues.push({
+        path: [...stepPath, 'type'],
+        message:
+          'control.human_review is supported only in the top-level step sequence; nested and concurrent review checkpoints are not supported',
+        code: 'custom',
+      });
+    }
+
     const schemaDef = getStepSchema(step.type);
     if (schemaDef?.configInWith) {
       const cfg = (step as { with?: unknown }).with ?? {};

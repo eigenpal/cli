@@ -329,7 +329,7 @@ export async function installSkillTools(opts: InstallToolsOptions): Promise<void
       initialValues: initial,
       required: false,
     });
-    if (isCancel(picked)) {
+    if (isCancel(picked) || !Array.isArray(picked)) {
       cancel('Aborted.');
       return;
     }
@@ -442,11 +442,11 @@ export async function uninstallSkillTools(opts: UninstallToolsOptions): Promise<
       })),
       required: false,
     });
-    if (isCancel(picked)) {
+    if (isCancel(picked) || !Array.isArray(picked)) {
       cancel('Aborted.');
       return;
     }
-    targets = TOOLS.filter((t) => (picked as string[]).includes(t.id));
+    targets = TOOLS.filter((t) => picked.includes(t.id));
   }
 
   if (targets.length === 0) {

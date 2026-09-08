@@ -24,7 +24,13 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dim, info, success, ui } from '../../lib/ui';
 
-const TEMPLATE_NAMES = ['blank', 'pdf-extraction', 'text-classification'] as const;
+const TEMPLATE_NAMES = [
+  'blank',
+  'pdf-extraction',
+  'text-classification',
+  'human-review-confidence-exception',
+  'human-review-explicit-critical',
+] as const;
 type TemplateName = (typeof TEMPLATE_NAMES)[number];
 
 const TEMPLATE_DESCRIPTIONS: Record<TemplateName, string> = {
@@ -33,6 +39,10 @@ const TEMPLATE_DESCRIPTIONS: Record<TemplateName, string> = {
     'Parse a PDF/image with the auto parser, then ai.extract structured fields against a JSON schema.',
   'text-classification':
     'Classify free-form text into one of a fixed set of labels (positive/neutral/negative).',
+  'human-review-confidence-exception':
+    'Parse and extract an invoice, then pause for human review only on low-confidence fields.',
+  'human-review-explicit-critical':
+    'Parse and extract payment fields, then pause for explicit review of total and IBAN only.',
 };
 
 function isValidProjectName(name: string): boolean {

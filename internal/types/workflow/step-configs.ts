@@ -22,6 +22,7 @@ import {
   type JsonSchema7Type,
 } from '../core/common';
 import { EmailServerIdSchema } from '../email-servers';
+import { HumanReviewStepConfigSchema } from '../human-review';
 import {
   PARSE_OUTPUT_FORMAT_DESCRIPTION,
   ParseModeSchema,
@@ -211,7 +212,7 @@ export const AiExtractConfigSchema = z.object({
 export const AiExtractOutputSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by field name: `_grounding.<field> = { confidence: high|medium|low, needsReview, reason?, source_span: { start, end, text, alignment } | null }`, plus reserved `_degraded: true` / `_reason` markers when the grounding LLM pass could not run.'
+    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.'
   );
 
 /**
@@ -1420,7 +1421,9 @@ export const ActionInvokeWorkflowConfigSchema = z
     timeout: z
       .number()
       .optional()
-      .describe('Child mode only. Max wait time in ms when waiting (default: 300000)'),
+      .describe(
+        'Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout.'
+      ),
     pollInterval: z
       .number()
       .optional()
@@ -1716,6 +1719,12 @@ export const ControlWaitOutputSchema = z.object({
   waited: z.number().describe('Actual milliseconds waited'),
 });
 
+export const ControlHumanReviewConfigSchema = HumanReviewStepConfigSchema;
+
+export const ControlHumanReviewOutputSchema = z
+  .unknown()
+  .describe('The complete reviewed data in the same object or array shape as the input.');
+
 /**
  * control.fail - Terminate the workflow with a typed status code + message.
  *
@@ -1842,6 +1851,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'control.parallel': CONTROL_RETRY_CAPABILITY,
   'control.parallel_map': CONTROL_RETRY_CAPABILITY,
   'control.wait': CONTROL_RETRY_CAPABILITY,
+  'control.human_review': CONTROL_RETRY_CAPABILITY,
   'control.fail': CONTROL_RETRY_CAPABILITY,
 };
 
@@ -2132,6 +2142,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     outputSchema: ControlWaitOutputSchema,
     configInWith: false,
   },
+  'control.human_review': {
+    type: 'control.human_review',
+    category: 'control',
+    name: 'Human Review',
+    description:
+      'Pause the run for selective field confirmation or correction, then continue with the reviewed data.',
+    configSchema: ControlHumanReviewConfigSchema,
+    outputSchema: ControlHumanReviewOutputSchema,
+    configInWith: true,
+  },
   'control.fail': {
     type: 'control.fail',
     category: 'control',
@@ -2327,4 +2347,5 @@ export type ControlForeachConfig = z.infer<typeof ControlForeachConfigSchema>;
 export type ControlParallelMapConfig = z.infer<typeof ControlParallelMapConfigSchema>;
 export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;
 export type ControlWaitConfig = z.infer<typeof ControlWaitConfigSchema>;
+export type ControlHumanReviewConfig = z.infer<typeof ControlHumanReviewConfigSchema>;
 export type ControlFailConfig = z.infer<typeof ControlFailConfigSchema>;

@@ -54,6 +54,7 @@ export const CONTROL_STEP_TYPES = [
   'control.parallel',
   'control.parallel_map',
   'control.wait',
+  'control.human_review',
   'control.fail',
 ] as const;
 
@@ -104,6 +105,7 @@ export const StepTypeValue = {
   CONTROL_PARALLEL: 'control.parallel',
   CONTROL_PARALLEL_MAP: 'control.parallel_map',
   CONTROL_WAIT: 'control.wait',
+  CONTROL_HUMAN_REVIEW: 'control.human_review',
   CONTROL_FAIL: 'control.fail',
 } as const;
 
@@ -180,6 +182,12 @@ export const WaitStepSchema = BaseStepSchema.extend({
 });
 export type WaitStep = z.infer<typeof WaitStepSchema>;
 
+export const HumanReviewStepSchema = BaseStepSchema.extend({
+  type: z.literal('control.human_review'),
+  with: z.record(z.string(), z.unknown()),
+});
+export type HumanReviewStep = z.infer<typeof HumanReviewStepSchema>;
+
 /**
  * Fail step - terminate the workflow with a typed status code and message.
  *
@@ -212,6 +220,7 @@ export type Step =
   | TransformStep
   | ActionStep
   | WaitStep
+  | HumanReviewStep
   | FailStep
   | IfStep
   | SwitchStep
@@ -422,6 +431,7 @@ export const StepSchema: z.ZodType<Step> = z.lazy(() =>
     TransformStepSchema,
     ActionStepSchema,
     WaitStepSchema,
+    HumanReviewStepSchema,
     FailStepSchema,
     LegacyBlockStepSchemaInner,
     IfStepSchemaInner,

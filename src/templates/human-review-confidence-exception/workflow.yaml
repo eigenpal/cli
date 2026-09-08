@@ -1,0 +1,60 @@
+name: __NAME__
+version: 1.0.0
+description: Extract invoice fields, then pause only when confidence is below threshold.
+
+triggerMethods:
+  - type: api
+
+inputs:
+  - name: document
+    type: file
+    description: Invoice PDF or image
+
+steps:
+  - name: parse
+    type: ai.parse
+    with:
+      input: '{{ input.document }}'
+
+  - name: extract
+    type: ai.extract
+    with:
+      input: '{{ steps.parse.output.text }}'
+      schema:
+        type: object
+        properties:
+          vendor:
+            type: string
+          total:
+            type: number
+          currency:
+            type: string
+        required: [vendor, total, currency]
+        additionalProperties: false
+
+  - name: review-exceptions
+    type: control.human_review
+    with:
+      data: '{{ steps.extract.output }}'
+      instructions: Confirm low-confidence totals before posting.
+      selection:
+        mode: confidence
+        threshold: 0.85
+        missingConfidence: review
+      fieldMetadata:
+        /vendor:
+          confidence: 0.98
+          label: Vendor
+        /total:
+          confidence: 0.42
+          label: Invoice total
+        /currency:
+          confidence: 0.99
+          label: Currency
+      files:
+        includeRunInputs: true
+
+output:
+  vendor: '{{ steps.review-exceptions.output.vendor }}'
+  total: '{{ steps.review-exceptions.output.total }}'
+  currency: '{{ steps.review-exceptions.output.currency }}'

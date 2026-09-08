@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EXECUTION_STATUSES } from './execution-row';
+import { HumanReviewSourceKindSchema, type HumanReviewSourceKind } from './human-review';
 
 export const WEBHOOK_API_VERSION = '2026-07-01' as const;
 export const WEBHOOK_NOTIFY_CHANNEL = 'eigenpal:webhooks' as const;
@@ -84,6 +85,29 @@ export const PublicWebhookRunSchema = z.object({
   outputOmitted: z.boolean().optional(),
 });
 
+export const HUMAN_REVIEW_WEBHOOK_OUTCOMES = [
+  'created',
+  'approved',
+  'rejected',
+  'cancelled',
+] as const;
+
+/** Identifiers and counts only — never field values, file bytes, or metadata. */
+export const PublicHumanReviewEventMetadataSchema = z
+  .object({
+    taskId: z.string().min(1),
+    sourceKind: HumanReviewSourceKindSchema,
+    sourceLabel: z.string().min(1),
+    requiredCount: z.number().int().nonnegative(),
+    confirmedCount: z.number().int().nonnegative().optional(),
+    actorUserId: z.string().nullable().optional(),
+  })
+  .strict();
+
+export const PublicWebhookHumanReviewSchema = PublicHumanReviewEventMetadataSchema.extend({
+  outcome: z.enum(HUMAN_REVIEW_WEBHOOK_OUTCOMES),
+}).strict();
+
 const EnvelopeBaseSchema = z.object({
   id: WebhookEventIdSchema,
   apiVersion: z.literal(WEBHOOK_API_VERSION),
@@ -102,6 +126,7 @@ export const RunStatusChangedWebhookEventSchema = EnvelopeBaseSchema.extend({
     run: PublicWebhookRunSchema,
     previousStatus: z.enum(EXECUTION_STATUSES),
     currentStatus: z.enum(EXECUTION_STATUSES),
+    humanReview: PublicWebhookHumanReviewSchema.optional(),
   }),
 });
 
@@ -268,8 +293,88 @@ export type WebhookEventType = z.infer<typeof WebhookEventTypeSchema>;
 export type WebhookDeliveryState = z.infer<typeof WebhookDeliveryStateSchema>;
 export type WebhookCustomHeader = z.infer<typeof WebhookCustomHeaderSchema>;
 export type PublicWebhookRun = z.infer<typeof PublicWebhookRunSchema>;
+export type PublicHumanReviewEventMetadata = z.infer<typeof PublicHumanReviewEventMetadataSchema>;
+export type PublicWebhookHumanReview = z.infer<typeof PublicWebhookHumanReviewSchema>;
+export type HumanReviewWebhookOutcome = (typeof HUMAN_REVIEW_WEBHOOK_OUTCOMES)[number];
 export type WebhookEventEnvelope = z.infer<typeof WebhookEventEnvelopeSchema>;
 export type RunCreatedWebhookEvent = z.infer<typeof RunCreatedWebhookEventSchema>;
 export type RunStatusChangedWebhookEvent = z.infer<typeof RunStatusChangedWebhookEventSchema>;
 export type CreateWebhookEndpoint = z.infer<typeof CreateWebhookEndpointSchema>;
 export type UpdateWebhookEndpoint = z.infer<typeof UpdateWebhookEndpointSchema>;
+
+export function humanReviewWebhookOutcome(input: {
+  previousStatus: string;
+  currentStatus: string;
+  taskStatus: string;
+}): HumanReviewWebhookOutcome | undefined {
+  if (input.taskStatus === 'preparing') return undefined;
+  if (input.currentStatus === 'waiting') return 'created';
+  if (input.previousStatus !== 'waiting') return undefined;
+  if (
+    input.taskStatus === 'approved' ||
+    input.taskStatus === 'rejected' ||
+    input.taskStatus === 'cancelled'
+  ) {
+    return input.taskStatus;
+  }
+  return undefined;
+}
+
+function pickPublicHumanReviewEventMetadata(input: {
+  taskId: string;
+  sourceKind: HumanReviewSourceKind;
+  sourceLabel: string;
+  requiredCount: number;
+  confirmedCount?: number;
+  actorUserId?: string | null;
+}): PublicHumanReviewEventMetadata {
+  return PublicHumanReviewEventMetadataSchema.parse({
+    taskId: input.taskId,
+    sourceKind: input.sourceKind,
+    sourceLabel: input.sourceLabel,
+    requiredCount: input.requiredCount,
+    ...(input.confirmedCount !== undefined ? { confirmedCount: input.confirmedCount } : {}),
+    ...(input.actorUserId !== undefined ? { actorUserId: input.actorUserId } : {}),
+  });
+}
+
+export function toPublicHumanReviewEventMetadata(input: {
+  taskId: string;
+  sourceKind: HumanReviewSourceKind;
+  sourceLabel: string;
+  requiredCount: number;
+  confirmedCount?: number;
+  actorUserId?: string | null;
+}): PublicHumanReviewEventMetadata {
+  return pickPublicHumanReviewEventMetadata(input);
+}
+
+export function toPublicWebhookHumanReview(input: {
+  taskId: string;
+  sourceKind: HumanReviewSourceKind;
+  sourceLabel: string;
+  requiredCount: number;
+  confirmedCount?: number;
+  outcome: HumanReviewWebhookOutcome;
+  actorUserId?: string | null;
+}): PublicWebhookHumanReview {
+  return PublicWebhookHumanReviewSchema.parse({
+    ...pickPublicHumanReviewEventMetadata(input),
+    outcome: input.outcome,
+  });
+}
+
+/** Drop run output whenever a status webhook describes human review. */
+export function omitWebhookRunOutput(run: PublicWebhookRun): PublicWebhookRun {
+  const next = { ...run };
+  delete next.output;
+  delete next.outputOmitted;
+  return PublicWebhookRunSchema.parse(next);
+}
+
+export function humanReviewWebhookOmitsOutput(
+  previousStatus: string,
+  currentStatus: string
+): boolean {
+  return previousStatus === 'waiting' || currentStatus === 'waiting';
+}

@@ -166,6 +166,15 @@ export interface ProcessorLogger {
 }
 
 /**
+ * Internal extract sidecars. Not part of workflow step output.
+ * Values are validated at the worker boundary against OpenParser canonical schemas.
+ */
+export type ExtractSidecarBundle = {
+  lineage: unknown;
+  parsedDocument: unknown;
+};
+
+/**
  * Processor execution context with optional tracing
  *
  * Runtime context for a single processor execution. Contains IDs for logging/tracing
@@ -194,4 +203,10 @@ export type ProcessorExecutionContext = z.infer<typeof ProcessorExecutionContext
   logger?: ProcessorLogger;
   /** Optional abort signal for cancellation (not serializable, runtime-only) */
   signal?: AbortSignal;
+  /**
+   * Runtime-only sidecar emission after shared grounded extraction. Carries
+   * `lineage@1` plus the ParsedDocument it was built from. Never mixed into
+   * user-visible JSON output; the engine persists both after output validation.
+   */
+  emitExtractSidecars?: (bundle: ExtractSidecarBundle) => void;
 };

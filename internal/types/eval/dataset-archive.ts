@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HumanReviewEvaluationFixtureSchema } from '../human-review-evaluation';
 
 /**
  * Wire shapes for dataset/evaluator/results export-import.
@@ -66,6 +67,9 @@ export const DatasetMetaSchema = z.object({
     .describe(
       'Per-step output overrides as `{ "steps": { "<stepName>": <outputObject> } }`; overridden steps are skipped or partially merged during evaluation.'
     ),
+  review: HumanReviewEvaluationFixtureSchema.optional().describe(
+    'Optional human-review evaluation fixture: expected field routes and simulated approvals or edits for this example.'
+  ),
 });
 export type DatasetMeta = z.infer<typeof DatasetMetaSchema>;
 
@@ -153,7 +157,7 @@ export const EvalResultExportRowSchema = z.object({
   exampleName: z.string().nullable(),
   batchId: z.string().min(1).nullable(),
   evaluatorName: z.string().min(1),
-  evaluatorType: z.enum(['exact-diff', 'llm-judge', 'custom-script']),
+  evaluatorType: z.enum(['exact-diff', 'llm-judge', 'custom-script', 'human-review']),
   score: z.number().nullable(),
   passed: z.boolean().nullable(),
   label: z.string().nullable(),

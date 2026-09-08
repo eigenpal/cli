@@ -342,7 +342,7 @@ export function isWorkflowResult(value: unknown): value is WorkflowResult {
  * Always includes files array, plus user-defined data
  */
 export const WorkflowResultSchema = z.object({
-  /** Files generated during workflow execution (automatically collected) */
+  /** Files generated during workflow execution (automatically collected; excludes run inputs) */
   files: z.array(WorkflowFileOutputSchema),
   /** User-defined output data (from workflow's output expression) */
   data: z.unknown(),

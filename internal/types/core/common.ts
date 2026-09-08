@@ -35,6 +35,9 @@ export const ID_PREFIXES = {
   EVAL_BATCH: 'evb',
   RUN_REVIEW: 'rev',
   RUN_REVIEW_CORRECTION: 'rvc',
+  HUMAN_REVIEW_TASK: 'hrt',
+  HUMAN_REVIEW_FIELD_DECISION: 'hrd',
+  HUMAN_REVIEW_FIELD_MUTATION: 'hrm',
   // Table view (legacy — eval examples used to live in workflow_table_rows)
   TABLE_ROW: 'row',
   // Folders

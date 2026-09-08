@@ -191,6 +191,22 @@ export interface AIClient {
   ): Promise<ExtractResponse>;
 
   /**
+   * One algorithm-level structured-output call with no prompt fallback.
+   *
+   * Optional: plugin mocks and custom AIClient implementations may omit it.
+   * `extract()` may try structured output and then fall back to prompting;
+   * this method must not. Hosts that need a single json_schema attempt
+   * (OpenParser `runGroundedExtraction`) should call this instead of
+   * `extract()`. BaseAIClient implements it by exposing the protected
+   * structured path (schema sanitization, prompt-injection guardrail,
+   * provider retry/timeout/semaphore).
+   */
+  extractStructuredOnce?(
+    content: string | { text: string; images?: ImageInput[] },
+    options: ExtractOptions
+  ): Promise<ExtractResponse>;
+
+  /**
    * Raw text completion — send a single prompt, get the model's text back.
    *
    * Used where the caller owns the full prompt and parses the response

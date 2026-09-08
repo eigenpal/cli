@@ -87,6 +87,9 @@ export const S3_PATH_GRAMMAR = {
           'metadata.json': PATH_LEAF,
           'issues.md': PATH_LEAF,
           'trace.jsonl': PATH_LEAF,
+          'human-review-continuations': {
+            $taskId: PATH_LEAF,
+          },
         },
       },
       sessions: {
@@ -155,6 +158,15 @@ export const S3_PATH_GRAMMAR = {
           'trace.jsonl': PATH_LEAF,
           'events.jsonl': PATH_LEAF,
           'usage.json': PATH_LEAF,
+          'human-review-continuations': {
+            $taskId: PATH_LEAF,
+          },
+          'step-artifacts': {
+            $stepArtifactId: {
+              'lineage.json': PATH_LEAF,
+              'parsed-document.json': PATH_LEAF,
+            },
+          },
         },
       },
     },
@@ -350,6 +362,43 @@ export function s3PathFilename(value: string): string {
 
 export function s3FileArtifactName(fileId: string, filename: string): string {
   return `${assertSegment('fileId', fileId)}-${s3PathFilename(filename)}`;
+}
+
+/**
+ * Deterministic URL-safe id for run step-artifact keys. Derived from the
+ * stable scope-aware `stepExecutionId` (`executionId:stepName:scopeHash`) so
+ * nested scopes do not collide and retries overwrite the same objects.
+ * Unpadded base64url — S3 segments reject `:`.
+ */
+export function stepArtifactIdFromStepExecutionId(stepExecutionId: string): string {
+  const trimmed = stepExecutionId.trim();
+  if (!trimmed) {
+    throw new Error('stepExecutionId is required to build a step artifact id');
+  }
+  return Buffer.from(trimmed, 'utf8').toString('base64url');
+}
+
+export function extractSidecarS3Suffixes(input: {
+  automationId: string;
+  runId: string;
+  stepExecutionId: string;
+}): { lineageArtifactKey: string; parsedDocumentArtifactKey: string } {
+  const stepArtifactId = stepArtifactIdFromStepExecutionId(input.stepExecutionId);
+  const params = {
+    automationId: input.automationId,
+    runId: input.runId,
+    stepArtifactId,
+  };
+  return {
+    lineageArtifactKey: buildS3PathSuffix(
+      'automations/:automationId/runs/:runId/step-artifacts/:stepArtifactId/lineage.json',
+      params
+    ),
+    parsedDocumentArtifactKey: buildS3PathSuffix(
+      'automations/:automationId/runs/:runId/step-artifacts/:stepArtifactId/parsed-document.json',
+      params
+    ),
+  };
 }
 
 // Artifact names are `${fileId}-${filename}` where fileId is `file_<nanoid(21)>`
