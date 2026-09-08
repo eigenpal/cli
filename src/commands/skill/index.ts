@@ -333,7 +333,7 @@ export async function installSkillTools(opts: InstallToolsOptions): Promise<void
       cancel('Aborted.');
       return;
     }
-    selectedIds = picked;
+    selectedIds = picked as string[];
   }
 
   const selected = new Set(selectedIds);

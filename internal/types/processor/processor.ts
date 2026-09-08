@@ -203,6 +203,8 @@ export type ProcessorExecutionContext = z.infer<typeof ProcessorExecutionContext
   logger?: ProcessorLogger;
   /** Optional abort signal for cancellation (not serializable, runtime-only) */
   signal?: AbortSignal;
+  /** Trusted directory for ephemeral file outputs in the headless runtime. */
+  localFileOutputDirectory?: string;
   /**
    * Runtime-only sidecar emission after shared grounded extraction. Carries
    * `lineage@1` plus the ParsedDocument it was built from. Never mixed into

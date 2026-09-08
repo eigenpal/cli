@@ -69,6 +69,12 @@ export const ResolvedProcessorFileSchema = z
     ref: z.string().optional().describe('Tenant-scoped storage key suffix for S3-backed handles'),
     path: z.string().optional().describe('Local filesystem path for headless/CLI handles'),
     base64: z.string().optional().describe('Base64 bytes for inline handles'),
+    size: z
+      .number()
+      .int()
+      .nonnegative()
+      .optional()
+      .describe('Byte size when a file-producing step recorded it'),
   })
   .strict();
 

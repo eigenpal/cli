@@ -24,9 +24,11 @@ export type RunFormFile = {
 
 type LocalRunFile = {
   fieldName: string;
-  content: Buffer;
   filename: string;
   mimeType: string;
+  size: number;
+  filePath?: string;
+  content?: Buffer;
 };
 
 export type PreparedRunInputFiles = {
@@ -60,12 +62,16 @@ export async function buildPreparedRunRequest(
   const localFiles: LocalRunFile[] = [];
 
   for (const spec of parseInputFileSpecs(input.inputFile ?? [])) {
-    const data = await fs.readFile(spec.filePath);
+    const info = await fs.stat(spec.filePath);
+    if (!info.isFile()) {
+      throw new Error(`--input-file path is not a file: ${spec.filePath}`);
+    }
     localFiles.push({
       fieldName: spec.fieldName,
-      content: data,
+      filePath: spec.filePath,
       filename: path.basename(spec.filePath),
       mimeType: guessMimeType(path.basename(spec.filePath)) || 'application/octet-stream',
+      size: info.size,
     });
   }
 
@@ -78,11 +84,12 @@ export async function buildPreparedRunRequest(
       content,
       filename: file.filename,
       mimeType: file.mimeType || guessMimeType(file.filename) || 'application/octet-stream',
+      size: content.byteLength,
     });
   }
 
   const preUploadIndices = indicesRequiringPreUpload(
-    localFiles.map((file) => ({ size: file.content.byteLength }))
+    localFiles.map((file) => ({ size: file.size }))
   );
   upgradeMixedFieldPreUpload(localFiles, preUploadIndices);
 
@@ -91,13 +98,24 @@ export async function buildPreparedRunRequest(
   for (let index = 0; index < localFiles.length; index++) {
     const file = localFiles[index]!;
     if (!preUploadIndices.has(index)) continue;
-    const uploaded = await uploadReusableFile(client, {
-      content: file.content,
-      filename: file.filename,
-      mimeType: file.mimeType,
-      purpose: 'run-input',
-      idempotencyKey: preUploadIdempotencyKeys[index],
-    });
+    const uploaded = await uploadReusableFile(
+      client,
+      file.filePath
+        ? {
+            filePath: file.filePath,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            purpose: 'run-input',
+            idempotencyKey: preUploadIdempotencyKeys[index],
+          }
+        : {
+            content: file.content!,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            purpose: 'run-input',
+            idempotencyKey: preUploadIdempotencyKeys[index],
+          }
+    );
     const refs = preUploadRefsByField.get(file.fieldName) ?? [];
     refs.push({ $fileId: uploaded.id });
     preUploadRefsByField.set(file.fieldName, refs);
@@ -115,7 +133,9 @@ export async function buildPreparedRunRequest(
   if (input.metadata) form.append('metadata', JSON.stringify(input.metadata));
 
   for (const file of remaining) {
-    appendFilePart(form, file.fieldName, file.content, file.filename, file.mimeType);
+    const content =
+      file.content ?? (file.filePath ? await fs.readFile(file.filePath) : Buffer.alloc(0));
+    appendFilePart(form, file.fieldName, content, file.filename, file.mimeType);
   }
 
   return { form, hasMultipartFiles: remaining.length > 0 };

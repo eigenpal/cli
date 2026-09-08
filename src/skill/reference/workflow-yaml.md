@@ -1008,7 +1008,8 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "ai.segment",
                 "ai.classify",
                 "ai.classify-pages",
-                "ai.vision"
+                "ai.vision",
+                "ai.search-files"
               ]
             },
             "name": {
@@ -1116,7 +1117,9 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "transform.json-to-xlsx",
                 "transform.script",
                 "transform.text-chunker",
-                "transform.regex-extract"
+                "transform.regex-extract",
+                "transform.archive-list",
+                "transform.archive-extract"
               ]
             },
             "name": {

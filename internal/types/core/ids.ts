@@ -17,10 +17,13 @@ export const PROCESSOR_IDS = {
   CLASSIFY: 'builtin/classify',
   CLASSIFY_PAGES: 'builtin/classify-pages',
   VISION: 'builtin/vision',
+  SEARCH_FILES: 'builtin/search-files',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',
   XLSX_TO_JSON: 'builtin/xlsx-to-json',
   JSON_TO_XLSX: 'builtin/json-to-xlsx',
+  ARCHIVE_LIST: 'builtin/archive-list',
+  ARCHIVE_EXTRACT: 'builtin/archive-extract',
 } as const;
 
 export type ProcessorId = (typeof PROCESSOR_IDS)[keyof typeof PROCESSOR_IDS];

@@ -307,6 +307,94 @@ export const AiVisionOutputSchema = z
   );
 
 /**
+ * ai.search-files - Read-only investigation of a ZIP archive.
+ *
+ * Point the step at a ZIP file, ask a question, and get an answer with
+ * citations plus the list of files inspected. The step never writes back
+ * into the archive. ZIP is the only accepted format in this version.
+ */
+export const AI_SEARCH_FILES_DEFAULT_MAX_ITERATIONS = 12;
+export const AI_SEARCH_FILES_MAX_ITERATIONS = 50;
+export const AI_SEARCH_FILES_DEFAULT_MAX_FILES = 50;
+export const AI_SEARCH_FILES_MAX_FILES = 200;
+export const AI_SEARCH_FILES_MAX_CITATION_EXCERPT_CHARS = 2000;
+
+export const AiSearchFilesConfigSchema = z.object({
+  archive: z
+    .string()
+    .min(1)
+    .describe(
+      'Template expression or file reference for the ZIP archive to inspect. ZIP is the only accepted format in this version.'
+    ),
+  query: z
+    .string()
+    .min(1)
+    .describe('Natural-language question to answer from files inside the archive.'),
+  root: z
+    .string()
+    .optional()
+    .describe(
+      'Optional folder prefix inside the archive. When set, only files under this path are in scope.'
+    ),
+  provider: z
+    .string()
+    .optional()
+    .describe(
+      'Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted.'
+    ),
+  model: z.string().optional().describe('Model override (advanced).'),
+  reasoningEffort: OptionalReasoningEffortSchema,
+  maxIterations: z
+    .number()
+    .int()
+    .min(1)
+    .max(AI_SEARCH_FILES_MAX_ITERATIONS)
+    .default(AI_SEARCH_FILES_DEFAULT_MAX_ITERATIONS)
+    .optional()
+    .describe(
+      `Maximum investigation turns. Default ${AI_SEARCH_FILES_DEFAULT_MAX_ITERATIONS}, capped at ${AI_SEARCH_FILES_MAX_ITERATIONS}.`
+    ),
+  maxFiles: z
+    .number()
+    .int()
+    .min(1)
+    .max(AI_SEARCH_FILES_MAX_FILES)
+    .default(AI_SEARCH_FILES_DEFAULT_MAX_FILES)
+    .optional()
+    .describe(
+      `Maximum files the step may open. Default ${AI_SEARCH_FILES_DEFAULT_MAX_FILES}, capped at ${AI_SEARCH_FILES_MAX_FILES}.`
+    ),
+});
+
+export const AiSearchFilesCitationSchema = z.object({
+  path: z.string().min(1).describe('Archive-relative path of a file the step inspected and cited.'),
+  excerpt: z
+    .string()
+    .max(AI_SEARCH_FILES_MAX_CITATION_EXCERPT_CHARS)
+    .optional()
+    .describe(
+      'Optional excerpt copied from the inspected file text. Omitted when no verbatim excerpt was supplied.'
+    ),
+});
+
+export const AiSearchFilesOutputSchema = z.object({
+  answer: z
+    .string()
+    .min(1)
+    .describe(
+      'The investigation answer. Citations point at inspected files; the answer text itself is model-generated.'
+    ),
+  citations: z
+    .array(AiSearchFilesCitationSchema)
+    .describe(
+      'Citations to files the step inspected. Excerpts, when present, are copied from inspected text.'
+    ),
+  filesInspected: z
+    .array(z.string())
+    .describe('Archive-relative paths of files the step opened during investigation.'),
+});
+
+/**
  * ai.split - Split a parsed document into named sections using an LLM.
  *
  * Consumes the output of ai.parse (per-page text). Pages are chunked into
@@ -1068,6 +1156,98 @@ export const TransformJsonToXlsxConfigSchema = z
 export const TransformJsonToXlsxOutputSchema = JsonToXlsxOutputSchema;
 
 /**
+ * Maximum entries `transform.archive-list` may return in one page.
+ * Matches the ZIP central-directory cap (`DEFAULT_ZIP_ARCHIVE_LIMITS.maxEntries`).
+ */
+export const ARCHIVE_LIST_MAX_ENTRIES = 10_000;
+
+/**
+ * transform.archive-list - Deterministic listing of ZIP archive entries.
+ * Config goes in step.with. ZIP is the only accepted format in this version.
+ */
+export const TransformArchiveListConfigSchema = z.object({
+  archive: z
+    .string()
+    .min(1)
+    .describe(
+      'Template expression or file reference for the ZIP archive to list. ZIP is the only accepted format in this version.'
+    ),
+  prefix: z
+    .string()
+    .optional()
+    .describe(
+      'Optional folder prefix inside the archive after path normalization (for example invoices or invoices/).'
+    ),
+  search: z
+    .string()
+    .optional()
+    .describe('Optional case-insensitive substring match on the normalized archive path.'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Number of matching entries to skip after sorting. Default 0.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(ARCHIVE_LIST_MAX_ENTRIES)
+    .optional()
+    .describe(
+      `Maximum matching entries to return after sorting. Capped at ${ARCHIVE_LIST_MAX_ENTRIES}. Omit to return every matching entry up to that cap.`
+    ),
+});
+
+export const TransformArchiveListEntrySchema = z.object({
+  path: z.string().describe('Normalized archive-relative path'),
+  compressedSize: z.number().int().min(0).describe('Declared compressed size in bytes'),
+  uncompressedSize: z.number().int().min(0).describe('Declared uncompressed size in bytes'),
+});
+
+export const TransformArchiveListOutputSchema = z.object({
+  entries: z
+    .array(TransformArchiveListEntrySchema)
+    .describe('Matching files, sorted by normalized path. Directories and junk paths are omitted.'),
+  total: z
+    .number()
+    .int()
+    .min(0)
+    .describe('Number of matching entries before offset/limit pagination.'),
+});
+
+/**
+ * transform.archive-extract - Extract exactly one ZIP entry as a run output file.
+ * Config goes in step.with. ZIP is the only accepted format in this version.
+ * Nested ZIP entries are stored as application/zip files, not parsed.
+ * Size limits: 64 MiB per entry, 512 MiB cumulative per reader, and a
+ * process-wide concurrent declared-inflation budget (default 512 MiB).
+ * The process budget is live admission, not a persisted per-run quota.
+ */
+export const TransformArchiveExtractConfigSchema = z.object({
+  archive: z
+    .string()
+    .min(1)
+    .describe(
+      'Template expression or file reference for the ZIP archive. ZIP is the only accepted format in this version.'
+    ),
+  path: z
+    .string()
+    .min(1)
+    .describe(
+      'Archive-relative path of the single file to extract, for example {{ item.path }} from a prior archive-list step.'
+    ),
+});
+
+export const TransformArchiveExtractOutputSchema = z.object({
+  fileId: z.string().describe('File ID from the files table'),
+  path: z.string().describe('Normalized archive-relative path that was extracted'),
+  filename: z.string().describe('Basename of the extracted file'),
+  mimeType: z.string().describe('Detected MIME type of the extracted file'),
+  size: z.number().int().min(0).describe('Uncompressed size in bytes'),
+});
+
+/**
  * transform.script — Execute a TypeScript function in a QuickJS sandbox.
  *
  * The user provides a typed function declaration:
@@ -1817,6 +1997,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'ai.classify': AI_RETRY_CAPABILITY,
   'ai.classify-pages': AI_RETRY_CAPABILITY,
   'ai.vision': AI_RETRY_CAPABILITY,
+  'ai.search-files': AI_RETRY_CAPABILITY,
   'transform.set': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.remove': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.combine': DETERMINISTIC_RETRY_CAPABILITY,
@@ -1829,6 +2010,8 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'transform.script': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.text-chunker': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.regex-extract': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.archive-list': DETERMINISTIC_RETRY_CAPABILITY,
+  'transform.archive-extract': FILE_OUTPUT_RETRY_CAPABILITY,
   'action.http': {
     replaySafety: 'requires-idempotency',
     automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
@@ -1928,6 +2111,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Inspect rendered page images with a vision model and return structured JSON matching a schema. The visual counterpart to Extract Data: use it for conclusions that live in the pixels rather than the text (is the document signed? are the photos usable?). Renders PDF, image, or Office/Word inputs; route to specific pages with an ai.split page range to keep it cheap.',
     configSchema: AiVisionConfigSchema,
     outputSchema: AiVisionOutputSchema,
+    configInWith: true,
+  },
+  'ai.search-files': {
+    type: 'ai.search-files',
+    category: 'ai',
+    name: 'Search Files',
+    description:
+      'Investigate a ZIP archive with a question and return an answer plus file citations. Read-only: the step opens files in the archive and never writes back. ZIP is the only accepted format in this version. Optionally scope the search to a folder prefix and cap how many files and investigation turns may run.',
+    configSchema: AiSearchFilesConfigSchema,
+    outputSchema: AiSearchFilesOutputSchema,
     configInWith: true,
   },
 
@@ -2044,6 +2237,26 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Pull named fields from text via regex patterns (deterministic counterpart to ai.extract). Accepts raw text or a parsed-document object; matches carry `_evidence.pageIndex` when pages are provided.',
     configSchema: TransformRegexExtractConfigSchema,
     outputSchema: TransformRegexExtractOutputSchema,
+    configInWith: true,
+  },
+  'transform.archive-list': {
+    type: 'transform.archive-list',
+    category: 'transform',
+    name: 'List Archive',
+    description:
+      'List files inside a ZIP archive. Returns sorted normalized paths with compressed and uncompressed sizes. Optionally filter by folder prefix or substring, then page with offset and limit. ZIP is the only accepted format in this version. Pair with foreach or parallel_map and transform.archive-extract to open individual files.',
+    configSchema: TransformArchiveListConfigSchema,
+    outputSchema: TransformArchiveListOutputSchema,
+    configInWith: true,
+  },
+  'transform.archive-extract': {
+    type: 'transform.archive-extract',
+    category: 'transform',
+    name: 'Extract Archive File',
+    description:
+      'Extract exactly one file from a ZIP archive and store it as a run output file. Downstream steps can pass {{ steps.extract.output }} into Parse, Vision, or another archive step. Nested ZIPs are stored as ZIP files, not unpacked. Each extraction is capped at 64 MiB. ZIP is the only accepted format in this version.',
+    configSchema: TransformArchiveExtractConfigSchema,
+    outputSchema: TransformArchiveExtractOutputSchema,
     configInWith: true,
   },
 
@@ -2318,6 +2531,9 @@ export type AiClassifyPagesConfig = z.infer<typeof AiClassifyPagesConfigSchema>;
 export type AiClassifyPagesOutput = z.infer<typeof AiClassifyPagesOutputSchema>;
 export type AiVisionConfig = z.infer<typeof AiVisionConfigSchema>;
 export type AiVisionOutput = z.infer<typeof AiVisionOutputSchema>;
+export type AiSearchFilesConfig = z.infer<typeof AiSearchFilesConfigSchema>;
+export type AiSearchFilesOutput = z.infer<typeof AiSearchFilesOutputSchema>;
+export type AiSearchFilesCitation = z.infer<typeof AiSearchFilesCitationSchema>;
 export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
 export type TransformRemoveConfig = z.infer<typeof TransformRemoveConfigSchema>;
 export type TransformCombineConfig = z.infer<typeof TransformCombineConfigSchema>;
@@ -2328,6 +2544,11 @@ export type TransformPdfEmbedConfig = z.infer<typeof TransformPdfEmbedConfigSche
 export type TransformPdfEmbedOutput = z.infer<typeof TransformPdfEmbedOutputSchema>;
 export type TransformJsonToXlsxConfig = z.infer<typeof TransformJsonToXlsxConfigSchema>;
 export type TransformJsonToXlsxOutput = z.infer<typeof TransformJsonToXlsxOutputSchema>;
+export type TransformArchiveListConfig = z.infer<typeof TransformArchiveListConfigSchema>;
+export type TransformArchiveListOutput = z.infer<typeof TransformArchiveListOutputSchema>;
+export type TransformArchiveListEntry = z.infer<typeof TransformArchiveListEntrySchema>;
+export type TransformArchiveExtractConfig = z.infer<typeof TransformArchiveExtractConfigSchema>;
+export type TransformArchiveExtractOutput = z.infer<typeof TransformArchiveExtractOutputSchema>;
 export type TransformScriptConfig = z.infer<typeof TransformScriptConfigSchema>;
 export type TransformTextChunkerConfig = z.infer<typeof TransformTextChunkerConfigSchema>;
 export type TransformTextChunkerOutput = z.infer<typeof TransformTextChunkerOutputSchema>;

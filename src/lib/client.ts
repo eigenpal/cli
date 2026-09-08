@@ -1,3 +1,4 @@
+import { resolveRequestUrl } from './api-paths';
 import type { CliConfig } from './config';
 
 export class ApiError extends Error {
@@ -52,15 +53,8 @@ export class ApiClient {
     this.tenantId = config.tenantId;
   }
 
-  /**
-   * Project legacy `/api/v1` call sites onto the canonical `/v1` prefix.
-   * Studio/local/self-hosted rewrite `/v1` → `/api/v1` additively.
-   */
-  private resolvePath(path: string): string {
-    if (path === '/api/v1' || path.startsWith('/api/v1/')) {
-      return `/v1${path.slice('/api/v1'.length)}`;
-    }
-    return path;
+  private buildUrl(path: string): string {
+    return resolveRequestUrl(this.baseUrl, path);
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
@@ -102,7 +96,7 @@ export class ApiClient {
   }
 
   async get(path: string, params?: Record<string, string>): Promise<unknown> {
-    let url = `${this.baseUrl}${this.resolvePath(path)}`;
+    let url = this.buildUrl(path);
     if (params) {
       const qs = new URLSearchParams(params).toString();
       if (qs) url += `?${qs}`;
@@ -112,7 +106,7 @@ export class ApiClient {
   }
 
   async post(path: string, body?: unknown): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -122,7 +116,7 @@ export class ApiClient {
   }
 
   async put(path: string, body?: unknown): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'PUT',
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -132,7 +126,7 @@ export class ApiClient {
   }
 
   async patch(path: string, body: unknown): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'PATCH',
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -142,7 +136,7 @@ export class ApiClient {
   }
 
   async postFormData(path: string, formData: FormData): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
@@ -152,7 +146,7 @@ export class ApiClient {
   }
 
   async putFormData(path: string, formData: FormData): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'PUT',
       headers: this.headers(),
@@ -162,7 +156,7 @@ export class ApiClient {
   }
 
   async delete(path: string): Promise<unknown> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'DELETE',
       headers: this.headers(),
@@ -171,7 +165,7 @@ export class ApiClient {
   }
 
   async getStream(path: string): Promise<Response> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       headers: this.headers(),
     });
@@ -187,7 +181,7 @@ export class ApiClient {
    * Caller must check res.ok and consume res.body.
    */
   async postStream(path: string, body: unknown): Promise<Response> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -206,7 +200,7 @@ export class ApiClient {
    * a 100 KB Next.js 404 page into the import-progress parser.
    */
   async postFormDataStream(path: string, formData: FormData): Promise<Response> {
-    const url = `${this.baseUrl}${this.resolvePath(path)}`;
+    const url = this.buildUrl(path);
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),

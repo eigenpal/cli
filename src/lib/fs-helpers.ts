@@ -31,6 +31,7 @@ export const EXT_MIME: Record<string, string> = {
   '.json': 'application/json',
   '.xml': 'application/xml',
   '.html': 'text/html',
+  '.zip': 'application/zip',
 };
 
 /**

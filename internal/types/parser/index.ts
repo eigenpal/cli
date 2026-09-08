@@ -77,3 +77,11 @@ export {
   type ProcessingStrategy,
   type TableCell,
 } from './parser';
+export {
+  ZIP_ARCHIVE_MIME_TYPES,
+  ZIP_CANONICAL_MIME_TYPE,
+  isZipArchive,
+  isZipArchiveFilename,
+  isZipArchiveMimeType,
+  mimeTypeForArchiveEntry,
+} from './zip-archive';

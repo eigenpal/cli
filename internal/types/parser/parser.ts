@@ -520,6 +520,8 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   dbk: 'application/docbook+xml',
   docbook: 'application/docbook+xml',
   fb2: 'application/x-fictionbook+xml',
+  // ZIP is an input container, not a parseable document MIME.
+  zip: 'application/zip',
 };
 
 /**

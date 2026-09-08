@@ -3002,6 +3002,156 @@ Output schema:
 ```
 
 
+#### `ai.search-files` — Search Files
+
+Investigate a ZIP archive with a question and return an answer plus file citations. Read-only: the step opens files in the archive and never writes back. ZIP is the only accepted format in this version. Optionally scope the search to a folder prefix and cap how many files and investigation turns may run.
+
+**Behavior and examples:** `eigenpal docs read steps/ai/search-files`
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `archive` | string | yes |  | Template expression or file reference for the ZIP archive to inspect. ZIP is the only accepted format in this version. |
+| `query` | string | yes |  | Natural-language question to answer from files inside the archive. |
+| `root` | string | no |  | Optional folder prefix inside the archive. When set, only files under this path are in scope. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted. |
+| `model` | string | no |  | Model override (advanced). |
+| `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
+| `maxIterations` | integer | no | `12` | Maximum investigation turns. Default 12, capped at 50. |
+| `maxFiles` | integer | no | `50` | Maximum files the step may open. Default 50, capped at 200. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `answer` | string | yes |  | The investigation answer. Citations point at inspected files; the answer text itself is model-generated. |
+| `citations` | array<object> | yes |  | Citations to files the step inspected. Excerpts, when present, are copied from inspected text. |
+| `filesInspected` | array<string> | yes |  | Archive-relative paths of files the step opened during investigation. |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "archive": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Template expression or file reference for the ZIP archive to inspect. ZIP is the only accepted format in this version."
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Natural-language question to answer from files inside the archive."
+    },
+    "root": {
+      "description": "Optional folder prefix inside the archive. When set, only files under this path are in scope.",
+      "type": "string"
+    },
+    "provider": {
+      "description": "Provider ID from eigenpal.config.yaml. Falls back to the tenant default LLM provider when omitted.",
+      "type": "string"
+    },
+    "model": {
+      "description": "Model override (advanced).",
+      "type": "string"
+    },
+    "reasoningEffort": {
+      "description": "Reasoning effort for models that support it. Omit to use the selected model's default.",
+      "type": "string",
+      "enum": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    "maxIterations": {
+      "description": "Maximum investigation turns. Default 12, capped at 50.",
+      "default": 12,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "maxFiles": {
+      "description": "Maximum files the step may open. Default 50, capped at 200.",
+      "default": 50,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200
+    }
+  },
+  "required": [
+    "archive",
+    "query"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The investigation answer. Citations point at inspected files; the answer text itself is model-generated."
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Archive-relative path of a file the step inspected and cited."
+          },
+          "excerpt": {
+            "description": "Optional excerpt copied from the inspected file text. Omitted when no verbatim excerpt was supplied.",
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Citations to files the step inspected. Excerpts, when present, are copied from inspected text."
+    },
+    "filesInspected": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Archive-relative paths of files the step opened during investigation."
+    }
+  },
+  "required": [
+    "answer",
+    "citations",
+    "filesInspected"
+  ],
+  "additionalProperties": false
+}
+```
+
+
 ### Transform steps — deterministic data transforms
 
 #### `transform.set` — Set Value
@@ -4713,6 +4863,224 @@ Output schema:
   },
   "additionalProperties": {},
   "description": "Field name → extracted value (or default), plus `_evidence: { [field]: { pageIndex, matchOffset, raw } }` and `_unmatched: string[]`."
+}
+```
+
+
+#### `transform.archive-list` — List Archive
+
+List files inside a ZIP archive. Returns sorted normalized paths with compressed and uncompressed sizes. Optionally filter by folder prefix or substring, then page with offset and limit. ZIP is the only accepted format in this version. Pair with foreach or parallel_map and transform.archive-extract to open individual files.
+
+**Behavior and examples:** `eigenpal docs read steps/transform/archive-list`
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `archive` | string | yes |  | Template expression or file reference for the ZIP archive to list. ZIP is the only accepted format in this version. |
+| `prefix` | string | no |  | Optional folder prefix inside the archive after path normalization (for example invoices or invoices/). |
+| `search` | string | no |  | Optional case-insensitive substring match on the normalized archive path. |
+| `offset` | integer | no |  | Number of matching entries to skip after sorting. Default 0. |
+| `limit` | integer | no |  | Maximum matching entries to return after sorting. Capped at 10000. Omit to return every matching entry up to that cap. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `entries` | array<object> | yes |  | Matching files, sorted by normalized path. Directories and junk paths are omitted. |
+| `total` | integer | yes |  | Number of matching entries before offset/limit pagination. |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "archive": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Template expression or file reference for the ZIP archive to list. ZIP is the only accepted format in this version."
+    },
+    "prefix": {
+      "description": "Optional folder prefix inside the archive after path normalization (for example invoices or invoices/).",
+      "type": "string"
+    },
+    "search": {
+      "description": "Optional case-insensitive substring match on the normalized archive path.",
+      "type": "string"
+    },
+    "offset": {
+      "description": "Number of matching entries to skip after sorting. Default 0.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "limit": {
+      "description": "Maximum matching entries to return after sorting. Capped at 10000. Omit to return every matching entry up to that cap.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    }
+  },
+  "required": [
+    "archive"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Normalized archive-relative path"
+          },
+          "compressedSize": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Declared compressed size in bytes"
+          },
+          "uncompressedSize": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Declared uncompressed size in bytes"
+          }
+        },
+        "required": [
+          "path",
+          "compressedSize",
+          "uncompressedSize"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Matching files, sorted by normalized path. Directories and junk paths are omitted."
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Number of matching entries before offset/limit pagination."
+    }
+  },
+  "required": [
+    "entries",
+    "total"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+#### `transform.archive-extract` — Extract Archive File
+
+Extract exactly one file from a ZIP archive and store it as a run output file. Downstream steps can pass {{ steps.extract.output }} into Parse, Vision, or another archive step. Nested ZIPs are stored as ZIP files, not unpacked. Each extraction is capped at 64 MiB. ZIP is the only accepted format in this version.
+
+**Behavior and examples:** `eigenpal docs read steps/transform/archive-extract`
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `archive` | string | yes |  | Template expression or file reference for the ZIP archive. ZIP is the only accepted format in this version. |
+| `path` | string | yes |  | Archive-relative path of the single file to extract, for example {{ item.path }} from a prior archive-list step. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `fileId` | string | yes |  | File ID from the files table |
+| `path` | string | yes |  | Normalized archive-relative path that was extracted |
+| `filename` | string | yes |  | Basename of the extracted file |
+| `mimeType` | string | yes |  | Detected MIME type of the extracted file |
+| `size` | integer | yes |  | Uncompressed size in bytes |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "archive": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Template expression or file reference for the ZIP archive. ZIP is the only accepted format in this version."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Archive-relative path of the single file to extract, for example {{ item.path }} from a prior archive-list step."
+    }
+  },
+  "required": [
+    "archive",
+    "path"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "fileId": {
+      "type": "string",
+      "description": "File ID from the files table"
+    },
+    "path": {
+      "type": "string",
+      "description": "Normalized archive-relative path that was extracted"
+    },
+    "filename": {
+      "type": "string",
+      "description": "Basename of the extracted file"
+    },
+    "mimeType": {
+      "type": "string",
+      "description": "Detected MIME type of the extracted file"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Uncompressed size in bytes"
+    }
+  },
+  "required": [
+    "fileId",
+    "path",
+    "filename",
+    "mimeType",
+    "size"
+  ],
+  "additionalProperties": false
 }
 ```
 

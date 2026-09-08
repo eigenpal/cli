@@ -109,4 +109,30 @@ describe('ApiClient HTML detection', () => {
       global.fetch = origFetch;
     }
   });
+
+  test('dataset import uses /api/v1 once when baseUrl already includes /api/v1', async () => {
+    const origFetch = global.fetch;
+    let requested: string | undefined;
+    global.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+      requested = String(input);
+      return jsonResponse({ created: 1, mode: 'append' });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new ApiClient({
+        baseUrl: 'https://studio.eigenpal.com/api/v1',
+        apiKey: 'k',
+        dir: '.',
+      });
+      const form = new FormData();
+      form.set('file', new Blob(['zip']), 'dataset.zip');
+      form.set('mode', 'append');
+      await client.postFormData('/v1/automations/wf_abc/dataset/import', form);
+      expect(requested).toBe(
+        'https://studio.eigenpal.com/api/v1/automations/wf_abc/dataset/import'
+      );
+      expect(requested).not.toContain('/v1/v1/');
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
 });

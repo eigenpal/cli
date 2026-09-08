@@ -20,6 +20,7 @@ export const AI_STEP_TYPES = [
   'ai.classify',
   'ai.classify-pages',
   'ai.vision',
+  'ai.search-files',
 ] as const;
 
 // Transform step types
@@ -36,6 +37,8 @@ export const TRANSFORM_STEP_TYPES = [
   'transform.script',
   'transform.text-chunker',
   'transform.regex-extract',
+  'transform.archive-list',
+  'transform.archive-extract',
 ] as const;
 
 // Action step types
@@ -80,6 +83,7 @@ export const StepTypeValue = {
   AI_CLASSIFY: 'ai.classify',
   AI_CLASSIFY_PAGES: 'ai.classify-pages',
   AI_VISION: 'ai.vision',
+  AI_SEARCH_FILES: 'ai.search-files',
   // Transform
   TRANSFORM_SET: 'transform.set',
   TRANSFORM_REMOVE: 'transform.remove',
@@ -93,6 +97,8 @@ export const StepTypeValue = {
   TRANSFORM_SCRIPT: 'transform.script',
   TRANSFORM_TEXT_CHUNKER: 'transform.text-chunker',
   TRANSFORM_REGEX_EXTRACT: 'transform.regex-extract',
+  TRANSFORM_ARCHIVE_LIST: 'transform.archive-list',
+  TRANSFORM_ARCHIVE_EXTRACT: 'transform.archive-extract',
   // Action
   ACTION_HTTP: 'action.http',
   ACTION_INVOKE_WORKFLOW: 'action.invoke-workflow',

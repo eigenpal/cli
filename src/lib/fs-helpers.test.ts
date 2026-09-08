@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { writeEvalJson } from './fs-helpers';
+import { guessMimeType, writeEvalJson } from './fs-helpers';
+
+describe('guessMimeType', () => {
+  it('identifies ZIP archives for workflow file uploads', () => {
+    expect(guessMimeType('bundle.ZIP')).toBe('application/zip');
+  });
+});
 
 describe('writeEvalJson', () => {
   it('writes formatted JSON when value is present', () => {

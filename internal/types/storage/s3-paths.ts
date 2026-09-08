@@ -406,7 +406,19 @@ export function extractSidecarS3Suffixes(input: {
 // alphabet is URL-safe (`A-Za-z0-9_-`), so the leading `file_…-` segment is a
 // fixed 5 + 21 + 1 shape we can strip unambiguously without knowing where the
 // filename's own dashes fall.
+const FILE_ID_ARTIFACT_RX = /^(file_[A-Za-z0-9_-]{21})-/;
 const FILE_ARTIFACT_PREFIX_RX = /^file_[A-Za-z0-9_-]{21}-/;
+
+/**
+ * Parse the leading generated file id from an artifact name or scoped `$file`
+ * path (`file_<21>-<filename>`). Returns null when the last segment is not
+ * that shape — never treat a client-supplied string as a file id without this.
+ */
+export function fileIdFromArtifactName(nameOrPath: string): string | null {
+  const base = nameOrPath.split('/').filter(Boolean).at(-1) ?? nameOrPath;
+  const match = FILE_ID_ARTIFACT_RX.exec(base);
+  return match?.[1] ?? null;
+}
 
 /**
  * Reverse of {@link s3FileArtifactName} for display: take an artifact name

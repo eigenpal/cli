@@ -72,16 +72,69 @@ export function isFileUploadProtectedStatus(status: FileUploadStatus): boolean {
 /**
  * Negotiated upload transport returned by session create.
  * `presigned-put` requires a storage backend that supports signed PUT.
- * `multipart` is the API-mediated fallback (local / on-prem / unsupported).
+ * `presigned-multipart` is storage-direct S3 MPU with presigned UploadPart URLs.
+ * `multipart` is the API-mediated HTTP FormData fallback (local / on-prem /
+ * unsupported). Distinct from S3 multipart — do not reuse this value for MPU.
  */
-export const FILE_UPLOAD_TRANSPORTS = ['presigned-put', 'multipart'] as const;
+export const FILE_UPLOAD_TRANSPORTS = [
+  'presigned-put',
+  'presigned-multipart',
+  'multipart',
+] as const;
 export const FileUploadTransportSchema = z.enum(FILE_UPLOAD_TRANSPORTS);
 export type FileUploadTransport = z.infer<typeof FileUploadTransportSchema>;
 
+export function isPresignedMultipartTransport(
+  transport: string | null | undefined
+): transport is 'presigned-multipart' {
+  return transport === 'presigned-multipart';
+}
+
 /**
  * Pending object key suffix (tenant prefix applied by TenantScopedStorage).
- * Server-selected; clients never supply a key.
+ * Server-selected; clients never supply a key. Used only by `presigned-put`
+ * (pending + copy). MPU writes the canonical key directly.
  */
 export function pendingFileUploadKey(uploadId: string): string {
   return `file-uploads/${uploadId}`;
+}
+
+/**
+ * Canonical reusable-file key suffix. MPU initiates at this key so completion
+ * does not CopyObject. PUT still copies pending → this key after verify.
+ */
+export function canonicalReusableFileKey(fileId: string): string {
+  return `files/${fileId}`;
+}
+
+/** True when `key` is a reusable-pool object (`files/<fileId>`), not a run prefix. */
+export function isReusablePoolStorageKey(key: string): boolean {
+  return key.startsWith('files/');
+}
+
+/**
+ * True when `key` is a reusable-pool object, including tenant-prefixed forms
+ * (`tenants/<tenantId>/files/<fileId>`). Used to keep whole-execution prefix
+ * deletes from touching shared canonical objects.
+ */
+export function isReusablePoolObjectKey(key: string): boolean {
+  const normalized = key.replace(/^\/+/, '');
+  const suffix = normalized.replace(/^tenants\/[^/]+\//, '');
+  return isReusablePoolStorageKey(suffix);
+}
+
+/**
+ * Reusable-pool objects (`files/<fileId>`) can be referenced by a new files row
+ * without copying bytes. Ephemeral pool files (`run-input`, `builder-attachment`)
+ * are included: last-reference deletion plus the blob advisory lock keep the
+ * object alive while any alias remains, so the 24-hour reaper cannot delete
+ * bytes a run still needs. `purpose` / `executionId` are accepted so callers
+ * can pass a files row; they do not gate sharing.
+ */
+export function canShareReusableStorageKey(file: {
+  key: string;
+  purpose?: string | null;
+  executionId?: string | null;
+}): boolean {
+  return isReusablePoolStorageKey(file.key);
 }

@@ -1,5 +1,16 @@
 # @eigenpal/cli
 
+## 0.16.4
+
+### Minor Changes
+
+- 1c48a4a: The CLI now uploads large run files with resumable, storage-direct transfers, so multi-GB inputs stream from disk instead of loading into memory or a single request.
+
+### Patch Changes
+
+- 1c48a4a: Dataset import and export now keep a single `/api/v1` prefix when the CLI base URL already includes `/api/v1`, so those commands reach the dataset API instead of a doubled `/v1/v1` path.
+- 1c48a4a: The CLI now recognizes `.zip` files when uploading reusable workflow inputs, so archive uploads get the correct content type without extra flags.
+
 ## 0.16.2
 
 ### Minor Changes
