@@ -37,14 +37,12 @@ export {
 } from './core';
 
 export {
-  HUMAN_REVIEW_AGENT_CREATION_FLAG,
   HUMAN_REVIEW_CONTINUATION_EXPIRED_REASON,
   HUMAN_REVIEW_FILE_ROLES,
   HUMAN_REVIEW_LIMITS,
   HUMAN_REVIEW_REQUIRED_SELECTION_REASONS,
   HUMAN_REVIEW_SKIP_SELECTION_REASONS,
   HUMAN_REVIEW_TASK_SELECTION_POINTER,
-  HUMAN_REVIEW_WORKFLOW_CREATION_FLAG,
   HumanReviewAgentContinuationManifestSchema,
   HumanReviewApproveSchema,
   HumanReviewCategoricalConfidenceSchema,
@@ -84,7 +82,6 @@ export {
   enrichHumanReviewFieldMetadata,
   enumerateHumanReviewLeaves,
   isHumanReviewAgentContinuationExpired,
-  isHumanReviewFeatureEnabled,
   isRequiredHumanReviewSelectionReason,
   parseHumanReviewAgentToolArgs,
   readHumanReviewEffectiveThreshold,

@@ -75,21 +75,6 @@ function jsonByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
-export const HUMAN_REVIEW_AGENT_CREATION_FLAG = 'EIGENPAL_HUMAN_REVIEW_AGENT_CREATION';
-export const HUMAN_REVIEW_WORKFLOW_CREATION_FLAG = 'EIGENPAL_HUMAN_REVIEW_WORKFLOW_CREATION';
-
-const FEATURE_OFF_VALUES = new Set(['0', 'false', 'off', 'no']);
-
-/** Default on outside production; explicit env wins. */
-export function isHumanReviewFeatureEnabled(
-  flag: string,
-  env: Record<string, string | undefined>
-): boolean {
-  const value = env[flag];
-  if (value === undefined) return env.NODE_ENV !== 'production';
-  return !FEATURE_OFF_VALUES.has(value.toLowerCase());
-}
-
 const JSON_POINTER_ESCAPE = /~(?:0|1)/g;
 const INVALID_JSON_POINTER_ESCAPE = /~(?![01])/;
 
