@@ -22,6 +22,7 @@ export {
   type SafeSpreadsheetZip,
   type SpreadsheetWorksheetDimension,
   type SpreadsheetZipClassification,
+  type SpreadsheetZipOptions,
   type SpreadsheetZipStructureLimits,
 } from './office-spreadsheet-preflight';
 export {

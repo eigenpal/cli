@@ -3,6 +3,7 @@
  * Consolidates utilities used across payload helpers (root run examples / eval-local).
  */
 
+import { mimeTypeForExtension } from '@eigenpal/types';
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { parse as parseYaml } from 'yaml';
@@ -11,35 +12,12 @@ import { normalizeJsonString } from './normalize';
 /** Extensions for template index files (e.g., index.docx). */
 export const INDEX_FILE_EXTS = ['.docx', '.doc', '.xlsx', '.xls'];
 
-/** Unified MIME type map for file uploads. */
-export const EXT_MIME: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.tiff': 'image/tiff',
-  '.odt': 'application/vnd.oasis.opendocument.text',
-  '.txt': 'text/plain',
-  '.csv': 'text/csv',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.doc': 'application/msword',
-  '.xls': 'application/vnd.ms-excel',
-  '.rtf': 'application/rtf',
-  '.msg': 'application/vnd.ms-outlook',
-  '.json': 'application/json',
-  '.xml': 'application/xml',
-  '.html': 'text/html',
-  '.zip': 'application/zip',
-};
-
 /**
  * Guess MIME type from filename extension.
  * Returns empty string for unknown extensions (preserves payload.ts behavior for optional mimeType).
  */
 export function guessMimeType(filename: string): string {
-  return EXT_MIME[extname(filename).toLowerCase()] || '';
+  return mimeTypeForExtension(extname(filename)) ?? '';
 }
 
 /**

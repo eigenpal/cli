@@ -49,6 +49,14 @@ export type SafeSpreadsheetZip = {
   dimensionedWorksheets: number;
 };
 
+export type SpreadsheetZipOptions = {
+  /**
+   * Permit OOXML workbooks containing VBA. Inspection remains read-only:
+   * callers may parse worksheet XML/cached values but must never execute macros.
+   */
+  allowMacros?: boolean;
+};
+
 export function isOleCompoundFile(bytes: Buffer): boolean {
   return (
     bytes.length >= OLE_COMPOUND_MAGIC.length &&
@@ -250,14 +258,19 @@ function assertMissingDimensionCellRefs(
  */
 export function assertSafeSpreadsheetZip(
   bytes: Buffer,
-  limits: SpreadsheetZipStructureLimits = SPREADSHEET_ZIP_STRUCTURE_DEFAULTS
+  limits: SpreadsheetZipStructureLimits = SPREADSHEET_ZIP_STRUCTURE_DEFAULTS,
+  options: SpreadsheetZipOptions = {}
 ): SafeSpreadsheetZip {
   if (!isOfficeZipContainer(bytes)) {
     throw new Error('Unsupported spreadsheet: expected an .xls or .xlsx workbook');
   }
   const inspection = inspectSafeOfficeZip(bytes);
   const classified = classifyOfficeSpreadsheetZip(inspection);
-  if (classified.kind !== 'xlsx') {
+  const allowedMacroWorkbook =
+    classified.kind === 'unsupported' &&
+    classified.format === 'xlsm' &&
+    options.allowMacros === true;
+  if (classified.kind !== 'xlsx' && !allowedMacroWorkbook) {
     throw new Error(classified.message);
   }
 

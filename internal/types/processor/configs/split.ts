@@ -78,7 +78,7 @@ export const SplitConfigSchema = z.object({
     .positive()
     .optional()
     .describe(
-      'Per-window token ceiling. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); 50k–100k when sections routinely exceed per-window page count.'
+      'Per-window token ceiling, enforced across and within parsed pages while preserving the original page index. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents; use 50k–100k only when broader context is necessary. The step rejects inputs requiring more than 64 LLM windows.'
     ),
 });
 

@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.7
+
+### Patch Changes
+
+- 35375db: The CLI now uploads macro-enabled Excel workbooks with the correct media type, so original `.xlsm` workflow inputs work without manual conversion.
+
 ## 0.16.4
 
 ### Minor Changes

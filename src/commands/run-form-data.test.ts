@@ -95,22 +95,29 @@ describe('buildRunFormData', () => {
     }
   });
 
-  test('uses non-empty MIME types for Outlook and unknown files', async () => {
+  test('uses non-empty MIME types for Outlook, XLSM, and unknown files', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'run-form-data-mime-'));
     try {
       const messagePath = join(dir, 'message.msg');
+      const macroWorkbookPath = join(dir, 'model.xlsm');
       const unknownPath = join(dir, 'attachment.unknown');
       await writeFile(messagePath, Buffer.from('outlook'));
+      await writeFile(macroWorkbookPath, Buffer.from('workbook'));
       await writeFile(unknownPath, Buffer.from('unknown'));
 
       const form = await buildRunFormData({
         target: 'workflows.invoice',
-        inputFile: [`documents=${messagePath}`, `documents=${unknownPath}`],
+        inputFile: [
+          `documents=${messagePath}`,
+          `documents=${macroWorkbookPath}`,
+          `documents=${unknownPath}`,
+        ],
       });
 
       const parts = multipartFileParts(form, 'documents');
       expect(parts.map((file) => file.type)).toEqual([
         'application/vnd.ms-outlook',
+        'application/vnd.ms-excel.sheet.macroenabled.12',
         'application/octet-stream',
       ]);
     } finally {

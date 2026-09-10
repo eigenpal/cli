@@ -1646,7 +1646,7 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | `rules` | string | no |  | Optional natural-language rules appended to the system prompt. E.g. "End-of-section markers like *Koniec prílohy 2* close the current section." |
 | `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted. |
 | `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
-| `windowTokenBudget` | integer | no |  | Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count. |
+| `windowTokenBudget` | integer | no |  | Override the estimated per-window token ceiling. Oversized pages are subdivided with overlap while retaining their original page index. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Inputs requiring more than 64 LLM windows are rejected before calls begin. |
 
 **Output:** `object`
 
@@ -1726,7 +1726,7 @@ Config schema:
       ]
     },
     "windowTokenBudget": {
-      "description": "Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count.",
+      "description": "Override the estimated per-window token ceiling. Oversized pages are subdivided with overlap while retaining their original page index. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Inputs requiring more than 64 LLM windows are rejected before calls begin.",
       "type": "integer",
       "exclusiveMinimum": 0,
       "maximum": 9007199254740991

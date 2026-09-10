@@ -454,7 +454,7 @@ export const AiSplitConfigSchema = z.object({
     .positive()
     .optional()
     .describe(
-      'Override the per-window token ceiling for this step. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Smaller windows give sharper anchors on contract-style documents (less competing context for the LLM to mis-anchor on); bump to 50k–100k when sections routinely exceed per-window page count.'
+      'Override the estimated per-window token ceiling. Oversized pages are subdivided with overlap while retaining their original page index. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Inputs requiring more than 64 LLM windows are rejected before calls begin.'
     ),
 });
 
