@@ -7,6 +7,7 @@ Manage workflows: push, pull, and evaluate.
 - [Surface](#surface)
 - [Commands](#commands)
   - [Core](#core)
+  - [Folders](#folders)
   - [Evaluators](#evaluators)
   - [Dataset](#dataset)
   - [Templates](#templates)
@@ -21,8 +22,13 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow schema [options] <workflow-id>`](#eigenpal-workflow-schema-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
+  - [`eigenpal workflow delete [options] <workflow-id>`](#eigenpal-workflow-delete-options-workflow-id)
   - [`eigenpal workflow validate [options] [path]`](#eigenpal-workflow-validate-options-path)
   - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
+  - [`eigenpal workflow folders list|ls [options]`](#eigenpal-workflow-folders-listls-options)
+  - [`eigenpal workflow folders create [options] <path>`](#eigenpal-workflow-folders-create-options-path)
+  - [`eigenpal workflow folders rename [options] <path-or-id>`](#eigenpal-workflow-folders-rename-options-path-or-id)
+  - [`eigenpal workflow folders delete [options] <path-or-id>`](#eigenpal-workflow-folders-delete-options-path-or-id)
   - [`eigenpal workflow evaluators pull [options] <workflow-id>`](#eigenpal-workflow-evaluators-pull-options-workflow-id)
   - [`eigenpal workflow evaluators push [options] <workflow-id>`](#eigenpal-workflow-evaluators-push-options-workflow-id)
   - [`eigenpal workflow evaluators validate [options] [path]`](#eigenpal-workflow-evaluators-validate-options-path)
@@ -67,6 +73,12 @@ workflow
 ├── schema <workflow-id>
 ├── push
 ├── move <workflow-id>
+├── delete <workflow-id>
+├── folders
+│   ├── list|ls
+│   ├── create <path>
+│   ├── rename <path-or-id>
+│   └── delete <path-or-id>
 ├── evaluators
 │   ├── pull <workflow-id>
 │   ├── push <workflow-id>
@@ -125,8 +137,18 @@ workflow
 | `eigenpal workflow schema [options] <workflow-id>`      | Show the inferred output schema for a workflow (what it returns).                                                                                                                                                                                                                                                                                                                                                                         |
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                                                                                                                                                                             |
 | `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                                                                                                                                                                              |
+| `eigenpal workflow delete [options] <workflow-id>`      | Delete a workflow definition while preserving past runs.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`. |
 | `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                                                                                                                                                                                  |
+
+### Folders
+
+| Command                                                   | Description                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------- |
+| `eigenpal workflow folders list\|ls [options]`            | List workflow folders.                                      |
+| `eigenpal workflow folders create [options] <path>`       | Create a folder path, creating any missing parent segments. |
+| `eigenpal workflow folders rename [options] <path-or-id>` | Rename a workflow folder.                                   |
+| `eigenpal workflow folders delete [options] <path-or-id>` | Delete a workflow folder.                                   |
 
 ### Evaluators
 
@@ -287,6 +309,24 @@ Move a workflow to a folder path, creating folders as needed
 | `--base-url <url>` | no       |         | Server base URL                      |
 | `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
+### `eigenpal workflow delete [options] <workflow-id>`
+
+Delete a workflow definition while preserving past runs.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                                 |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------- |
+| `--yes`            | no       |         | Skip typed-id confirmation (required in CI / agent terminals without a TTY) |
+| `--base-url <url>` | no       |         | Server base URL                                                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                        |
+
 ### `eigenpal workflow validate [options] [path]`
 
 Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`.
@@ -322,6 +362,71 @@ Delete local execution artifacts under ./dataset/examples/. Keeps the latest run
 | ------------- | -------- | ------- | ---------------------------------------------------------- |
 | `--dir <dir>` | no       |         | Local eigenpal directory                                   |
 | `--all`       | no       | `false` | Remove all artifacts, including the latest kept by default |
+
+### `eigenpal workflow folders list|ls [options]`
+
+List workflow folders.
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--tree`           | no       |         | Render folders as an indented tree   |
+
+### `eigenpal workflow folders create [options] <path>`
+
+Create a folder path, creating any missing parent segments.
+
+### Arguments
+
+| Name   | Required | Variadic | Description |
+| ------ | -------- | -------- | ----------- |
+| `path` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+
+### `eigenpal workflow folders rename [options] <path-or-id>`
+
+Rename a workflow folder.
+
+### Arguments
+
+| Name         | Required | Variadic | Description |
+| ------------ | -------- | -------- | ----------- |
+| `path-or-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+| `--name <name>`    | yes      |         | New folder name                      |
+
+### `eigenpal workflow folders delete [options] <path-or-id>`
+
+Delete a workflow folder.
+
+### Arguments
+
+| Name         | Required | Variadic | Description |
+| ------------ | -------- | -------- | ----------- |
+| `path-or-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                                 |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                        |
+| `--yes`            | no       |         | Skip typed-id confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal workflow evaluators pull [options] <workflow-id>`
 

@@ -13,6 +13,7 @@ describe('agent command tree', () => {
     expect(result.status).toBe(0);
     for (const word of [
       'list',
+      'delete',
       'clone',
       'save',
       'release',

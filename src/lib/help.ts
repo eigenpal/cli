@@ -51,8 +51,9 @@ const HELP_GROUPS: CommandGroup[] = [
   },
   {
     title: 'Run',
-    description: 'Start runs, then watch them, read their output, and download artifacts.',
-    commands: ['run', 'rerun', 'runs'],
+    description:
+      'Start runs, watch them, download artifacts, and work live human-review queues for paused runs.',
+    commands: ['run', 'rerun', 'runs', 'reviews'],
   },
   {
     title: 'Tooling',

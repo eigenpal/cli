@@ -18,6 +18,12 @@ eigenpal
 │   ├── schema <workflow-id>
 │   ├── push
 │   ├── move <workflow-id>
+│   ├── delete <workflow-id>
+│   ├── folders
+│   │   ├── list|ls
+│   │   ├── create <path>
+│   │   ├── rename <path-or-id>
+│   │   └── delete <path-or-id>
 │   ├── evaluators
 │   │   ├── pull <workflow-id>
 │   │   ├── push <workflow-id>
@@ -65,6 +71,7 @@ eigenpal
 │       └── exec <type>
 ├── agents
 │   ├── list|ls
+│   ├── delete <agent-id-or-slug>
 │   ├── file
 │   │   ├── list|ls <agent-id-or-slug>
 │   │   ├── get <agent-id-or-slug> <remote-path>
@@ -147,6 +154,13 @@ eigenpal
 │   │   └── delete <run-id> <name>
 │   ├── watch <run-id>
 │   └── cancel <run-id>
+├── reviews|rv
+│   ├── list|ls
+│   ├── get <task-id>
+│   ├── confirm <task-id>
+│   ├── approve <task-id>
+│   ├── reject <task-id>
+│   └── download <task-id> <file-id>
 ├── docs
 │   ├── list|ls [prefix]
 │   ├── search <query>

@@ -57,6 +57,24 @@ describe('non-interactive CLI guards', () => {
     expect(result.stderr).toMatch(/requires --yes when run non-interactively/);
   });
 
+  test('workflow delete requires --yes without TTY', () => {
+    const result = runCli(['workflow', 'delete', 'wf_test']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/requires --yes when run non-interactively/);
+  });
+
+  test('workflow folders delete requires --yes without TTY', () => {
+    const result = runCli(['workflow', 'folders', 'delete', 'fld_test']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/requires --yes when run non-interactively/);
+  });
+
+  test('agents delete requires --yes without TTY', () => {
+    const result = runCli(['agents', 'delete', 'invoice-agent']);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/requires --yes when run non-interactively/);
+  });
+
   test('skill uninstall with no args requires tool ids or --all without TTY', () => {
     const result = runCli(['skill', 'uninstall']);
     expect(result.status).not.toBe(0);

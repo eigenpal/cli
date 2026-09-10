@@ -15,6 +15,7 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
   - [Env](#env)
 - [Details](#details)
   - [`eigenpal agents list|ls [options]`](#eigenpal-agents-listls-options)
+  - [`eigenpal agents delete [options] <agent-id-or-slug>`](#eigenpal-agents-delete-options-agent-id-or-slug)
   - [`eigenpal agents validate [options] [dir]`](#eigenpal-agents-validate-options-dir)
   - [`eigenpal agents clone [options]`](#eigenpal-agents-clone-options)
   - [`eigenpal agents install [options] [packageRef]`](#eigenpal-agents-install-options-packageref)
@@ -62,6 +63,7 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
 ```
 agents
 ├── list|ls
+├── delete <agent-id-or-slug>
 ├── file
 │   ├── list|ls <agent-id-or-slug>
 │   ├── get <agent-id-or-slug> <remote-path>
@@ -115,26 +117,27 @@ agents
 
 ### Core
 
-| Command                                             | Description                                                                                                                                 |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents list\|ls [options]`                | List agents.                                                                                                                                |
-| `eigenpal agents validate [options] [dir]`          | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                           |
-| `eigenpal agents clone [options]`                   | Clone the organization source repository.                                                                                                   |
-| `eigenpal agents install [options] [packageRef]`    | Materialize a source package and its workspace dependencies.                                                                                |
-| `eigenpal agents init [options] <name>`             | Create a new source package scaffold.                                                                                                       |
-| `eigenpal agents pull [options]`                    | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use runs artifacts fetch. |
-| `eigenpal agents commit [options]`                  | Validate changed source packages and commit them.                                                                                           |
-| `eigenpal agents save [options]`                    | Validate, commit if dirty, and push the current source branch.                                                                              |
-| `eigenpal agents push [options]`                    | Push the current organization source branch and tags.                                                                                       |
-| `eigenpal agents upgrade [options]`                 | Upgrade the source repository schema in place.                                                                                              |
-| `eigenpal agents doctor [options]`                  | Check organization source repository health.                                                                                                |
-| `eigenpal agents status [options]`                  | Show source repo and package status.                                                                                                        |
-| `eigenpal agents deps [options]`                    | List package workspace dependencies.                                                                                                        |
-| `eigenpal agents clean [options]`                   | Require a clean source working tree.                                                                                                        |
-| `eigenpal agents show [options] <automation>`       | Show Git-backed automation details.                                                                                                         |
-| `eigenpal agents versions [options] <package>`      | List package release versions.                                                                                                              |
-| `eigenpal agents release [options] <version> [dir]` | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                     |
-| `eigenpal agents sync [options] [automation]`       | Sync an automation from the latest Git source release.                                                                                      |
+| Command                                               | Description                                                                                                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal agents list\|ls [options]`                  | List agents.                                                                                                                                |
+| `eigenpal agents delete [options] <agent-id-or-slug>` | Delete an agent and its versions from the server.                                                                                           |
+| `eigenpal agents validate [options] [dir]`            | Validate a local agent package (layout, manifest, schemas, and Git source rules).                                                           |
+| `eigenpal agents clone [options]`                     | Clone the organization source repository.                                                                                                   |
+| `eigenpal agents install [options] [packageRef]`      | Materialize a source package and its workspace dependencies.                                                                                |
+| `eigenpal agents init [options] <name>`               | Create a new source package scaffold.                                                                                                       |
+| `eigenpal agents pull [options]`                      | Pull organization source from origin/main with --ff-only. For datasets use agents dataset pull; for run artifacts use runs artifacts fetch. |
+| `eigenpal agents commit [options]`                    | Validate changed source packages and commit them.                                                                                           |
+| `eigenpal agents save [options]`                      | Validate, commit if dirty, and push the current source branch.                                                                              |
+| `eigenpal agents push [options]`                      | Push the current organization source branch and tags.                                                                                       |
+| `eigenpal agents upgrade [options]`                   | Upgrade the source repository schema in place.                                                                                              |
+| `eigenpal agents doctor [options]`                    | Check organization source repository health.                                                                                                |
+| `eigenpal agents status [options]`                    | Show source repo and package status.                                                                                                        |
+| `eigenpal agents deps [options]`                      | List package workspace dependencies.                                                                                                        |
+| `eigenpal agents clean [options]`                     | Require a clean source working tree.                                                                                                        |
+| `eigenpal agents show [options] <automation>`         | Show Git-backed automation details.                                                                                                         |
+| `eigenpal agents versions [options] <package>`        | List package release versions.                                                                                                              |
+| `eigenpal agents release [options] <version> [dir]`   | Create and push an immutable package release tag. Never move or overwrite an existing tag; release a new patch instead.                     |
+| `eigenpal agents sync [options] [automation]`         | Sync an automation from the latest Git source release.                                                                                      |
 
 ### File
 
@@ -205,6 +208,24 @@ List agents.
 | `--offset <n>`     | no       | `0`     | Page offset                          |
 | `--json`           | no       |         | Emit machine-readable JSON on stdout |
 | `--search <q>`     | no       |         | Search by slug, name, or description |
+
+### `eigenpal agents delete [options] <agent-id-or-slug>`
+
+Delete an agent and its versions from the server.
+
+### Arguments
+
+| Name               | Required | Variadic | Description |
+| ------------------ | -------- | -------- | ----------- |
+| `agent-id-or-slug` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                                 |
+| ------------------ | -------- | ------- | --------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                             |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                        |
+| `--yes`            | no       |         | Skip typed-id confirmation (required in CI / agent terminals without a TTY) |
 
 ### `eigenpal agents validate [options] [dir]`
 

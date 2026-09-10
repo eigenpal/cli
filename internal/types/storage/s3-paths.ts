@@ -403,9 +403,9 @@ export function extractSidecarS3Suffixes(input: {
 
 // Artifact names are `${fileId}-${filename}` where fileId is `file_<nanoid(21)>`
 // (see `generateId` + `ID_PREFIXES.FILE` + `s3FileArtifactName`). The nanoid
-// alphabet is URL-safe (`A-Za-z0-9_-`), so the leading `file_…-` segment is a
-// fixed 5 + 21 + 1 shape we can strip unambiguously without knowing where the
-// filename's own dashes fall.
+// alphabet is alphanumeric. The parser also accepts `_` and `-` in historical
+// suffixes, so the leading `file_…-` segment remains a fixed 5 + 21 + 1 shape we
+// can strip unambiguously without knowing where the filename's own dashes fall.
 const FILE_ID_ARTIFACT_RX = /^(file_[A-Za-z0-9_-]{21})-/;
 const FILE_ARTIFACT_PREFIX_RX = /^file_[A-Za-z0-9_-]{21}-/;
 

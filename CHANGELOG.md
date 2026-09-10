@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.9
+
+### Minor Changes
+
+- cd71a31: The CLI can now manage more of an automation's live lifecycle from the terminal: work pending human reviews by inspecting tasks, confirming fields, approving or rejecting decisions, and downloading attachments; delete workflows and agents; and list, create, rename, or delete workflow folders. Workflow moves now use the public API, and destructive commands require explicit confirmation in interactive and automated environments.
+
 ## 0.16.7
 
 ### Patch Changes

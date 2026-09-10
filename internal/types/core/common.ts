@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid';
+import { customAlphabet } from 'nanoid';
 import { z } from 'zod';
 
 /**
@@ -78,20 +78,28 @@ export const ID_PREFIXES = {
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
 
+const generateRandomId = customAlphabet(
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  21
+);
+
 /**
  * Generate a unique ID with optional prefix.
- * Uses nanoid (21 chars) for compact, URL-safe IDs.
+ * Uses a 21-character alphanumeric nanoid, keeping the optional prefix
+ * separator as the ID's only non-alphanumeric character.
  *
  * @example
- * generateId() // "V1StGXR8_Z5jdHi6B-myT"
- * generateId('wf') // "wf_V1StGXR8_Z5jdHi6B-myT"
- * generateId(ID_PREFIXES.WORKFLOW) // "wf_V1StGXR8_Z5jdHi6B-myT"
+ * generateId() // "V1StGXR8QZ5jdHi6B7myT"
+ * generateId('wf') // "wf_V1StGXR8QZ5jdHi6B7myT"
+ * generateId(ID_PREFIXES.WORKFLOW) // "wf_V1StGXR8QZ5jdHi6B7myT"
  */
 export function generateId(prefix?: string): string {
-  const id = nanoid();
+  const id = generateRandomId();
   return prefix ? `${prefix}_${id}` : id;
 }
 
+// Public parsers remain backward-compatible with IDs generated using nanoid's
+// historical default alphabet, which also included underscores.
 const NANOID_SUFFIX_PATTERN = '[A-Za-z0-9_-]{21}';
 
 export const TemplateIdSchema = z

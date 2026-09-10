@@ -16,6 +16,7 @@ import {
 } from './commands/git';
 import { init } from './commands/init';
 import { registerModelsCommands } from './commands/models';
+import { registerReviewsCommands } from './commands/reviews';
 import { registerRunCommands } from './commands/run';
 import { registerRunsCommands } from './commands/runs';
 import { installSkillTools, listSkillTools, uninstallSkillTools } from './commands/skill';
@@ -178,6 +179,7 @@ registerModelsCommands(program);
 registerEmailServersCommands(program);
 registerRunCommands(program);
 registerRunsCommands(program);
+registerReviewsCommands(program);
 registerGitCommands(program);
 registerDocsCommands(program);
 

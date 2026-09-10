@@ -37,7 +37,11 @@ import {
   type ResolvedLocalTemplate,
   type StagedWorkspaceTemplate,
 } from '../../lib/local-templates';
-import { requireTypedConfirmation, requireYesInNonInteractive } from '../../lib/non-interactive';
+import {
+  isInteractiveStderr,
+  requireTypedConfirmation,
+  requireYesInNonInteractive,
+} from '../../lib/non-interactive';
 import { resolveWorkflowId } from '../../lib/resolve-workflow';
 import {
   addJsonFlag,
@@ -70,6 +74,8 @@ import {
   renderExperimentResultsSummary,
   type ExperimentDetailPayload,
 } from './experiment-results';
+import { registerWorkflowFolderCommands } from './folders';
+import { fetchAutomation, parseAutomationDeleteResult } from './lifecycle-shared';
 import { registerStepExecCommands } from './step-exec';
 import { registerTemplateCommands } from './templates';
 import {
@@ -318,6 +324,7 @@ YAML's \`name:\` field). Both:
   // dataset, experiment, execution, versions, step-type) so the help tree
   // mirrors the model. Keep `eigenpal agents` parallel when adding new nouns.
   registerWorkflowCoreCommands(workflow);
+  registerWorkflowFolderCommands(workflow);
   registerEvaluatorsCommands(workflow);
   registerDatasetCommands(workflow);
   registerTemplateCommands(workflow);
@@ -683,7 +690,14 @@ new uploads are deleted. The file on disk is not rewritten.
   const moveCmd = parent
     .command('move <workflow-id>')
     .description('Move a workflow to a folder path, creating folders as needed')
-    .requiredOption('--folder <path>', 'Target folder path (`/` for root)');
+    .requiredOption('--folder <path>', 'Target folder path (`/` for root)')
+    .addHelpText(
+      'after',
+      `
+Uses the public \`/v1/automations/{id}\` move API. \`/\` moves the workflow to
+the root. Agents cannot be moved with this command.
+`
+    );
   addJsonFlag(withBaseUrl(moveCmd)).action(
     action(
       async (
@@ -694,7 +708,13 @@ new uploads are deleted. The file on disk is not rewritten.
         }
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
-        const result = await client.patch(`/api/workflows/${workflowId}`, {
+        const automation = await fetchAutomation(client, workflowId);
+        if (automation.type != null && automation.type !== 'workflow') {
+          throw new Error(
+            `${workflowId} is an agent, not a workflow. Agents do not support folder placement.`
+          );
+        }
+        const result = await client.patch(`/v1/automations/${encodeURIComponent(workflowId)}`, {
           folderPath: opts.folder,
         });
         if (opts.json) {
@@ -703,6 +723,58 @@ new uploads are deleted. The file on disk is not rewritten.
         }
         const target = opts.folder.trim() === '/' ? 'root' : opts.folder;
         success(`Moved ${ui.bold(workflowId)} to ${ui.bold(target)}`);
+      }
+    )
+  );
+
+  const deleteCmd = parent
+    .command('delete <workflow-id>')
+    .description('Delete a workflow definition while preserving past runs.')
+    .option('--yes', 'Skip typed-id confirmation (required in CI / agent terminals without a TTY)')
+    .addHelpText(
+      'after',
+      `
+Permanently deletes the workflow definition and version history. Existing run
+history is preserved and marked as belonging to a deleted workflow.
+
+Pass \`--yes\` in scripts, CI, and agent terminals (non-TTY). In a TTY, type the
+resolved workflow id to confirm.
+`
+    );
+  addJsonFlag(withBaseUrl(deleteCmd)).action(
+    action(
+      async (
+        workflow: string,
+        opts: WorkflowCommandConfig & {
+          yes?: boolean;
+          json?: boolean;
+        }
+      ) => {
+        requireYesInNonInteractive(opts.yes, 'delete workflow');
+        const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+        const automation = await fetchAutomation(client, workflowId);
+        if (automation.type != null && automation.type !== 'workflow') {
+          throw new Error(
+            `${workflowId} is an agent, not a workflow. Use \`eigenpal agents delete\` instead.`
+          );
+        }
+        warn(
+          'This permanently deletes the workflow definition and version history. Existing run history is preserved.'
+        );
+        if (!opts.yes && isInteractiveStderr()) {
+          await requireTypedConfirmation({
+            id: workflowId,
+            actionName: 'delete workflow',
+            cancelledMessage: 'Workflow delete aborted',
+          });
+        }
+        const result = await client.delete(`/v1/automations/${encodeURIComponent(workflowId)}`);
+        const parsed = parseAutomationDeleteResult(result);
+        if (opts.json) {
+          printJson({ ...parsed, id: workflowId });
+          return;
+        }
+        success(`Deleted workflow ${ui.bold(workflowId)}`);
       }
     )
   );
