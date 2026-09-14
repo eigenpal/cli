@@ -39,9 +39,9 @@ config), use:
 eigenpal runs get <executionId> --expand execution --json --include input,output,config
 ```
 
-The CLI requests the run detail with `expand=execution` and projects
-per-step `inputData` / `outputData` / `resolvedConfig` under shorter names
-(`input` / `output` / `config`).
+Run detail lists slim steps only. The CLI hydrates `input` / `output` /
+`config` from `GET /api/v1/runs/{id}/steps/{stepExecutionId}` when you
+pass `--include input,output,config` or `--step`.
 
 ## Exit codes (current placeholder)
 

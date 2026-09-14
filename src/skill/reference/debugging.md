@@ -59,23 +59,20 @@ The grouped run payload includes:
 - `output` — the workflow's final return value when `finished` and completed (or partial when failed)
 - `error` — terminal failure message when the run failed or was cancelled
 - `input` — the input the workflow was called with (included on detail fetches)
-- `execution.steps` — one entry per step when you pass `--expand execution` (the CLI also mirrors this as `stepExecutions`):
+- `execution.steps` — slim per-step rows when you pass `--expand execution` (the CLI also mirrors this as `stepExecutions`):
+  - `id` — step execution id (use with `GET /api/v1/runs/{id}/steps/{stepExecutionId}`)
   - `stepName` — handle from `workflow.yaml`
   - `status` — same set as the top-level. `skipped` means the step's
     `if:` evaluated false, OR a `control.foreach` was passed an empty
     array. Check `skippedReason` for the human-readable cause.
   - `skippedReason` — populated when `status: 'skipped'`
-  - `input` — fully resolved values (templates already expanded)
-  - `resolvedConfig` — the step's `with:` block AFTER `{{template}}`
-    substitution. Lets you see what the LLM actually got, what URL
-    HTTP actually hit, what items the script actually saw. Populated
-    for `ai.*` / `transform.*` / `action.*`. Null for `control.*`
-    (orchestration steps do not have a meaningful resolved config).
-  - `output` — what the step returned
-  - `error` — error message + code when `status: 'failed'`
+  - `error` — capped error excerpt when `status: 'failed'` (`errorTruncated` when clipped)
   - `durationMs`
   - `overrideMode` — `'skipped'` when the example's `meta.json`
     overrode this step; null otherwise
+  - Full `input` / `resolvedConfig` / `output` are **not** inlined on the list.
+    Fetch one step, or pass `--include input,output` / `--step <name>` so the
+    CLI hydrates those fields on demand.
 
 Quick triage with `jq`:
 

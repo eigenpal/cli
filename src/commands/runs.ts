@@ -505,6 +505,66 @@ function projectionIncludeSource(opts: { include?: string; expand?: string }): s
   return parts.length > 0 ? parts.join(',') : undefined;
 }
 
+const STEP_HYDRATE_CONCURRENCY = 8;
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      out[index] = await fn(items[index]!);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  return out;
+}
+
+async function hydrateWorkflowStepPayloads(
+  client: ReturnType<typeof buildClient>,
+  runId: string,
+  steps: WorkflowStepRow[]
+): Promise<WorkflowStepRow[]> {
+  return mapPool(steps, STEP_HYDRATE_CONCURRENCY, async (step) => {
+    const stepId = typeof step.id === 'string' ? step.id : null;
+    if (!stepId) {
+      throw new Error(
+        `Cannot load step payloads for ${step.stepName ?? 'unknown step'}: missing step execution id.`
+      );
+    }
+    try {
+      const full = (await client.get(
+        `/v1/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`
+      )) as WorkflowStepRow;
+      return { ...step, ...full };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to load payloads for step ${step.stepName ?? stepId} on run ${runId}: ${reason}`
+      );
+    }
+  });
+}
+
+function wantsWorkflowStepPayloads(includes: string | undefined): boolean {
+  if (!includes) return false;
+  const wanted = new Set(includes.split(',').map((part) => part.trim()));
+  return [
+    'input',
+    'config',
+    'resolvedConfig',
+    'inputRef',
+    'inputData',
+    'output',
+    'outputData',
+  ].some((field) => wanted.has(field));
+}
+
 async function getRun(
   executionId: string,
   opts: BaseOpts & { include?: string; expand?: string; step?: string; select?: string }
@@ -523,11 +583,15 @@ async function getRun(
   }
 
   if (isWorkflowRun(run)) {
-    const steps = filterWorkflowSteps(run.stepExecutions, opts.step);
     const projectionIncludes = workflowStepProjectionIncludes(projectionIncludeSource(opts));
-    const projectedRun = opts.step
-      ? { ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) }
-      : run;
+    let steps = filterWorkflowSteps(run.stepExecutions, opts.step);
+    if (wantsWorkflowStepPayloads(projectionIncludes) || Boolean(opts.step)) {
+      steps = await hydrateWorkflowStepPayloads(client, executionId, steps);
+    }
+    const projectedRun =
+      opts.step || wantsWorkflowStepPayloads(projectionIncludes)
+        ? { ...run, stepExecutions: projectWorkflowSteps(steps, projectionIncludes) }
+        : { ...run, stepExecutions: steps };
     if (opts.select) {
       return printJson(selectJsonValue(projectedRun, opts.select));
     }
@@ -546,6 +610,7 @@ async function getRun(
 }
 
 type WorkflowStepRow = Record<string, unknown> & {
+  id?: string;
   stepName?: string;
   stepPath?: string | null;
   scopeHash?: string;
@@ -1126,7 +1191,25 @@ async function compareRun(
   );
 
   if (isWorkflowRun(reference) && isWorkflowRun(target)) {
-    const report = compareWorkflowRuns(referenceId, reference, executionId, target, opts.step);
+    const [hydratedReferenceSteps, hydratedTargetSteps] = await Promise.all([
+      hydrateWorkflowStepPayloads(
+        client,
+        referenceId,
+        filterWorkflowSteps(reference.stepExecutions, opts.step)
+      ),
+      hydrateWorkflowStepPayloads(
+        client,
+        executionId,
+        filterWorkflowSteps(target.stepExecutions, opts.step)
+      ),
+    ]);
+    const report = compareWorkflowRuns(
+      referenceId,
+      { ...reference, stepExecutions: hydratedReferenceSteps },
+      executionId,
+      { ...target, stepExecutions: hydratedTargetSteps },
+      opts.step
+    );
     if (opts.json) {
       printJson(report);
     } else {

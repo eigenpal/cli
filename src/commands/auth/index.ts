@@ -31,12 +31,12 @@ function openBrowser(url: string): void {
 }
 
 /** Treat clack cancellation (Ctrl-C / Esc) as a graceful exit, not a crash. */
-function exitOnCancel<T>(value: T | symbol): T {
+function exitOnCancel<T>(value: T): Exclude<T, symbol> {
   if (isCancel(value)) {
     cancel('Cancelled.');
     process.exit(0);
   }
-  return value as T;
+  return value as Exclude<T, symbol>;
 }
 
 /**

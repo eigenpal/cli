@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.16.12
+
+### Patch Changes
+
+- ff1b8c9: `eigenpal runs get` lists slim step rows by default. Pass `--include input,output` or `--step` to fetch full payloads for the steps you care about.
+
 ## 0.16.9
 
 ### Minor Changes
