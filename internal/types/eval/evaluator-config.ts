@@ -404,17 +404,31 @@ export const CUSTOM_SCRIPT_CONTRACT = {
 /**
  * Hard cap on the `function` string length. Server-side this avoids spending
  * V8 parse time on multi-MB attacker-controlled JS during YAML load + form
- * save (each fires `new Function(text)` and a body-extraction scan). Any
+ * save (each fires a Babel parse and a body-extraction scan). Any
  * legitimate scoring function fits comfortably under 10 KB; if you need
  * more, the logic belongs in a workflow step, not an evaluator.
  */
 export const CUSTOM_SCRIPT_MAX_BYTES = 10_000;
 
-/** Hard caps on user-tunable sandbox limits. Match the worker's
- *  `SCRIPT_MAX_TIMEOUT_MS` (30 s) and `SCRIPT_MAX_MEMORY_BYTES` (50 MB)
- *  defaults so a YAML config that the runtime would clamp gets rejected
- *  at parse time instead. Single-source-of-truth invariant: bumping these
- *  in the worker env without bumping here is a config drift bug. */
+/** Hard caps on user-tunable sandbox limits. `CUSTOM_SCRIPT_MAX_MEMORY_MB`
+ *  matches the worker's `SCRIPT_MAX_MEMORY_BYTES` (50 MB) default, so a YAML
+ *  config the runtime would clamp is rejected at parse time instead.
+ *
+ *  `CUSTOM_SCRIPT_MAX_TIMEOUT_MS` deliberately sits ABOVE the worker's
+ *  EFFECTIVE script ceiling. The worker env still defaults
+ *  `SCRIPT_MAX_TIMEOUT_MS` to 30 s, but QuickJS `evalCode` is synchronous on
+ *  the worker's main thread, so `clampScriptTimeoutToLiveness`
+ *  (`packages/worker/src/sandbox/config.ts`) lowers the runtime ceiling to
+ *  `HEALTH_LIVENESS_STALE_MS` minus a heartbeat margin, which is 25 s with
+ *  shipped defaults. That keeps a busy-loop script from blocking lease
+ *  renewals and the health heartbeat past the liveness window.
+ *
+ *  The worker clamps with `Math.min`, so a config above the runtime ceiling
+ *  is accepted here and simply runs shorter. This schema ceiling stays at
+ *  30 s so an operator who widens `HEALTH_LIVENESS_STALE_MS` does not also
+ *  have to change a published schema. The gap is deliberate: do not read the
+ *  30 s here as a promise that a 30 s script will run to completion.
+ *  Bumping the worker env ABOVE these values is still a config drift bug. */
 export const CUSTOM_SCRIPT_MAX_TIMEOUT_MS = 30_000;
 export const CUSTOM_SCRIPT_MAX_MEMORY_MB = 50;
 

@@ -351,9 +351,19 @@ export type TenantS3PathBuilder<Node extends PathNode = S3PathGrammar> = S3PathB
 const SEGMENT_RX = /^[A-Za-z0-9_.-]+$/;
 const SAFE_FILENAME_RX = /[^A-Za-z0-9_.-]+/g;
 const TENANT_PREFIX_RX = /^tenants\/[A-Za-z0-9_.-]+\//;
+/**
+ * `.` and `..` match SEGMENT_RX (the dot is in its character class), so the
+ * charset alone is not a traversal defence. Keys are joined with `/`, and a
+ * consumer that path-normalizes before it range-checks (the local filesystem
+ * adapter did exactly that) resolves those segments and walks out of the
+ * `tenants/<tenantId>/` prefix, which makes it a cross-tenant read or write.
+ * Reject the two relative segments here, at the one place every builder and
+ * `matchS3Path` funnel through, rather than at each call site.
+ */
+const RELATIVE_SEGMENTS = new Set(['.', '..']);
 
 function assertSegment(name: string, value: string): string {
-  if (!value || !SEGMENT_RX.test(value)) {
+  if (!value || !SEGMENT_RX.test(value) || RELATIVE_SEGMENTS.has(value)) {
     throw new Error(`Invalid S3 path segment for ${name}: ${JSON.stringify(value)}`);
   }
   return value;
@@ -366,7 +376,11 @@ export function assertS3PathSegment(name: string, value: string): string {
 export function s3PathFilename(value: string): string {
   const base = value.split(/[\\/]/).filter(Boolean).at(-1) ?? 'file';
   const safe = base.replace(SAFE_FILENAME_RX, '_').replace(/^_+|_+$/g, '');
-  return assertSegment('filename', safe || 'file');
+  // A file genuinely named `..` (or `.`) sanitizes to itself, which
+  // `assertSegment` now refuses. Fall back rather than throw: this is an
+  // upload the caller should be able to store, not an attack to surface.
+  const named = !safe || RELATIVE_SEGMENTS.has(safe) ? 'file' : safe;
+  return assertSegment('filename', named);
 }
 
 export function s3FileArtifactName(fileId: string, filename: string): string {
