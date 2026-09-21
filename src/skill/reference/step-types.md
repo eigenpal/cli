@@ -3152,6 +3152,217 @@ Output schema:
 ```
 
 
+#### `ai.figure-crops` — Figure Crops
+
+Crop and caption figure elements from a parsed PDF. Renders the source document, crops each kind=figure bbox from ai.parse output, and describes the crop with a vision model. Output is captions plus normalized bboxes for evidence viewers.
+
+**Behavior and examples:** `eigenpal docs read steps/ai/figure-crops`
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | Storage reference or template expression for the source PDF |
+| `parseOutput` | unknown | yes |  | ai.parse output object (template {{steps.<parse>.output}}); figure elements are read from its `elements` array |
+| `model` | string | no |  | Vision model for captions (defaults to workspace model) |
+| `figureInstructions` | string | no |  | Custom caption instruction; applied per figure crop |
+| `maxFigures` | integer | no | `40` | Cap on figures processed per document |
+| `minAreaFrac` | number | no | `0` | Skip figures below this page-area fraction (logos/decorations) |
+| `includeCrops` | boolean | no | `false` | Include base64 JPEG crops in output (heavy; default off — captions + bboxes only) |
+| `renderScale` | number | no | `1` | Scale factor for rendering PDF pages before cropping |
+| `imageQuality` | integer | no | `85` | JPEG quality for crops |
+| `llmReasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `figures` | array<object> | yes |  |  |
+| `_figureCrops` | object | yes |  |  |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "input": {
+      "type": "string",
+      "description": "Storage reference or template expression for the source PDF"
+    },
+    "parseOutput": {
+      "description": "ai.parse output object (template {{steps.<parse>.output}}); figure elements are read from its `elements` array"
+    },
+    "model": {
+      "description": "Vision model for captions (defaults to workspace model)",
+      "type": "string"
+    },
+    "figureInstructions": {
+      "description": "Custom caption instruction; applied per figure crop",
+      "type": "string"
+    },
+    "maxFigures": {
+      "description": "Cap on figures processed per document",
+      "default": 40,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "minAreaFrac": {
+      "description": "Skip figures below this page-area fraction (logos/decorations)",
+      "default": 0,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "includeCrops": {
+      "description": "Include base64 JPEG crops in output (heavy; default off — captions + bboxes only)",
+      "default": false,
+      "type": "boolean"
+    },
+    "renderScale": {
+      "description": "Scale factor for rendering PDF pages before cropping",
+      "default": 1,
+      "type": "number",
+      "minimum": 1,
+      "maximum": 4
+    },
+    "imageQuality": {
+      "description": "JPEG quality for crops",
+      "default": 85,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "llmReasoningEffort": {
+      "description": "Reasoning effort for models that support it. Omit to use the selected model's default.",
+      "type": "string",
+      "enum": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    }
+  },
+  "required": [
+    "input",
+    "parseOutput"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "figures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "page": {
+            "type": "number"
+          },
+          "bboxNorm": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "areaFrac": {
+            "type": "number"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cropJpegBase64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "page",
+          "bboxNorm",
+          "areaFrac",
+          "caption"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "_figureCrops": {
+      "type": "object",
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "skippedSmall": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "pages",
+        "skippedSmall"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "figures",
+    "_figureCrops"
+  ],
+  "additionalProperties": false
+}
+```
+
+
 ### Transform steps — deterministic data transforms
 
 #### `transform.set` — Set Value

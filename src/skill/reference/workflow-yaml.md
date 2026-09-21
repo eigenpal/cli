@@ -1009,7 +1009,8 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "ai.classify",
                 "ai.classify-pages",
                 "ai.vision",
-                "ai.search-files"
+                "ai.search-files",
+                "ai.figure-crops"
               ]
             },
             "name": {

@@ -146,6 +146,80 @@ export const AiParseConfigSchema = z
 export const AiParseOutputSchema = ParseResultSchema.omit({ rawResponse: true });
 
 /**
+ * ai.figure-crops - Crop + caption figure elements from a parsed document
+ * Config goes in step.with. Pairs with ai.parse (openparser@1 output): renders
+ * the source PDF, crops each kind=figure element bbox, and captions the crop
+ * with a vision model. Powers evidence-agent corpora and citation viewers.
+ */
+export const AiFigureCropsConfigSchema = z.object({
+  input: z.string().describe('Storage reference or template expression for the source PDF'),
+  parseOutput: z
+    .unknown()
+    .describe(
+      'ai.parse output object (template {{steps.<parse>.output}}); figure elements are read from its `elements` array'
+    ),
+  model: z.string().optional().describe('Vision model for captions (defaults to workspace model)'),
+  figureInstructions: z
+    .string()
+    .optional()
+    .describe('Custom caption instruction; applied per figure crop'),
+  maxFigures: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(40)
+    .optional()
+    .describe('Cap on figures processed per document'),
+  minAreaFrac: z
+    .number()
+    .min(0)
+    .max(1)
+    .default(0)
+    .optional()
+    .describe('Skip figures below this page-area fraction (logos/decorations)'),
+  includeCrops: z
+    .boolean()
+    .default(false)
+    .optional()
+    .describe('Include base64 JPEG crops in output (heavy; default off — captions + bboxes only)'),
+  renderScale: z
+    .number()
+    .min(1)
+    .max(4)
+    .default(1)
+    .optional()
+    .describe('Scale factor for rendering PDF pages before cropping'),
+  imageQuality: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(85)
+    .optional()
+    .describe('JPEG quality for crops'),
+  llmReasoningEffort: OptionalReasoningEffortSchema,
+});
+
+export const AiFigureCropsFigureSchema = z.object({
+  id: z.string(),
+  page: z.number(),
+  bboxNorm: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(),
+  areaFrac: z.number(),
+  caption: z.string().nullable(),
+  cropJpegBase64: z.string().optional(),
+});
+
+export const AiFigureCropsOutputSchema = z.object({
+  figures: z.array(AiFigureCropsFigureSchema),
+  _figureCrops: z.object({
+    pages: z.array(z.number()),
+    model: z.string().optional(),
+    skippedSmall: z.number(),
+  }),
+});
+
+/**
  * ai.extract - Extract structured data using LLM
  * Config goes in step.with
  *
@@ -1998,6 +2072,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'ai.classify-pages': AI_RETRY_CAPABILITY,
   'ai.vision': AI_RETRY_CAPABILITY,
   'ai.search-files': AI_RETRY_CAPABILITY,
+  'ai.figure-crops': AI_RETRY_CAPABILITY,
   'transform.set': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.remove': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.combine': DETERMINISTIC_RETRY_CAPABILITY,
@@ -2121,6 +2196,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Investigate a ZIP archive with a question and return an answer plus file citations. Read-only: the step opens files in the archive and never writes back. ZIP is the only accepted format in this version. Optionally scope the search to a folder prefix and cap how many files and investigation turns may run.',
     configSchema: AiSearchFilesConfigSchema,
     outputSchema: AiSearchFilesOutputSchema,
+    configInWith: true,
+  },
+  'ai.figure-crops': {
+    type: 'ai.figure-crops',
+    category: 'ai',
+    name: 'Figure Crops',
+    description:
+      'Crop and caption figure elements from a parsed PDF. Renders the source document, crops each kind=figure bbox from ai.parse output, and describes the crop with a vision model. Output is captions plus normalized bboxes for evidence viewers.',
+    configSchema: AiFigureCropsConfigSchema,
+    outputSchema: AiFigureCropsOutputSchema,
     configInWith: true,
   },
 

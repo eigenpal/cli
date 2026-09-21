@@ -21,6 +21,7 @@ export const AI_STEP_TYPES = [
   'ai.classify-pages',
   'ai.vision',
   'ai.search-files',
+  'ai.figure-crops',
 ] as const;
 
 // Transform step types
@@ -84,6 +85,7 @@ export const StepTypeValue = {
   AI_CLASSIFY_PAGES: 'ai.classify-pages',
   AI_VISION: 'ai.vision',
   AI_SEARCH_FILES: 'ai.search-files',
+  AI_FIGURE_CROPS: 'ai.figure-crops',
   // Transform
   TRANSFORM_SET: 'transform.set',
   TRANSFORM_REMOVE: 'transform.remove',

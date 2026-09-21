@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.17.5
+
+### Patch Changes
+
+- e3c0246: CLI skill reference documents the new `ai.figure-crops` workflow step for cropping and captioning figures from parsed PDFs.
+
 ## 0.16.12
 
 ### Patch Changes

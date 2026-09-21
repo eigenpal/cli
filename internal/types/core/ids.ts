@@ -18,6 +18,7 @@ export const PROCESSOR_IDS = {
   CLASSIFY_PAGES: 'builtin/classify-pages',
   VISION: 'builtin/vision',
   SEARCH_FILES: 'builtin/search-files',
+  FIGURE_CROPS: 'builtin/figure-crops',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',
   XLSX_TO_JSON: 'builtin/xlsx-to-json',
