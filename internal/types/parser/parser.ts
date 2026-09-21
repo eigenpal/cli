@@ -201,6 +201,8 @@ export const ParseUsageSchema = z.object({
   processingTimeMs: z.number().optional(),
   /** Pages actually sent through OCR during hybrid native-or-ocr fallback. */
   ocrPagesProcessed: z.number().int().nonnegative().optional(),
+  /** True when this run served a prior parse from tenant content cache (no OCR/vision work). */
+  cached: z.boolean().optional(),
 });
 
 export type ParseUsage = z.infer<typeof ParseUsageSchema>;

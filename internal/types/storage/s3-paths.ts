@@ -217,6 +217,15 @@ export const S3_PATH_GRAMMAR = {
     templates: PATH_REST,
     knowledge: PATH_REST,
   },
+  // Tenant-scoped platform metadata (blob migration ledger, parse cache, etc.).
+  _meta: {
+    'blob-migrations': {
+      $migrationLedgerFile: PATH_LEAF,
+    },
+    'parse-cache': {
+      $parseCacheDigest: PATH_LEAF,
+    },
+  },
 } as const;
 
 type PathLeaf = typeof PATH_LEAF;
@@ -399,6 +408,19 @@ export function extractSidecarS3Suffixes(input: {
       params
     ),
   };
+}
+
+const PARSE_CACHE_DIGEST_RX = /^[a-f0-9]{64}$/;
+
+/** Tenant-scoped suffix for ai.parse content cache JSON (`_meta/parse-cache/<digest>.json`). */
+export function buildParseCacheS3Suffix(digest: string): string {
+  const safe = assertSegment('digest', digest);
+  if (!PARSE_CACHE_DIGEST_RX.test(safe)) {
+    throw new Error('parse cache digest must be a 64-char lowercase hex SHA-256');
+  }
+  return buildS3PathSuffix('_meta/parse-cache/:parseCacheDigest', {
+    parseCacheDigest: `${safe}.json`,
+  });
 }
 
 // Artifact names are `${fileId}-${filename}` where fileId is `file_<nanoid(21)>`

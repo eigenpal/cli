@@ -21,6 +21,7 @@ export const PROCESSOR_IDS = {
   FIGURE_CROPS: 'builtin/figure-crops',
   TEMPLATE: 'builtin/template',
   PDF_EMBEDDER: 'builtin/pdf-embedder',
+  CROP_REGIONS: 'builtin/crop-regions',
   XLSX_TO_JSON: 'builtin/xlsx-to-json',
   JSON_TO_XLSX: 'builtin/json-to-xlsx',
   ARCHIVE_LIST: 'builtin/archive-list',

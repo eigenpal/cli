@@ -123,6 +123,15 @@ export const DocumentParserConfigSchema = z
     outputFormat: ParseOutputFormatSchema.default('markdown')
       .optional()
       .describe(PARSE_OUTPUT_FORMAT_DESCRIPTION),
+
+    /** Reuse prior parse output keyed by SHA-256(file bytes + parse settings). Default off. */
+    cache: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'When true, reuse a prior parse for identical file bytes and parse settings. Skips OCR/vision on cache hit. Stored in tenant blob storage with no automatic expiry (TTL/lifecycle is a follow-up). Default off.'
+      ),
   })
   .superRefine(refineNativeParseModeConflicts)
   .superRefine(refineLayoutOutputFormat)

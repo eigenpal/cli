@@ -504,6 +504,7 @@ Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or
 | `nativeText` | boolean | no | `false` | Extract native/embedded text from PDFs without OCR/VLM. Faster and uses no credits. Falls back to OCR/VLM if the PDF has no embedded text. |
 | `describeFigures` | boolean | no |  | Opt-in (default off). After text extraction, detect which pages contain figures with an in-worker layout model, then caption those pages with a vision model and append `<figure>description</figure>` to their text — so image-only pages (property photos, signatures, charts) become findable by text-based steps like ai.split. Note: the layout scan runs over all pages, and the caption step and its vision calls are billed. Skipped for plaintext. |
 | `figureInstructions` | string | no |  | Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs. |
+| `cache` | boolean | no | `false` | When true, reuse a prior parse for identical file bytes and parse settings. Skips OCR/vision on cache hit. Stored in tenant blob storage with no automatic expiry (TTL/lifecycle is a follow-up). Default off. |
 
 **Output:** `object`
 
@@ -643,6 +644,11 @@ Config schema:
     "figureInstructions": {
       "description": "Custom instruction for the figure-description pass, e.g. \"Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown.\" Applied only when describeFigures runs.",
       "type": "string"
+    },
+    "cache": {
+      "description": "When true, reuse a prior parse for identical file bytes and parse settings. Skips OCR/vision on cache hit. Stored in tenant blob storage with no automatic expiry (TTL/lifecycle is a follow-up). Default off.",
+      "default": false,
+      "type": "boolean"
     }
   },
   "required": [
@@ -698,6 +704,9 @@ Output schema:
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "cached": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -3973,6 +3982,262 @@ Output schema:
     "pageCount",
     "wordCount",
     "text"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+#### `transform.crop-regions` — Crop Regions
+
+Render a PDF or image and crop normalized bounding boxes into JPEG run output artifacts. Pair with transform.script (bbox lists from ai.parse layout) and ai.extract or ai.vision for captions.
+
+**Behavior and examples:** `eigenpal docs read steps/transform/crop-regions`
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `input` | string | yes |  | File input — template expression e.g. {{ input.document }} resolving to a PDF or image |
+| `regions` | string \| array<object> | yes |  | Regions to crop — pageIndex + normalized bbox per entry |
+| `renderScale` | number | no | `1` | Scale factor when rasterizing PDF pages before cropping |
+| `imageQuality` | integer | no | `85` | JPEG quality for cropped outputs |
+| `paddingFrac` | number | no | `0.02` | Padding around each bbox as a fraction of the shorter page edge |
+| `minCropPx` | integer | no | `8` | Minimum crop width/height in pixels; smaller crops fall back to the full page |
+| `maxRegions` | integer | no | `100` | Maximum regions processed per invocation |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `regions` | array<object> | yes |  | Successfully cropped regions |
+| `skipped` | integer | no |  | Regions skipped (invalid bbox or missing page) |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "input": {
+      "type": "string",
+      "description": "File input — template expression e.g. {{ input.document }} resolving to a PDF or image"
+    },
+    "regions": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Template expression resolving to a region array, e.g. {{ steps.list-figures.output.regions }}"
+        },
+        {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "description": "Stable region id used in output and crop filenames (defaults to region-N)",
+                "type": "string"
+              },
+              "pageIndex": {
+                "description": "0-based page index to crop from (images use page 0)",
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bbox": {
+                "type": "array",
+                "items": [
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                ],
+                "description": "Normalized axis-aligned bbox [x0, y0, x1, y1]"
+              }
+            },
+            "required": [
+              "bbox"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Regions to crop from the rendered document"
+        }
+      ],
+      "description": "Regions to crop — pageIndex + normalized bbox per entry"
+    },
+    "renderScale": {
+      "description": "Scale factor when rasterizing PDF pages before cropping",
+      "default": 1,
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 4
+    },
+    "imageQuality": {
+      "description": "JPEG quality for cropped outputs",
+      "default": 85,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "paddingFrac": {
+      "description": "Padding around each bbox as a fraction of the shorter page edge",
+      "default": 0.02,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.2
+    },
+    "minCropPx": {
+      "description": "Minimum crop width/height in pixels; smaller crops fall back to the full page",
+      "default": 8,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "maxRegions": {
+      "description": "Maximum regions processed per invocation",
+      "default": 100,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200
+    }
+  },
+  "required": [
+    "input",
+    "regions"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Region id (from input or auto-generated)"
+          },
+          "pageIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "0-based page index the crop was taken from"
+          },
+          "bbox": {
+            "type": "array",
+            "items": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            ],
+            "description": "Normalized bbox that was cropped"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Crop width in pixels"
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Crop height in pixels"
+          },
+          "fileId": {
+            "type": "string",
+            "description": "Run output file id for the JPEG crop"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Stored crop filename"
+          },
+          "mimeType": {
+            "type": "string",
+            "const": "image/jpeg",
+            "description": "Always image/jpeg"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "JPEG size in bytes"
+          }
+        },
+        "required": [
+          "id",
+          "pageIndex",
+          "bbox",
+          "width",
+          "height",
+          "fileId",
+          "filename",
+          "mimeType",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Successfully cropped regions"
+    },
+    "skipped": {
+      "description": "Regions skipped (invalid bbox or missing page)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "regions"
   ],
   "additionalProperties": false
 }

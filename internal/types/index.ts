@@ -646,6 +646,7 @@ export * from './typed-script';
 export {
   S3_PATH_GRAMMAR,
   assertS3PathSegment,
+  buildParseCacheS3Suffix,
   buildS3Path,
   buildS3PathSuffix,
   extractSidecarS3Suffixes,

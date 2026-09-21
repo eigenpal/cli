@@ -139,6 +139,13 @@ export const AiParseConfigSchema = z
       .describe(
         'Custom instruction for the figure-description pass, e.g. "Describe each figure; label a handwritten signature as `<figure>signature</figure>` and a stamp as `<figure>stamp</figure>`; for property photos note the room or exterior shown." Applied only when describeFigures runs.'
       ),
+    cache: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'When true, reuse a prior parse for identical file bytes and parse settings. Skips OCR/vision on cache hit. Stored in tenant blob storage with no automatic expiry (TTL/lifecycle is a follow-up). Default off.'
+      ),
   })
   .superRefine(refineNativeParseModeConflicts)
   .superRefine(refineLayoutOutputFormat);
@@ -1153,6 +1160,140 @@ export const TransformPdfEmbedOutputSchema = z.object({
   text: z.string().describe('Extracted text from the document'),
 });
 
+/** Normalized page bbox for transform.crop-regions — origin top-left, values in [0, 1]. */
+export const CropRegionBboxSchema = z.tuple([
+  z.number().min(0).max(1),
+  z.number().min(0).max(1),
+  z.number().min(0).max(1),
+  z.number().min(0).max(1),
+]);
+
+export const CropRegionSpecSchema = z.object({
+  id: z
+    .string()
+    .optional()
+    .describe('Stable region id used in output and crop filenames (defaults to region-N)'),
+  pageIndex: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .optional()
+    .describe('0-based page index to crop from (images use page 0)'),
+  bbox: CropRegionBboxSchema.describe('Normalized axis-aligned bbox [x0, y0, x1, y1]'),
+});
+
+export const CropRegionSpecListSchema = z
+  .array(CropRegionSpecSchema)
+  .min(1)
+  .describe('Regions to crop from the rendered document');
+
+/** Resolved at runtime — may be empty when upstream scripts find no figures. */
+export const CropRegionSpecListResolvedSchema = z
+  .array(CropRegionSpecSchema)
+  .describe('Regions to crop from the rendered document (may be empty)');
+
+/**
+ * transform.crop-regions — Render a PDF/image and crop normalized bounding boxes.
+ * Deterministic; pairs with ai.parse layout output via transform.script region lists,
+ * or any workflow-authored bbox array. Each crop is stored as a JPEG run output artifact.
+ */
+export const TransformCropRegionsConfigSchema = z.object({
+  input: z
+    .string()
+    .describe(
+      'File input — template expression e.g. {{ input.document }} resolving to a PDF or image'
+    ),
+  regions: z
+    .union([
+      z
+        .string()
+        .min(1)
+        .describe(
+          'Template expression resolving to a region array, e.g. {{ steps.list-figures.output.regions }}'
+        ),
+      CropRegionSpecListSchema,
+    ])
+    .describe('Regions to crop — pageIndex + normalized bbox per entry'),
+  renderScale: z
+    .number()
+    .min(0.5)
+    .max(4)
+    .default(1)
+    .optional()
+    .describe('Scale factor when rasterizing PDF pages before cropping'),
+  imageQuality: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(85)
+    .optional()
+    .describe('JPEG quality for cropped outputs'),
+  paddingFrac: z
+    .number()
+    .min(0)
+    .max(0.2)
+    .default(0.02)
+    .optional()
+    .describe('Padding around each bbox as a fraction of the shorter page edge'),
+  minCropPx: z
+    .number()
+    .int()
+    .min(1)
+    .default(8)
+    .optional()
+    .describe('Minimum crop width/height in pixels; smaller crops fall back to the full page'),
+  maxRegions: z
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .default(100)
+    .optional()
+    .describe('Maximum regions processed per invocation'),
+});
+
+export const TransformCropRegionsCropSchema = z.object({
+  id: z.string().describe('Region id (from input or auto-generated)'),
+  pageIndex: z.number().int().min(0).describe('0-based page index the crop was taken from'),
+  bbox: CropRegionBboxSchema.describe('Normalized bbox that was cropped'),
+  width: z.number().int().min(1).describe('Crop width in pixels'),
+  height: z.number().int().min(1).describe('Crop height in pixels'),
+  fileId: z.string().describe('Run output file id for the JPEG crop'),
+  filename: z.string().describe('Stored crop filename'),
+  mimeType: z.literal('image/jpeg').describe('Always image/jpeg'),
+  size: z.number().int().min(0).describe('JPEG size in bytes'),
+});
+
+export const TransformCropRegionsOutputSchema = z.object({
+  regions: z.array(TransformCropRegionsCropSchema).describe('Successfully cropped regions'),
+  skipped: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Regions skipped (invalid bbox or missing page)'),
+});
+
+/** Worker processor config — `input` is resolved separately as the file handle. */
+export const CropRegionsProcessorConfigSchema = TransformCropRegionsConfigSchema.omit({
+  input: true,
+  regions: true,
+}).extend({
+  regions: z
+    .union([
+      z
+        .string()
+        .min(1)
+        .describe(
+          'Template expression resolving to a region array, e.g. {{ steps.list-figures.output.regions }}'
+        ),
+      CropRegionSpecListResolvedSchema,
+    ])
+    .describe('Regions to crop — may be empty when upstream scripts find no figures'),
+});
+
 /**
  * transform.xlsx-to-json — Spreadsheet to JSON (XLS / XLSX)
  * Config goes in step.with. Shared conversion fields live on the processor schema.
@@ -2080,6 +2221,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'transform.merge': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.template': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.pdf-embed': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.crop-regions': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.xlsx-to-json': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.json-to-xlsx': FILE_OUTPUT_RETRY_CAPABILITY,
   'transform.script': DETERMINISTIC_RETRY_CAPABILITY,
@@ -2272,6 +2414,16 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
     description: 'Embed OCR text layer into scanned PDFs/images to make them searchable',
     configSchema: TransformPdfEmbedConfigSchema,
     outputSchema: TransformPdfEmbedOutputSchema,
+    configInWith: true,
+  },
+  'transform.crop-regions': {
+    type: 'transform.crop-regions',
+    category: 'transform',
+    name: 'Crop Regions',
+    description:
+      'Render a PDF or image and crop normalized bounding boxes into JPEG run output artifacts. Pair with transform.script (bbox lists from ai.parse layout) and ai.extract or ai.vision for captions.',
+    configSchema: TransformCropRegionsConfigSchema,
+    outputSchema: TransformCropRegionsOutputSchema,
     configInWith: true,
   },
   'transform.xlsx-to-json': {
@@ -2627,6 +2779,10 @@ export type TransformMergeConfig = z.infer<typeof TransformMergeConfigSchema>;
 export type TransformTemplateConfig = z.infer<typeof TransformTemplateConfigSchema>;
 export type TransformPdfEmbedConfig = z.infer<typeof TransformPdfEmbedConfigSchema>;
 export type TransformPdfEmbedOutput = z.infer<typeof TransformPdfEmbedOutputSchema>;
+export type CropRegionSpec = z.infer<typeof CropRegionSpecSchema>;
+export type TransformCropRegionsConfig = z.infer<typeof TransformCropRegionsConfigSchema>;
+export type TransformCropRegionsOutput = z.infer<typeof TransformCropRegionsOutputSchema>;
+export type CropRegionsProcessorConfig = z.infer<typeof CropRegionsProcessorConfigSchema>;
 export type TransformJsonToXlsxConfig = z.infer<typeof TransformJsonToXlsxConfigSchema>;
 export type TransformJsonToXlsxOutput = z.infer<typeof TransformJsonToXlsxOutputSchema>;
 export type TransformArchiveListConfig = z.infer<typeof TransformArchiveListConfigSchema>;

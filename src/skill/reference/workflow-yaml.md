@@ -1114,6 +1114,7 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "transform.merge",
                 "transform.template",
                 "transform.pdf-embed",
+                "transform.crop-regions",
                 "transform.xlsx-to-json",
                 "transform.json-to-xlsx",
                 "transform.script",
