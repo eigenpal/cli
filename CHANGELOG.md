@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.0
+
+### Minor Changes
+
+- 0ce2092: `eigenpal workflow dataset review-request` (and the `eigenpal agents dataset` mirror) is the agent-friendly review loop: create a request with reviewer instructions, `--focus` / `--focus-reason` paths, `--ignore` paths reviewers can skip, and per-example `--item-note` / `--field-note` comments; `list`/`get`/`events` expose `progress.complete`, `fieldDecisions`, and `inputDrifted`; `item --action` records approve/reject/comment/edit plus per-field `field-decision` (clear with `--clear` / `--decision null`); `update --status closed` finishes the request. There is no auto-apply — pull and reconcile examples manually. Reject is recommendation-only; nothing is deleted.
+
 ## 0.17.5
 
 ### Patch Changes

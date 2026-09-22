@@ -40,6 +40,13 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-delete-options-workflow-id-exampleid)
   - [`eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`](#eigenpal-workflow-dataset-example-get-options-workflow-id-exampleid)
   - [`eigenpal workflow dataset validate [options] [path]`](#eigenpal-workflow-dataset-validate-options-path)
+  - [`eigenpal workflow dataset review-request list|ls [options] <automation-id>`](#eigenpal-workflow-dataset-review-request-listls-options-automation-id)
+  - [`eigenpal workflow dataset review-request create [options] <automation-id>`](#eigenpal-workflow-dataset-review-request-create-options-automation-id)
+  - [`eigenpal workflow dataset review-request get [options] <automation-id> <review-id>`](#eigenpal-workflow-dataset-review-request-get-options-automation-id-review-id)
+  - [`eigenpal workflow dataset review-request update [options] <automation-id> <review-id>`](#eigenpal-workflow-dataset-review-request-update-options-automation-id-review-id)
+  - [`eigenpal workflow dataset review-request items [options] <automation-id> <review-id>`](#eigenpal-workflow-dataset-review-request-items-options-automation-id-review-id)
+  - [`eigenpal workflow dataset review-request events [options] <automation-id> <review-id>`](#eigenpal-workflow-dataset-review-request-events-options-automation-id-review-id)
+  - [`eigenpal workflow dataset review-request item [options] <automation-id> <review-id> <item-id>`](#eigenpal-workflow-dataset-review-request-item-options-automation-id-review-id-item-id)
   - [`eigenpal workflow templates upload [options] <file>`](#eigenpal-workflow-templates-upload-options-file)
   - [`eigenpal workflow templates list|ls [options]`](#eigenpal-workflow-templates-listls-options)
   - [`eigenpal workflow templates get|inspect [options] <template-id>`](#eigenpal-workflow-templates-getinspect-options-template-id)
@@ -92,7 +99,15 @@ workflow
 │   │   ├── update <workflow-id> <exampleId>
 │   │   ├── delete <workflow-id> <exampleId>
 │   │   └── get <workflow-id> <exampleId>
-│   └── validate [path]
+│   ├── validate [path]
+│   └── review-request
+│       ├── list|ls <automation-id>
+│       ├── create <automation-id>
+│       ├── get <automation-id> <review-id>
+│       ├── update <automation-id> <review-id>
+│       ├── items <automation-id> <review-id>
+│       ├── events <automation-id> <review-id>
+│       └── item <automation-id> <review-id> <item-id>
 ├── templates
 │   ├── upload <file>
 │   ├── list|ls
@@ -160,16 +175,23 @@ workflow
 
 ### Dataset
 
-| Command                                                                        | Description                                                                                                     |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `eigenpal workflow dataset list\|ls [options] <workflow-id>`                   | List eval examples for the workflow.                                                                            |
-| `eigenpal workflow dataset pull [options] <workflow-id>`                       | Download the workflow's dataset as a ZIP archive.                                                               |
-| `eigenpal workflow dataset push [options] <workflow-id>`                       | Replace or extend the workflow's dataset from a ZIP or folder.                                                  |
-| `eigenpal workflow dataset example create [options] <workflow-id>`             | Create one eval example without re-uploading the dataset.                                                       |
-| `eigenpal workflow dataset example update [options] <workflow-id> <exampleId>` | Patch one eval example. Omitted flags are left alone.                                                           |
-| `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>` | Delete one eval example by id. Non-TTY shells require --yes.                                                    |
-| `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`    | Fetch one eval example with full triggerInput, expectedOutput, and metadata.                                    |
-| `eigenpal workflow dataset validate [options] [path]`                          | Validate a dataset folder against the examples/<name>/{input,expected,meta} convention. Defaults to ./dataset/. |
+| Command                                                                                         | Description                                                                                                     |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `eigenpal workflow dataset list\|ls [options] <workflow-id>`                                    | List eval examples for the workflow.                                                                            |
+| `eigenpal workflow dataset pull [options] <workflow-id>`                                        | Download the workflow's dataset as a ZIP archive.                                                               |
+| `eigenpal workflow dataset push [options] <workflow-id>`                                        | Replace or extend the workflow's dataset from a ZIP or folder.                                                  |
+| `eigenpal workflow dataset example create [options] <workflow-id>`                              | Create one eval example without re-uploading the dataset.                                                       |
+| `eigenpal workflow dataset example update [options] <workflow-id> <exampleId>`                  | Patch one eval example. Omitted flags are left alone.                                                           |
+| `eigenpal workflow dataset example delete [options] <workflow-id> <exampleId>`                  | Delete one eval example by id. Non-TTY shells require --yes.                                                    |
+| `eigenpal workflow dataset example get [options] <workflow-id> <exampleId>`                     | Fetch one eval example with full triggerInput, expectedOutput, and metadata.                                    |
+| `eigenpal workflow dataset validate [options] [path]`                                           | Validate a dataset folder against the examples/<name>/{input,expected,meta} convention. Defaults to ./dataset/. |
+| `eigenpal workflow dataset review-request list\|ls [options] <automation-id>`                   |                                                                                                                 |
+| `eigenpal workflow dataset review-request create [options] <automation-id>`                     | Request human review of dataset ground truth. Snapshot examples and poll progress until review is complete.     |
+| `eigenpal workflow dataset review-request get [options] <automation-id> <review-id>`            | Fetch one dataset review request with items, progress, focus fields, ignored fields, and events.                |
+| `eigenpal workflow dataset review-request update [options] <automation-id> <review-id>`         | Update review metadata or lifecycle status. Set --status closed when review is finished.                        |
+| `eigenpal workflow dataset review-request items [options] <automation-id> <review-id>`          | List snapshotted review items and their statuses.                                                               |
+| `eigenpal workflow dataset review-request events [options] <automation-id> <review-id>`         | List review activity, including example and field notes.                                                        |
+| `eigenpal workflow dataset review-request item [options] <automation-id> <review-id> <item-id>` | Approve, reject, reopen, comment, edit, or record a field-decision on one review item.                          |
 
 ### Templates
 
@@ -624,6 +646,158 @@ Validate a dataset folder against the examples/<name>/{input,expected,meta} conv
 | Name   | Required | Variadic | Description |
 | ------ | -------- | -------- | ----------- |
 | `path` | no       | no       |             |
+
+### `eigenpal workflow dataset review-request list|ls [options] <automation-id>`
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                                         |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                     |
+| `--status <csv>`   | no       |         | Filter by review status (comma-separated: draft,open,paused,closed) |
+| `--limit <n>`      | no       | `50`    | Page size                                                           |
+| `--offset <n>`     | no       | `0`     | Page offset                                                         |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                |
+
+### `eigenpal workflow dataset review-request create [options] <automation-id>`
+
+Request human review of dataset ground truth. Snapshot examples and poll progress until review is complete.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+
+### Options
+
+| Flag                             | Required | Default | Description                                                                      |
+| -------------------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
+| `--base-url <url>`               | no       |         | Server base URL                                                                  |
+| `--json`                         | no       |         | Emit machine-readable JSON on stdout                                             |
+| `--title <title>`                | yes      |         | Review request title                                                             |
+| `--example-name <name>`          | yes      | `[]`    | Example folder name to include (repeatable)                                      |
+| `--instructions <text>`          | no       |         | Note shown to the reviewer for the whole request                                 |
+| `--focus <path>`                 | no       | `[]`    | Expected-output path to highlight (repeatable)                                   |
+| `--focus-reason <spec>`          | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)                    |
+| `--ignore <path>`                | no       | `[]`    | Expected-output path reviewers can skip (repeatable)                             |
+| `--item-note <spec>`             | no       | `[]`    | Example-level note seeded at create time, as exampleName=comment (repeatable)    |
+| `--field-note <spec>`            | no       | `[]`    | Field-level note seeded at create time, as exampleName.path=comment (repeatable) |
+| `--focus-json <json>`            | no       |         | JSON array of { path, reason? } focus fields                                     |
+| `--notes-json <json>`            | no       |         | JSON array of { exampleName, comment?, fields?: [{ path, comment }] }            |
+| `--status <draft\|open\|paused>` | no       |         | Initial lifecycle status (default: draft)                                        |
+
+### `eigenpal workflow dataset review-request get [options] <automation-id> <review-id>`
+
+Fetch one dataset review request with items, progress, focus fields, ignored fields, and events.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+
+### `eigenpal workflow dataset review-request update [options] <automation-id> <review-id>`
+
+Update review metadata or lifecycle status. Set --status closed when review is finished.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+
+### Options
+
+| Flag                                     | Required | Default | Description                                                              |
+| ---------------------------------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `--base-url <url>`                       | no       |         | Server base URL                                                          |
+| `--json`                                 | no       |         | Emit machine-readable JSON on stdout                                     |
+| `--title <title>`                        | no       |         | New review request title                                                 |
+| `--instructions <text>`                  | no       |         | Note shown to the reviewer for the whole request                         |
+| `--focus <path>`                         | no       | `[]`    | Replace focus paths (repeatable; use with --focus-reason / --focus-json) |
+| `--focus-reason <spec>`                  | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)            |
+| `--focus-json <json>`                    | no       |         | JSON array of { path, reason? } focus fields (replaces focus)            |
+| `--ignore <path>`                        | no       |         | Replace ignored paths (repeatable)                                       |
+| `--status <draft\|open\|paused\|closed>` | no       |         | Lifecycle status                                                         |
+
+### `eigenpal workflow dataset review-request items [options] <automation-id> <review-id>`
+
+List snapshotted review items and their statuses.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                              |
+| ------------------ | -------- | ------- | -------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                          |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                     |
+| `--status <csv>`   | no       |         | Filter by item status (pending,approved,edited,rejected) |
+
+### `eigenpal workflow dataset review-request events [options] <automation-id> <review-id>`
+
+List review activity, including example and field notes.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+
+### `eigenpal workflow dataset review-request item [options] <automation-id> <review-id> <item-id>`
+
+Approve, reject, reopen, comment, edit, or record a field-decision on one review item.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+| `item-id`       | yes      | no       |             |
+
+### Options
+
+| Flag                                                                | Required | Default | Description                                                        |
+| ------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------ |
+| `--base-url <url>`                                                  | no       |         | Server base URL                                                    |
+| `--json`                                                            | no       |         | Emit machine-readable JSON on stdout                               |
+| `--action <approve\|reject\|reopen\|comment\|edit\|field-decision>` | yes      |         | Item action                                                        |
+| `--expected-updated-at <iso>`                                       | yes      |         | Item updatedAt the client last observed (optimistic concurrency)   |
+| `--comment <text>`                                                  | no       |         | Note stored on the item or field                                   |
+| `--field-path <path>`                                               | no       |         | Dotted expected-output path for comment or field-decision          |
+| `--decision <approved\|rejected\|null>`                             | no       |         | Field decision for --action field-decision (null/clear removes it) |
+| `--clear`                                                           | no       | `false` | Clear a field decision (sends decision: null)                      |
+| `--expected-json <json>`                                            | no       |         | Replacement expected JSON when --action edit                       |
 
 ### `eigenpal workflow templates upload [options] <file>`
 

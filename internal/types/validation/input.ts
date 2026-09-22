@@ -1,6 +1,6 @@
 import type { ErrorObject } from 'ajv';
 import { WORKFLOW_FILE_REF_JSON_SCHEMA } from '../files/runtime-file-ref';
-import { eigenpalAjv } from './ajv';
+import { getEigenpalAjv } from './ajv';
 
 /**
  * Machine-readable discriminator for an input validation issue. Closed set so
@@ -198,7 +198,7 @@ export function validateInput(
   input: unknown,
   schema: Record<string, unknown>
 ): InputValidationResult {
-  const validate = eigenpalAjv.compile(schema);
+  const validate = getEigenpalAjv().compile(schema);
   const ok = validate(input);
 
   if (ok) {

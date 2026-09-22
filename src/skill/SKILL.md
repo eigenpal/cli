@@ -164,6 +164,30 @@ eigenpal workflow dataset push <workflow-id> --file ./dataset --mode replace
 eigenpal workflow evaluators validate ./evaluators.yaml
 eigenpal workflow evaluators push <workflow-id> --file ./evaluators.yaml
 
+# If you were given any examples: request a dataset review BEFORE iterating
+# to perfection. Ship a V0, then get ground truth reviewed first — a quick
+# unreviewed V0 is fine, but never finalize evaluators, experiments, or
+# versions against unreviewed expected outputs.
+eigenpal workflow dataset review-request create <workflow-id> \
+  --title "<topic> GT review" --example-name <example-name> \
+  --focus <path> --focus-reason '<path>=why' --ignore <path> \
+  --item-note '<example>=note' --field-note '<example.path>=note' \
+  --status open --json
+# Poll .progress.complete until reviewers finish. Record field decisions and
+# approve/reject with comments as needed, then pull and MANUAL reconcile —
+# there is no auto-apply by design (reviewers can err). Close when done.
+eigenpal workflow dataset review-request get <workflow-id> <review-id> --json | jq '.progress'
+eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id> \
+  --action field-decision --field-path <path> --decision approved \
+  --expected-updated-at <iso> --json
+eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id> \
+  --action reject --comment "not usable" --expected-updated-at <iso> --json
+eigenpal workflow dataset pull <workflow-id> --out ./dataset.zip
+# Manually copy approved/edited expected.json per example into the dataset,
+# then push. Reject is recommendation-only — nothing is deleted by the API.
+eigenpal workflow dataset review-request update <workflow-id> <review-id> \
+  --status closed --json
+
 # Run an experiment.
 eigenpal workflow experiment run <workflow-id>
 eigenpal workflow experiment watch <workflow-id> <batch-id>
@@ -378,6 +402,14 @@ eigenpal agents dataset pull agents.<slug> --out ./dataset.zip
 
 Expected outputs should include stable fields only. Omit timestamps, random IDs,
 and open-ended LLM text.
+
+If you were given any examples: request a dataset review BEFORE iterating
+to perfection (`eigenpal agents dataset review-request create agents.<slug>
+--title ... --example-name ... --focus ... --status open --json`). Ship a V0,
+get ground truth reviewed first — poll `.progress.complete`, record field
+decisions / approve / reject with comments, `dataset pull` and MANUAL
+per-example reconcile (no auto-apply), then
+`review-request update ... --status closed`.
 
 ## Runs And Artifacts
 

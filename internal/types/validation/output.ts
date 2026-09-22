@@ -1,4 +1,4 @@
-import { eigenpalAjv } from './ajv';
+import { getEigenpalAjv } from './ajv';
 
 export interface ValidationResult {
   valid: boolean;
@@ -9,7 +9,7 @@ export interface ValidationResult {
  * Validate an output JSON object against a JSON Schema.
  */
 export function validateOutput(output: unknown, schema: Record<string, unknown>): ValidationResult {
-  const validate = eigenpalAjv.compile(schema);
+  const validate = getEigenpalAjv().compile(schema);
   const valid = validate(output);
 
   if (valid) {

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { datasetReviewRequestsPath } from '../dataset-review-request';
 import {
   bumpSemver,
   datasetExportPath,
@@ -135,6 +136,20 @@ describe('workflow schema command', () => {
   });
 });
 
+describe('datasetReviewRequestsPath', () => {
+  test('returns the collection path', () => {
+    expect(datasetReviewRequestsPath('wf_abc123')).toBe(
+      '/v1/automations/wf_abc123/dataset-review-requests'
+    );
+  });
+
+  test('returns the item path when reviewId is provided', () => {
+    expect(datasetReviewRequestsPath('wf_abc123', 'dsr_111')).toBe(
+      '/v1/automations/wf_abc123/dataset-review-requests/dsr_111'
+    );
+  });
+});
+
 describe('datasetExportPath', () => {
   const base = '/v1/automations/wf_abc123/dataset/export';
 
@@ -165,6 +180,24 @@ describe('dataset pull --help', () => {
     });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('--example-id');
+  });
+});
+
+describe('dataset review-request --help', () => {
+  test('registers list, create, get, update, items, events, and item subcommands', () => {
+    const result = spawnSync('bun', [CLI, 'workflow', 'dataset', 'review-request', '--help'], {
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('list');
+    expect(result.stdout).toContain('create');
+    expect(result.stdout).toContain('get');
+    expect(result.stdout).toContain('update');
+    expect(result.stdout).toContain('items');
+    expect(result.stdout).toContain('events');
+    expect(result.stdout).toContain('item');
+    expect(result.stdout).not.toMatch(/\block\b/);
+    expect(result.stdout).not.toMatch(/\bflag\b/);
   });
 });
 

@@ -1073,10 +1073,20 @@ export function validateHumanReviewEffectiveSchema(
 
 export function applyHumanReviewEdits(
   machineData: Record<string, unknown> | unknown[],
-  edits: Record<string, HumanReviewScalar>
+  edits: Record<string, HumanReviewScalar>,
+  options?: { allowScalarTypeChange?: boolean }
 ): Record<string, unknown> | unknown[] {
   const result = structuredClone(machineData);
   for (const [pointer, next] of Object.entries(edits)) {
+    // `allowScalarTypeChange` bypasses only the captured-type equality below —
+    // a non-finite number must never reach the draft: JSON serialization
+    // silently turns Infinity/NaN into null, corrupting ground truth.
+    if (typeof next === 'number' && !Number.isFinite(next)) {
+      throw new Error(`Edit for "${pointer}" may not be a non-finite number`);
+    }
+    if (!isHumanReviewScalar(next)) {
+      throw new Error(`Edit for "${pointer}" is not a scalar value`);
+    }
     const segments = decodeHumanReviewJsonPointer(pointer);
     const original = valueAtHumanReviewPointer(machineData, pointer);
     if (
@@ -1089,7 +1099,10 @@ export function applyHumanReviewEdits(
     ) {
       throw new Error(`JSON Pointer "${pointer}" does not reference a scalar field`);
     }
-    if (!sameRuntimeScalarType(original, next)) {
+    // Dataset review has no effective schema to validate against — the
+    // reviewer's retype is the ground truth — so it opts out of the guard
+    // that keeps HITL edits inside the captured scalar type.
+    if (!options?.allowScalarTypeChange && !sameRuntimeScalarType(original, next)) {
       throw new Error(`Edit for "${pointer}" changes the captured scalar type`);
     }
 

@@ -300,6 +300,61 @@ For bulk changes, edit the local folder and re-push with
 still go through `dataset push`; CRUD only handles JSON input and
 `expected.json`-style outputs.
 
+## Dataset review requests
+
+> **Review-first flow (agents: follow this automatically).** When building a
+> new workflow or agent and you were given any examples: push the dataset,
+> ship a V0, then request a dataset review as the first step — before
+> iterating to perfection. Light iteration on an unreviewed dataset is fine,
+> but evaluators, experiments, and versions must wait for reviewed ground
+> truth: poll `.progress.complete`, reconcile manually, then close the request.
+
+When reviewers need to approve, edit, or reject ground-truth expected
+outputs without direct dataset write access, create a review request that
+snapshots selected examples. The server copies each example's `input.json`
+and `expected.json` values at creation time; file pointers stay as S3
+references. Reviewers approve, reject (recommendation only — nothing is
+deleted), leave comments, and record per-field decisions. There is **no
+auto-apply** by design: after review, `dataset pull` and manually reconcile
+each example into the live dataset (reviewers can err). Close via
+`update --status closed`.
+
+```bash
+# Ask a reviewer to inspect specific fields, with reasons, then poll until done.
+eigenpal workflow dataset review-request create <automation-id> \
+  --title "Q1 invoice GT review" \
+  --example-name invoice-foo --example-name invoice-bar \
+  --instructions "Check IBAN checksums and invoice totals." \
+  --focus vendor.iban --focus-reason 'vendor.iban=OCR often mangles IBANs' \
+  --ignore currency \
+  --field-note 'invoice-foo.total=off by 0.01 last run' \
+  --status open --json
+
+# List requests; `.progress.complete` means every example was decided.
+eigenpal workflow dataset review-request list <automation-id> --status open --json
+
+# Inspect items (includes fieldDecisions + inputDrifted), focus, and notes.
+eigenpal workflow dataset review-request get <automation-id> <review-id> --json
+eigenpal workflow dataset review-request events <automation-id> <review-id> --json
+
+# Per-field decision (approved | rejected). --clear / --decision null removes it.
+eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
+  --action field-decision --field-path vendor.iban --decision approved \
+  --expected-updated-at <iso> --json
+
+# Per-example reject is a recommendation only — nothing is deleted.
+eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
+  --action reject --comment "wrong vendor" --expected-updated-at <iso> --json
+
+# Pull snapshots and MANUAL reconcile into the dataset, then close.
+eigenpal workflow dataset pull <automation-id> --out ./dataset.zip
+eigenpal workflow dataset review-request update <automation-id> <review-id> \
+  --status closed --json
+```
+
+The same commands exist under `eigenpal agents dataset review-request …` for
+agent automations.
+
 <!-- GENERATED:DATASET_REFERENCE START -->
 ## Schema reference
 

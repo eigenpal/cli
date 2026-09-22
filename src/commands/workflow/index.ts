@@ -57,6 +57,10 @@ import {
   withPagination,
   type PaginationOpts,
 } from '../../lib/ui';
+import {
+  registerDatasetReviewRequestCommands,
+  type ResolveAutomationForReviewRequest,
+} from '../dataset-review-request';
 import { clearEvalOutputs } from './clear';
 import { registerEvaluatorTypeCommands } from './evaluator-type';
 import {
@@ -1192,6 +1196,11 @@ Examples:
 \`--mode append\` is the default; \`--mode replace\` deletes every existing example
 + its files first and prompts a typed-slug confirmation in TTY (use \`--yes\` to
 skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset-format.md\`.
+
+After pushing examples for a new workflow, request a dataset review before
+iterating to perfection: \`dataset review-request create <workflow-id>
+--title ... --example-name ... --status open\`, poll \`.progress.complete\`,
+then close the request when review is finished.
 `
     );
   addJsonFlag(withBaseUrl(pushCmd)).action(
@@ -1346,7 +1355,16 @@ skip in CI). Folder layout reference: \`packages/cli/src/skill/reference/dataset
 
   registerDatasetCrudCommands(dataset);
   registerDatasetValidateCommand(dataset);
+  registerDatasetReviewRequestCommands(dataset, resolveAutomationForReviewRequest);
 }
+
+const resolveAutomationForReviewRequest: ResolveAutomationForReviewRequest = async (
+  workflow,
+  opts
+) => {
+  const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+  return { client, automationId: workflowId };
+};
 
 // ---------------------------------------------------------------------------
 // workflow dataset example {create,update,delete,get} — single-row CRUD that

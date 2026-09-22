@@ -27,6 +27,9 @@ export const ID_PREFIXES = {
   // Datasets & Evaluations
   DATASET: 'ds',
   DATASET_EXAMPLE: 'dex',
+  DATASET_REVIEW_REQUEST: 'dsr',
+  DATASET_REVIEW_ITEM: 'dsri',
+  DATASET_REVIEW_EVENT: 'dsre',
   EXPERIMENT: 'exp',
   EXPERIMENT_RUN: 'exr',
   EXPERIMENT_EVALUATION: 'evl',

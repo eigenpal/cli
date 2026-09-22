@@ -18,7 +18,21 @@ import draft7MetaSchema from 'ajv/dist/refs/json-schema-draft-07.json';
  */
 // `verbose: true` populates `error.data` with the offending value so we can
 // quote it back to the user (`got "critical"`). Negligible cost.
-export const eigenpalAjv = new Ajv({ allErrors: true, strict: false, verbose: true });
-addFormats(eigenpalAjv);
-eigenpalAjv.addKeyword({ keyword: 'x-eigenpal-type', metaSchema: { type: 'string' } });
-eigenpalAjv.addMetaSchema({ ...draft7MetaSchema, $id: 'https://json-schema.org/draft-07/schema#' });
+//
+// Lazily constructed on first use (not at import): Ajv compiles schemas with
+// `new Function`, which the app Content-Security-Policy forbids. Server code
+// calls this freely, but `@eigenpal/types` modules like `human-review` are
+// also imported by client bundles (which never validate) — constructing at
+// import time crashed every review page under the strict CSP.
+let sharedAjv: Ajv | null = null;
+
+export function getEigenpalAjv(): Ajv {
+  if (!sharedAjv) {
+    const ajv = new Ajv({ allErrors: true, strict: false, verbose: true });
+    addFormats(ajv);
+    ajv.addKeyword({ keyword: 'x-eigenpal-type', metaSchema: { type: 'string' } });
+    ajv.addMetaSchema({ ...draft7MetaSchema, $id: 'https://json-schema.org/draft-07/schema#' });
+    sharedAjv = ajv;
+  }
+  return sharedAjv;
+}

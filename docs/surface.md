@@ -37,7 +37,15 @@ eigenpal
 │   │   │   ├── update <workflow-id> <exampleId>
 │   │   │   ├── delete <workflow-id> <exampleId>
 │   │   │   └── get <workflow-id> <exampleId>
-│   │   └── validate [path]
+│   │   ├── validate [path]
+│   │   └── review-request
+│   │       ├── list|ls <automation-id>
+│   │       ├── create <automation-id>
+│   │       ├── get <automation-id> <review-id>
+│   │       ├── update <automation-id> <review-id>
+│   │       ├── items <automation-id> <review-id>
+│   │       ├── events <automation-id> <review-id>
+│   │       └── item <automation-id> <review-id> <item-id>
 │   ├── templates
 │   │   ├── upload <file>
 │   │   ├── list|ls
@@ -103,7 +111,15 @@ eigenpal
 │   │   ├── list|ls <agent-id-or-slug>
 │   │   ├── push <agent-id-or-slug>
 │   │   ├── pull <agent-id-or-slug>
-│   │   └── validate [path]
+│   │   ├── validate [path]
+│   │   └── review-request
+│   │       ├── list|ls <automation-id>
+│   │       ├── create <automation-id>
+│   │       ├── get <automation-id> <review-id>
+│   │       ├── update <automation-id> <review-id>
+│   │       ├── items <automation-id> <review-id>
+│   │       ├── events <automation-id> <review-id>
+│   │       └── item <automation-id> <review-id> <item-id>
 │   ├── experiment|exp
 │   │   ├── run <agent-id-or-slug>
 │   │   ├── status <agent-id-or-slug> <batch-id>

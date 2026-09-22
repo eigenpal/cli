@@ -2,7 +2,7 @@ import {
   DATASET_NAME_PATTERN,
   DatasetMetaSchema,
   SourcePackageManifestSchema,
-  eigenpalAjv,
+  getEigenpalAjv,
   isScopedFileRef,
   validateScopedArtifactPath,
   validateWorkspaceSchema,
@@ -489,7 +489,7 @@ function validateValueAgainstSchema(
     // `@eigenpal/types` `validateInput`) so accept/reject semantics match the
     // platform exactly: extra keys are rejected only when the schema itself
     // sets `additionalProperties: false`.
-    const validate = eigenpalAjv.compile(schema);
+    const validate = getEigenpalAjv().compile(schema);
     if (validate(value)) return [];
     return (validate.errors ?? []).map((err) => {
       if (err.keyword === 'additionalProperties' && err.params?.additionalProperty) {

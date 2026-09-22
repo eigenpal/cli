@@ -1,4 +1,4 @@
-import { eigenpalAjv } from './ajv';
+import { getEigenpalAjv } from './ajv';
 import type { ValidationResult } from './output';
 
 const SCHEMA_FILES = new Set(['input-schema.json', 'output-schema.json']);
@@ -37,10 +37,11 @@ export function validateWorkspaceSchema(content: string, _filename: string): Val
     errors.push('Root "type" must be "object"');
   }
 
-  if (!eigenpalAjv.validateSchema(schema)) {
+  const ajv = getEigenpalAjv();
+  if (!ajv.validateSchema(schema)) {
     // Capture errors immediately — ajv.errors is mutable instance state that
     // gets clobbered by the next validate/compile call.
-    const metaErrors = eigenpalAjv.errors ?? [];
+    const metaErrors = ajv.errors ?? [];
     for (const err of metaErrors) {
       errors.push(`${err.instancePath || '/'}: ${err.message ?? 'invalid schema'}`);
     }

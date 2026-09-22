@@ -15,6 +15,7 @@ import {
   withPagination,
   type PaginationOpts,
 } from '../../lib/ui';
+import { registerDatasetReviewRequestCommands } from '../dataset-review-request';
 import {
   BaseOpts,
   DATASET_DIR,
@@ -65,6 +66,11 @@ Layout
   (referenced via { "$file": "input/<path>" }), plus optional
   expected.json, expected/<file>, and meta.json.
   Run \`eigenpal agents dataset validate\` first to check locally.
+
+  After pushing examples for a new agent, request a dataset review before
+  iterating to perfection: \`agents dataset review-request create <agent>
+  --title ... --example-name ... --status open\`, poll \`.progress.complete\`,
+  then close the request when review is finished.
 `
     )
     .action(action(pushDataset));
@@ -100,6 +106,11 @@ Layout
         '  only when they complete.\n'
     )
     .action(action(validateDatasetCommand));
+
+  registerDatasetReviewRequestCommands(dataset, async (agentId, opts) => {
+    const client = buildClient(opts);
+    return { client, automationId: agentAutomationId(agentId) };
+  });
 }
 
 async function listDataset(agentId: string, opts: BaseOpts & PaginationOpts) {

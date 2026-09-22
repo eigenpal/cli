@@ -1,4 +1,4 @@
-export { eigenpalAjv } from './ajv';
+export { getEigenpalAjv } from './ajv';
 export {
   INPUT_VALIDATION_CODES,
   PENDING_FILE_REF,
