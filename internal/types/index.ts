@@ -85,6 +85,7 @@ export {
   isRequiredHumanReviewSelectionReason,
   parseHumanReviewAgentToolArgs,
   readHumanReviewEffectiveThreshold,
+  removeHumanReviewPaths,
   resolveHumanReviewSelection,
   validateHumanReviewEffectiveSchema,
   valueAtHumanReviewPointer,

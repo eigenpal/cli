@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.3
+
+### Minor Changes
+
+- baddbf0: Expected-output files are first-class reviewable units: `pull --out <dir>` downloads per-example expected files (reviewer-corrected when the item has an overlay entry, else the snapshot) alongside `item.json`; `item --action edit-file` uploads corrected bytes (`--file-path` fixes an existing file, `--new-path` uploads a brand-new one, 50MB cap); `item --action file-decision` records per-file approve/reject with notes (`--comment` alone is a note and needs an existing decision); `get`/`items` show per-file decision summaries. Reconcile corrected files into the live dataset by hand — reviewers can err.
+
 ## 0.20.0
 
 ### Minor Changes

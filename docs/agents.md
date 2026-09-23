@@ -52,6 +52,7 @@ Manage Eigenpal agents: Git source, datasets, experiments, sessions, and release
   - [`eigenpal agents dataset review-request items [options] <automation-id> <review-id>`](#eigenpal-agents-dataset-review-request-items-options-automation-id-review-id)
   - [`eigenpal agents dataset review-request events [options] <automation-id> <review-id>`](#eigenpal-agents-dataset-review-request-events-options-automation-id-review-id)
   - [`eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>`](#eigenpal-agents-dataset-review-request-item-options-automation-id-review-id-item-id)
+  - [`eigenpal agents dataset review-request pull [options] <automation-id> <review-id>`](#eigenpal-agents-dataset-review-request-pull-options-automation-id-review-id)
   - [`eigenpal agents experiment|exp run [options] <agent-id-or-slug>`](#eigenpal-agents-experimentexp-run-options-agent-id-or-slug)
   - [`eigenpal agents experiment|exp status [options] <agent-id-or-slug> <batch-id>`](#eigenpal-agents-experimentexp-status-options-agent-id-or-slug-batch-id)
   - [`eigenpal agents experiment|exp results [options] <agent-id-or-slug> [batch-id]`](#eigenpal-agents-experimentexp-results-options-agent-id-or-slug-batch-id)
@@ -110,7 +111,8 @@ agents
 │       ├── update <automation-id> <review-id>
 │       ├── items <automation-id> <review-id>
 │       ├── events <automation-id> <review-id>
-│       └── item <automation-id> <review-id> <item-id>
+│       ├── item <automation-id> <review-id> <item-id>
+│       └── pull <automation-id> <review-id>
 ├── experiment|exp
 │   ├── run <agent-id-or-slug>
 │   ├── status <agent-id-or-slug> <batch-id>
@@ -174,19 +176,20 @@ agents
 
 ### Dataset
 
-| Command                                                                                       | Description                                                                                                 |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>`                               | List dataset examples for an agent.                                                                         |
-| `eigenpal agents dataset push [options] <agent-id-or-slug>`                                   | Upload dataset examples from a local dataset directory or zip archive.                                      |
-| `eigenpal agents dataset pull [options] <agent-id-or-slug>`                                   | Download an agent dataset as a .zip archive.                                                                |
-| `eigenpal agents dataset validate [options] [path]`                                           | Validate a local dataset directory against the canonical examples/<name> layout. Defaults to ./dataset/.    |
-| `eigenpal agents dataset review-request list\|ls [options] <automation-id>`                   |                                                                                                             |
-| `eigenpal agents dataset review-request create [options] <automation-id>`                     | Request human review of dataset ground truth. Snapshot examples and poll progress until review is complete. |
-| `eigenpal agents dataset review-request get [options] <automation-id> <review-id>`            | Fetch one dataset review request with items, progress, focus fields, ignored fields, and events.            |
-| `eigenpal agents dataset review-request update [options] <automation-id> <review-id>`         | Update review metadata or lifecycle status. Set --status closed when review is finished.                    |
-| `eigenpal agents dataset review-request items [options] <automation-id> <review-id>`          | List snapshotted review items and their statuses.                                                           |
-| `eigenpal agents dataset review-request events [options] <automation-id> <review-id>`         | List review activity, including example and field notes.                                                    |
-| `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>` | Approve, reject, reopen, comment, edit, or record a field-decision on one review item.                      |
+| Command                                                                                       | Description                                                                                                                                          |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eigenpal agents dataset list\|ls [options] <agent-id-or-slug>`                               | List dataset examples for an agent.                                                                                                                  |
+| `eigenpal agents dataset push [options] <agent-id-or-slug>`                                   | Upload dataset examples from a local dataset directory or zip archive.                                                                               |
+| `eigenpal agents dataset pull [options] <agent-id-or-slug>`                                   | Download an agent dataset as a .zip archive.                                                                                                         |
+| `eigenpal agents dataset validate [options] [path]`                                           | Validate a local dataset directory against the canonical examples/<name> layout. Defaults to ./dataset/.                                             |
+| `eigenpal agents dataset review-request list\|ls [options] <automation-id>`                   |                                                                                                                                                      |
+| `eigenpal agents dataset review-request create [options] <automation-id>`                     | Request human review of dataset ground truth. Snapshot examples and poll progress until review is complete.                                          |
+| `eigenpal agents dataset review-request get [options] <automation-id> <review-id>`            | Fetch one dataset review request with items, progress, focus fields, ignored fields, expected files, file decisions, and events.                     |
+| `eigenpal agents dataset review-request update [options] <automation-id> <review-id>`         | Update review metadata or lifecycle status. Set --status closed when review is finished.                                                             |
+| `eigenpal agents dataset review-request items [options] <automation-id> <review-id>`          | List snapshotted review items and their statuses.                                                                                                    |
+| `eigenpal agents dataset review-request events [options] <automation-id> <review-id>`         | List review activity, including example and field notes.                                                                                             |
+| `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>` | Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file. |
+| `eigenpal agents dataset review-request pull [options] <automation-id> <review-id>`           | Download review snapshots: per-example expected files (snapshot or reviewer-corrected) plus item JSON.                                               |
 
 ### Experiment
 
@@ -740,7 +743,7 @@ Request human review of dataset ground truth. Snapshot examples and poll progres
 
 ### `eigenpal agents dataset review-request get [options] <automation-id> <review-id>`
 
-Fetch one dataset review request with items, progress, focus fields, ignored fields, and events.
+Fetch one dataset review request with items, progress, focus fields, ignored fields, expected files, file decisions, and events.
 
 ### Arguments
 
@@ -820,7 +823,7 @@ List review activity, including example and field notes.
 
 ### `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>`
 
-Approve, reject, reopen, comment, edit, or record a field-decision on one review item.
+Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.
 
 ### Arguments
 
@@ -832,17 +835,39 @@ Approve, reject, reopen, comment, edit, or record a field-decision on one review
 
 ### Options
 
-| Flag                                                                | Required | Default | Description                                                        |
-| ------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------ |
-| `--base-url <url>`                                                  | no       |         | Server base URL                                                    |
-| `--json`                                                            | no       |         | Emit machine-readable JSON on stdout                               |
-| `--action <approve\|reject\|reopen\|comment\|edit\|field-decision>` | yes      |         | Item action                                                        |
-| `--expected-updated-at <iso>`                                       | yes      |         | Item updatedAt the client last observed (optimistic concurrency)   |
-| `--comment <text>`                                                  | no       |         | Note stored on the item or field                                   |
-| `--field-path <path>`                                               | no       |         | Dotted expected-output path for comment or field-decision          |
-| `--decision <approved\|rejected\|null>`                             | no       |         | Field decision for --action field-decision (null/clear removes it) |
-| `--clear`                                                           | no       | `false` | Clear a field decision (sends decision: null)                      |
-| `--expected-json <json>`                                            | no       |         | Replacement expected JSON when --action edit                       |
+| Flag                                                                                          | Required | Default | Description                                                                                 |
+| --------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `--base-url <url>`                                                                            | no       |         | Server base URL                                                                             |
+| `--json`                                                                                      | no       |         | Emit machine-readable JSON on stdout                                                        |
+| `--action <approve\|reject\|reopen\|comment\|edit\|field-decision\|file-decision\|edit-file>` | yes      |         | Item action                                                                                 |
+| `--expected-updated-at <iso>`                                                                 | yes      |         | Item updatedAt the client last observed (optimistic concurrency)                            |
+| `--comment <text>`                                                                            | no       |         | Note stored on the item, field, or file                                                     |
+| `--field-path <path>`                                                                         | no       |         | Dotted expected-output path for comment or field-decision                                   |
+| `--file-path <path>`                                                                          | no       |         | Expected-file path for file-decision or edit-file (correct)                                 |
+| `--new-path <path>`                                                                           | no       |         | Expected-file path for edit-file uploads of brand-new reviewer files                        |
+| `--file <local path>`                                                                         | no       |         | Local file bytes to upload when --action edit-file                                          |
+| `--decision <approved\|rejected\|null>`                                                       | no       |         | Field or file decision for --action field-decision or file-decision (null/clear removes it) |
+| `--clear`                                                                                     | no       | `false` | Clear a field or file decision (sends decision: null)                                       |
+| `--expected-json <json>`                                                                      | no       |         | Replacement expected JSON when --action edit                                                |
+
+### `eigenpal agents dataset review-request pull [options] <automation-id> <review-id>`
+
+Download review snapshots: per-example expected files (snapshot or reviewer-corrected) plus item JSON.
+
+### Arguments
+
+| Name            | Required | Variadic | Description |
+| --------------- | -------- | -------- | ----------- |
+| `automation-id` | yes      | no       |             |
+| `review-id`     | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                                    |
+| ------------------ | -------- | ------- | ---------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout           |
+| `--out <dir>`      | yes      |         | Local directory to materialize the review into |
 
 ### `eigenpal agents experiment|exp run [options] <agent-id-or-slug>`
 

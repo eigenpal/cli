@@ -45,7 +45,8 @@ eigenpal
 │   │       ├── update <automation-id> <review-id>
 │   │       ├── items <automation-id> <review-id>
 │   │       ├── events <automation-id> <review-id>
-│   │       └── item <automation-id> <review-id> <item-id>
+│   │       ├── item <automation-id> <review-id> <item-id>
+│   │       └── pull <automation-id> <review-id>
 │   ├── templates
 │   │   ├── upload <file>
 │   │   ├── list|ls
@@ -119,7 +120,8 @@ eigenpal
 │   │       ├── update <automation-id> <review-id>
 │   │       ├── items <automation-id> <review-id>
 │   │       ├── events <automation-id> <review-id>
-│   │       └── item <automation-id> <review-id> <item-id>
+│   │       ├── item <automation-id> <review-id> <item-id>
+│   │       └── pull <automation-id> <review-id>
 │   ├── experiment|exp
 │   │   ├── run <agent-id-or-slug>
 │   │   ├── status <agent-id-or-slug> <batch-id>

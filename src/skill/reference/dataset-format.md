@@ -20,7 +20,8 @@ dataset/
     │   │   └── Appendix.pdf
     │   ├── expected.json                   OPTIONAL — expected output or { "$error": ... }
     │   ├── expected/
-    │   │   └── Invoice.docx                referenced by expected.json
+    │   │   └── invoice/                    file folder (one folder per expected file)
+    │   │       └── Invoice.docx            referenced by expected.json
     │   └── meta.json                       OPTIONAL — { rowOrder?, annotation?, overrides?, review? }
     │
     └── unsupported-format/
@@ -52,6 +53,9 @@ same reference shape with the `expected/` prefix.
   `{ "$file": "input/<path>" }`.
 - Files under `expected/` must be referenced from `expected.json` as
   `{ "$file": "expected/<path>" }`.
+- Entries directly under `expected/` must be file folders (one folder per
+  expected file, lowercase kebab/snake-case) — bare files are rejected by
+  `dataset validate`. `input/` files may sit at the top level.
 - File references cannot use `..`, absolute paths, backslashes, or null bytes.
 - `expected.json` is optional. When present, it must be a JSON object.
 - Failure-expected examples use `expected.json` with a single `$error` key.
@@ -79,8 +83,8 @@ For an example with:
 - `input.json`: `{"language":"en","contract":[{"$file":"input/Contract_2026.pdf"},{"$file":"input/Appendix.pdf"}]}`
 - `input/Contract_2026.pdf`
 - `input/Appendix.pdf`
-- `expected.json`: `{"invoiceNumber":"INV-001","generatedInvoice":{"$file":"expected/Invoice.docx"}}`
-- `expected/Invoice.docx`
+- `expected.json`: `{"invoiceNumber":"INV-001","generatedInvoice":{"$file":"expected/invoice/Invoice.docx"}}`
+- `expected/invoice/Invoice.docx`
 
 The stored row keeps the same input shape. When the example runs, each `$file`
 reference is resolved into the S3 file descriptor the worker consumes.
@@ -314,10 +318,14 @@ outputs without direct dataset write access, create a review request that
 snapshots selected examples. The server copies each example's `input.json`
 and `expected.json` values at creation time; file pointers stay as S3
 references. Reviewers approve, reject (recommendation only — nothing is
-deleted), leave comments, and record per-field decisions. There is **no
-auto-apply** by design: after review, `dataset pull` and manually reconcile
-each example into the live dataset (reviewers can err). Close via
-`update --status closed`.
+deleted), leave comments, and record per-field decisions. Expected-output
+files are reviewable the same way: reviewers correct bytes (`edit-file`,
+either fixing an existing path or uploading a brand-new one) and record
+per-file approve/reject with notes (`file-decision`); items carry
+`currentExpectedFiles` (null means pristine snapshot) and `fileDecisions`.
+There is **no auto-apply** by design: after review, `dataset pull` and
+manually reconcile each example into the live dataset (reviewers can err).
+Close via `update --status closed`.
 
 ```bash
 # Ask a reviewer to inspect specific fields, with reasons, then poll until done.
@@ -333,7 +341,7 @@ eigenpal workflow dataset review-request create <automation-id> \
 # List requests; `.progress.complete` means every example was decided.
 eigenpal workflow dataset review-request list <automation-id> --status open --json
 
-# Inspect items (includes fieldDecisions + inputDrifted), focus, and notes.
+# Inspect items (includes fieldDecisions, fileDecisions, currentExpectedFiles, inputDrifted), focus, and notes.
 eigenpal workflow dataset review-request get <automation-id> <review-id> --json
 eigenpal workflow dataset review-request events <automation-id> <review-id> --json
 
@@ -341,6 +349,25 @@ eigenpal workflow dataset review-request events <automation-id> <review-id> --js
 eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
   --action field-decision --field-path vendor.iban --decision approved \
   --expected-updated-at <iso> --json
+
+# Expected-output files are first-class reviewable units, mirroring fields:
+# identity-by-path, versioned bytes, durable approve/reject + notes. Fetch
+# each example's files (reviewer-corrected when the item has an overlay entry,
+# else the snapshot) into <out>/<example>/expected/ plus item.json, correct
+# bytes with edit-file, then record per-file decisions.
+eigenpal workflow dataset review-request pull <automation-id> <review-id> --out ./review-dsr
+eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
+  --action edit-file --file-path expected/report.pdf --file ./report-fixed.pdf \
+  --comment "fixed total" --expected-updated-at <iso> --json
+eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
+  --action edit-file --new-path expected/appendix.pdf --file ./appendix.pdf \
+  --expected-updated-at <iso> --json
+
+# Per-file decision (approved | rejected). --clear / --decision null removes
+# it. A --comment without a decision is a note and needs an existing decision.
+eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \
+  --action file-decision --file-path expected/report.pdf --decision approved \
+  --comment "totals match" --expected-updated-at <iso> --json
 
 # Per-example reject is a recommendation only — nothing is deleted.
 eigenpal workflow dataset review-request item <automation-id> <review-id> <item-id> \

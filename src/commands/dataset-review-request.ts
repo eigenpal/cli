@@ -1,4 +1,6 @@
 import { type Command } from 'commander';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ApiClient } from '../lib/client';
 import { action } from '../lib/format-error';
 import {
@@ -69,7 +71,18 @@ type ReviewRequestRow = {
   createdAt?: string;
 };
 
-type ItemAction = 'approve' | 'reject' | 'reopen' | 'comment' | 'edit' | 'field-decision';
+type ItemAction =
+  | 'approve'
+  | 'reject'
+  | 'reopen'
+  | 'comment'
+  | 'edit'
+  | 'field-decision'
+  | 'file-decision'
+  | 'edit-file';
+
+/** Max edit-file upload the server accepts (mirrors MAX_EXPECTED_FILE_SIZE). */
+export const REVIEW_EDIT_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
 function collectRepeatable(val: string, prev: string[]): string[] {
   return [...prev, val];
@@ -85,11 +98,11 @@ function formatProgress(progress: ReviewProgress | undefined): string {
   return `${remaining}/${total} remaining`;
 }
 
-/** Resolve field-decision payload; `null` clears the recorded decision on the server. */
-export function parseFieldDecision(opts: {
-  decision?: string;
-  clear?: boolean;
-}): 'approved' | 'rejected' | null {
+/** Shared approved/rejected/null parsing for field- and file-decisions. */
+function parseApprovalDecision(
+  opts: { decision?: string; clear?: boolean },
+  action: 'field-decision' | 'file-decision'
+): 'approved' | 'rejected' | null {
   if (opts.clear) {
     if (opts.decision !== undefined) {
       throw new Error('pass either --clear or --decision, not both');
@@ -97,7 +110,7 @@ export function parseFieldDecision(opts: {
     return null;
   }
   if (opts.decision === undefined) {
-    throw new Error('--decision or --clear is required when --action field-decision');
+    throw new Error(`--decision or --clear is required when --action ${action}`);
   }
   const normalized = opts.decision.trim().toLowerCase();
   if (normalized === 'null' || normalized === 'clear') {
@@ -109,6 +122,22 @@ export function parseFieldDecision(opts: {
   throw new Error('--decision must be approved, rejected, null, or clear');
 }
 
+/** Resolve field-decision payload; `null` clears the recorded decision on the server. */
+export function parseFieldDecision(opts: {
+  decision?: string;
+  clear?: boolean;
+}): 'approved' | 'rejected' | null {
+  return parseApprovalDecision(opts, 'field-decision');
+}
+
+/** Resolve file-decision payload; `null` clears the recorded decision on the server. */
+export function parseFileDecision(opts: {
+  decision?: string;
+  clear?: boolean;
+}): 'approved' | 'rejected' | null {
+  return parseApprovalDecision(opts, 'file-decision');
+}
+
 /** Build the item PATCH body, failing fast on flag/action mismatches. Exported for tests. */
 export function buildReviewItemPatchBody(
   action: ItemAction,
@@ -116,6 +145,9 @@ export function buildReviewItemPatchBody(
     expectedUpdatedAt: string;
     comment?: string;
     fieldPath?: string;
+    filePath?: string;
+    newPath?: string;
+    file?: string;
     decision?: string;
     clear?: boolean;
     expectedJson?: string;
@@ -127,6 +159,7 @@ export function buildReviewItemPatchBody(
   };
   if (opts.comment !== undefined) body.comment = opts.comment;
   if (opts.fieldPath !== undefined) body.fieldPath = opts.fieldPath;
+  if (opts.filePath !== undefined) body.filePath = opts.filePath;
   if (action === 'edit') {
     if (opts.expectedJson === undefined) {
       throw new Error('--expected-json is required when --action edit');
@@ -141,9 +174,141 @@ export function buildReviewItemPatchBody(
     }
     body.decision = parseFieldDecision({ decision: opts.decision, clear: opts.clear });
   } else if (opts.decision !== undefined || opts.clear) {
-    throw new Error('--decision / --clear are only valid with --action field-decision');
+    if (action !== 'file-decision') {
+      throw new Error(
+        '--decision / --clear are only valid with --action field-decision or file-decision'
+      );
+    }
+  }
+  if (action === 'file-decision') {
+    if (!opts.filePath?.trim()) {
+      throw new Error('--file-path is required when --action file-decision');
+    }
+    if (opts.fieldPath !== undefined) {
+      throw new Error('--field-path is only valid with --action comment or field-decision');
+    }
+    if (opts.newPath !== undefined || opts.file !== undefined) {
+      throw new Error('--new-path / --file are only valid with --action edit-file');
+    }
+    // A comment without a decision is a note on the file — allowed only when
+    // a decision already exists server-side. Otherwise a decision is required.
+    if (opts.decision !== undefined || opts.clear) {
+      body.decision = parseFileDecision({ decision: opts.decision, clear: opts.clear });
+    } else if (!opts.comment?.trim()) {
+      throw new Error(
+        'pass --decision approved|rejected (or --clear) or a --comment note when --action file-decision'
+      );
+    }
+  } else if (opts.filePath !== undefined || opts.newPath !== undefined || opts.file !== undefined) {
+    if (action !== 'edit-file') {
+      throw new Error(
+        '--file-path / --new-path / --file are only valid with --action file-decision or edit-file'
+      );
+    }
+  }
+  if (action === 'edit-file') {
+    throw new Error(
+      '--action edit-file uploads bytes and needs multipart; use buildReviewItemFileFields'
+    );
   }
   return body;
+}
+
+/**
+ * Validate `--action edit-file` flags and return the multipart fields (minus
+ * the file bytes). Exactly one of `filePath` (correct an existing expected
+ * file) or `newPath` (upload a brand-new expected file) is required, plus
+ * `--file` pointing at the local bytes. Exported for tests.
+ */
+export function buildReviewItemFileFields(opts: {
+  expectedUpdatedAt: string;
+  filePath?: string;
+  newPath?: string;
+  file?: string;
+  comment?: string;
+}): { filePath?: string; newPath?: string; comment?: string; expectedUpdatedAt: string } {
+  const hasFilePath = !!opts.filePath?.trim();
+  const hasNewPath = !!opts.newPath?.trim();
+  if (hasFilePath === hasNewPath) {
+    throw new Error(
+      'pass exactly one of --file-path (correct an existing expected file) or --new-path (upload a brand-new expected file) when --action edit-file'
+    );
+  }
+  if (!opts.file?.trim()) {
+    throw new Error('--file <local path> is required when --action edit-file');
+  }
+  return {
+    ...(hasFilePath ? { filePath: opts.filePath!.trim() } : {}),
+    ...(hasNewPath ? { newPath: opts.newPath!.trim() } : {}),
+    ...(opts.comment !== undefined ? { comment: opts.comment } : {}),
+    expectedUpdatedAt: opts.expectedUpdatedAt,
+  };
+}
+
+/**
+ * Encode a review file path per segment for the item files route. Exported
+ * for tests.
+ */
+export function encodeReviewFilePath(path: string): string {
+  const segments = path.replace(/^\/+/, '').split('/');
+  for (const segment of segments) {
+    if (
+      !segment ||
+      segment === '.' ||
+      segment === '..' ||
+      segment.includes('\\') ||
+      segment.includes('\0')
+    ) {
+      throw new Error(`refusing to download unsafe review file path: ${path}`);
+    }
+  }
+  return segments.map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+/**
+ * Validate a server-supplied example name before using it as a local
+ * directory: same per-segment rules as `encodeReviewFilePath` so a hostile
+ * or corrupted `exampleName` (`..`, `/`, `\`) cannot escape `--out`.
+ * Returns the name unchanged when safe. Exported for tests.
+ */
+export function assertSafeReviewExampleName(exampleName: string): string {
+  const segments = exampleName.split('/');
+  for (const segment of segments) {
+    if (
+      !segment ||
+      segment === '.' ||
+      segment === '..' ||
+      segment.includes('\\') ||
+      segment.includes('\0')
+    ) {
+      throw new Error(`refusing to materialize unsafe review example name: ${exampleName}`);
+    }
+  }
+  return exampleName;
+}
+
+/** Summarize an item's expected files + file decisions for human tables. */
+export function formatReviewItemFiles(item: {
+  currentExpectedFiles?: Array<{ path?: string; name?: string; origin?: string }> | null;
+  snapshotManifest?: { expectedFiles?: Array<{ path?: string; name?: string }> };
+  fileDecisions?: Record<string, { decision?: string }>;
+}): string {
+  const overlay = item.currentExpectedFiles;
+  const files = overlay ?? item.snapshotManifest?.expectedFiles ?? null;
+  if (!files || files.length === 0) return '-';
+  const decisions = item.fileDecisions ?? {};
+  let approved = 0;
+  let rejected = 0;
+  for (const file of files) {
+    const key = file.path ?? file.name ?? '';
+    const decision = decisions[key]?.decision;
+    if (decision === 'approved') approved += 1;
+    else if (decision === 'rejected') rejected += 1;
+  }
+  const total = files.length;
+  const decided = approved + rejected;
+  if (decided === 0) return `${total} file${total === 1 ? '' : 's'}, undecided`;
+  return `${approved}/${total} approved${rejected ? `, ${rejected} rejected` : ''}`;
 }
 
 export function registerDatasetReviewRequestCommands(
@@ -268,9 +433,13 @@ Examples:
 
 Agent loop: create with focus/ignore and per-example notes → poll \`get --json\`
 until \`.progress.complete\` → record per-field decisions and per-example
-approve/reject with comments → read \`events\` → \`dataset pull\` and MANUAL
-per-example reconcile into the live dataset (no auto-apply exists by design;
-reviewers can err) → \`update --status closed\`.
+approve/reject with comments → \`pull --out <dir>\` to fetch expected files
+(snapshot or reviewer-corrected) → correct bytes with
+\`item --action edit-file --file-path <path> --file <local>\` (or
+\`--new-path\` for brand-new files) → record per-file decisions with notes
+via \`item --action file-decision\` → read \`events\` → \`dataset pull\` and
+MANUAL per-example reconcile into the live dataset (no auto-apply exists by
+design; reviewers can err) → \`update --status closed\`.
 
 \`reject\` is a recommendation only — nothing is deleted by any review endpoint.
 Use \`--json\` from agents; API errors exit non-zero.
@@ -349,7 +518,7 @@ Use \`--json\` from agents; API errors exit non-zero.
 
   addJsonFlag(withBaseUrl(reviewRequest.command('get <automation-id> <review-id>')))
     .description(
-      'Fetch one dataset review request with items, progress, focus fields, ignored fields, and events.'
+      'Fetch one dataset review request with items, progress, focus fields, ignored fields, expected files, file decisions, and events.'
     )
     .action(
       action(
@@ -374,6 +543,9 @@ Use \`--json\` from agents; API errors exit non-zero.
               exampleName?: string;
               status?: string;
               inputDrifted?: boolean;
+              currentExpectedFiles?: Array<{ path?: string; origin?: string }> | null;
+              snapshotManifest?: { expectedFiles?: Array<{ name?: string }> };
+              fileDecisions?: Record<string, { decision?: string }>;
             }>;
             events?: Array<{
               action?: string;
@@ -416,11 +588,13 @@ Use \`--json\` from agents; API errors exit non-zero.
                   exampleName: item.exampleName,
                   status: item.status,
                   inputDrifted: item.inputDrifted ? 'yes' : 'no',
+                  files: formatReviewItemFiles(item),
                 })),
                 [
                   { key: 'exampleName', header: 'example' },
                   { key: 'status', header: 'status' },
                   { key: 'inputDrifted', header: 'inputDrifted' },
+                  { key: 'files', header: 'files' },
                 ]
               )
             );
@@ -556,6 +730,9 @@ to the dataset — reconcile manually after \`dataset pull\`.
                   exampleName?: string;
                   status?: string;
                   inputDrifted?: boolean;
+                  currentExpectedFiles?: Array<{ path?: string; origin?: string }> | null;
+                  snapshotManifest?: { expectedFiles?: Array<{ name?: string }> };
+                  fileDecisions?: Record<string, { decision?: string }>;
                 }>;
               }
             ).items ?? [];
@@ -565,11 +742,13 @@ to the dataset — reconcile manually after \`dataset pull\`.
                 exampleName: item.exampleName,
                 status: item.status,
                 inputDrifted: item.inputDrifted ? 'yes' : 'no',
+                files: formatReviewItemFiles(item),
               })),
               [
                 { key: 'exampleName', header: 'example' },
                 { key: 'status', header: 'status' },
                 { key: 'inputDrifted', header: 'inputDrifted' },
+                { key: 'files', header: 'files' },
               ]
             )
           );
@@ -624,20 +803,29 @@ to the dataset — reconcile manually after \`dataset pull\`.
 
   addJsonFlag(withBaseUrl(reviewRequest.command('item <automation-id> <review-id> <item-id>')))
     .description(
-      'Approve, reject, reopen, comment, edit, or record a field-decision on one review item.'
+      'Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.'
     )
-    .requiredOption('--action <approve|reject|reopen|comment|edit|field-decision>', 'Item action')
+    .requiredOption(
+      '--action <approve|reject|reopen|comment|edit|field-decision|file-decision|edit-file>',
+      'Item action'
+    )
     .requiredOption(
       '--expected-updated-at <iso>',
       'Item updatedAt the client last observed (optimistic concurrency)'
     )
-    .option('--comment <text>', 'Note stored on the item or field')
+    .option('--comment <text>', 'Note stored on the item, field, or file')
     .option('--field-path <path>', 'Dotted expected-output path for comment or field-decision')
+    .option('--file-path <path>', 'Expected-file path for file-decision or edit-file (correct)')
+    .option(
+      '--new-path <path>',
+      'Expected-file path for edit-file uploads of brand-new reviewer files'
+    )
+    .option('--file <local path>', 'Local file bytes to upload when --action edit-file')
     .option(
       '--decision <approved|rejected|null>',
-      'Field decision for --action field-decision (null/clear removes it)'
+      'Field or file decision for --action field-decision or file-decision (null/clear removes it)'
     )
-    .option('--clear', 'Clear a field decision (sends decision: null)', false)
+    .option('--clear', 'Clear a field or file decision (sends decision: null)', false)
     .option('--expected-json <json>', 'Replacement expected JSON when --action edit')
     .addHelpText(
       'after',
@@ -650,13 +838,26 @@ Examples:
       --action field-decision --field-path vendor.iban --clear \\
       --expected-updated-at 2026-01-01T00:00:00.000Z --json
   $ eigenpal workflow dataset review-request item wf_abc123 dsr_... dsri_... \\
+      --action file-decision --file-path expected/report.pdf --decision approved \\
+      --comment "totals match" --expected-updated-at 2026-01-01T00:00:00.000Z --json
+  $ eigenpal workflow dataset review-request item wf_abc123 dsr_... dsri_... \\
+      --action edit-file --file-path expected/report.pdf --file ./report-fixed.pdf \\
+      --comment "fixed total" --expected-updated-at 2026-01-01T00:00:00.000Z --json
+  $ eigenpal workflow dataset review-request item wf_abc123 dsr_... dsri_... \\
+      --action edit-file --new-path expected/appendix.pdf --file ./appendix.pdf \\
+      --expected-updated-at 2026-01-01T00:00:00.000Z --json
+  $ eigenpal workflow dataset review-request item wf_abc123 dsr_... dsri_... \\
       --action reject --comment "wrong vendor" \\
       --expected-updated-at 2026-01-01T00:00:00.000Z --json
 
 \`reject\` marks the example as not recommended for the dataset; it does not
-delete anything. \`--clear\` / \`--decision null\` removes a prior field
-decision (API: decision: null). Always pass \`--expected-updated-at\` from
-the item payload you last observed.
+delete anything. \`--clear\` / \`--decision null\` removes a prior field or
+file decision (API: decision: null). A file-decision \`--comment\` without a
+decision is a note and needs an existing decision server-side. \`edit-file\`
+takes exactly one of \`--file-path\` (correct an existing expected file) or
+\`--new-path\` (upload a brand-new expected file) plus \`--file\` bytes
+(50MB cap); it replaces the item overlay entry, never the live dataset.
+Always pass \`--expected-updated-at\` from the item payload you last observed.
 `
     )
     .action(
@@ -670,6 +871,9 @@ the item payload you last observed.
             expectedUpdatedAt: string;
             comment?: string;
             fieldPath?: string;
+            filePath?: string;
+            newPath?: string;
+            file?: string;
             decision?: string;
             clear?: boolean;
             expectedJson?: string;
@@ -677,23 +881,159 @@ the item payload you last observed.
           }
         ) => {
           const { client, automationId } = await resolveAutomation(automationRef, opts);
+          const itemPath = datasetReviewRequestItemsPath(automationId, reviewId, itemId);
+          if (opts.action === 'edit-file') {
+            const fields = buildReviewItemFileFields({
+              expectedUpdatedAt: opts.expectedUpdatedAt,
+              filePath: opts.filePath,
+              newPath: opts.newPath,
+              file: opts.file,
+              comment: opts.comment,
+            });
+            const localPath = resolve(opts.file!.trim());
+            const fileStat = await stat(localPath);
+            if (!fileStat.isFile()) {
+              throw new Error(`--file is not a file: ${localPath}`);
+            }
+            if (fileStat.size > REVIEW_EDIT_FILE_MAX_BYTES) {
+              throw new Error(
+                `--file ${localPath} is ${(fileStat.size / 1024 / 1024).toFixed(1)}MB; the edit-file cap is 50MB`
+              );
+            }
+            const bytes = await readFile(localPath);
+            const form = new FormData();
+            form.set('action', 'edit-file');
+            form.set(
+              'file',
+              new Blob([bytes], { type: 'application/octet-stream' }),
+              basename(localPath)
+            );
+            if (fields.filePath !== undefined) form.set('filePath', fields.filePath);
+            if (fields.newPath !== undefined) form.set('newPath', fields.newPath);
+            if (fields.comment !== undefined) form.set('comment', fields.comment);
+            form.set('expectedUpdatedAt', fields.expectedUpdatedAt);
+            const payload = await client.patchFormData(itemPath, form);
+            if (opts.json) return printJson(payload);
+            const item = (payload as { item?: { exampleName?: string; status?: string } }).item;
+            success(
+              `Updated ${ui.bold(item?.exampleName ?? itemId)}` +
+                (item?.status ? ` ${ui.dim(`(${item.status})`)}` : '')
+            );
+            return;
+          }
           const body = buildReviewItemPatchBody(opts.action, {
             expectedUpdatedAt: opts.expectedUpdatedAt,
             comment: opts.comment,
             fieldPath: opts.fieldPath,
+            filePath: opts.filePath,
+            newPath: opts.newPath,
+            file: opts.file,
             decision: opts.decision,
             clear: opts.clear,
             expectedJson: opts.expectedJson,
           });
-          const payload = await client.patch(
-            datasetReviewRequestItemsPath(automationId, reviewId, itemId),
-            body
-          );
+          const payload = await client.patch(itemPath, body);
           if (opts.json) return printJson(payload);
           const item = (payload as { item?: { exampleName?: string; status?: string } }).item;
           success(
             `Updated ${ui.bold(item?.exampleName ?? itemId)}` +
               (item?.status ? ` ${ui.dim(`(${item.status})`)}` : '')
+          );
+        }
+      )
+    );
+
+  addJsonFlag(withBaseUrl(reviewRequest.command('pull <automation-id> <review-id>')))
+    .description(
+      'Download review snapshots: per-example expected files (snapshot or reviewer-corrected) plus item JSON.'
+    )
+    .requiredOption('--out <dir>', 'Local directory to materialize the review into')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow dataset review-request pull wf_abc123 dsr_... --out ./review-dsr
+  $ eigenpal workflow dataset review-request pull wf_abc123 dsr_... --out ./review-dsr --json
+
+Layout (mirrors the dataset archive so reconcile is a copy):
+  <out>/<example>/expected/<path>   file bytes; reviewer-corrected when the
+                                    item has an overlay entry, else the snapshot
+  <out>/<example>/item.json         full item payload (status, expected JSON,
+                                    currentExpectedFiles, fileDecisions)
+
+There is no write-back: copy approved/edited files and expected JSON into the
+live dataset example-by-example by hand (reviewers can err), then
+\`dataset push\`. \`reject\` is a recommendation only — nothing is deleted.
+`
+    )
+    .action(
+      action(
+        async (
+          automationRef: string,
+          reviewId: string,
+          opts: ReviewRequestOpts & { out: string; json?: boolean }
+        ) => {
+          const { client, automationId } = await resolveAutomation(automationRef, opts);
+          const detail = (await client.get(datasetReviewRequestsPath(automationId, reviewId))) as {
+            items?: Array<{
+              id?: string;
+              exampleName?: string;
+              status?: string;
+              currentExpectedFiles?: Array<{ path?: string }> | null;
+              snapshotManifest?: { expectedFiles?: Array<{ name?: string }> };
+            }>;
+          };
+          const items = detail.items ?? [];
+          const outDir = resolve(opts.out);
+          const summary: Array<{
+            exampleName: string;
+            itemId: string;
+            status?: string;
+            files: string[];
+          }> = [];
+          let fileCount = 0;
+          for (const item of items) {
+            if (!item.id || !item.exampleName) continue;
+            const exampleDir = join(outDir, assertSafeReviewExampleName(item.exampleName));
+            const expectedDir = join(exampleDir, 'expected');
+            await mkdir(expectedDir, { recursive: true });
+            await writeFile(join(exampleDir, 'item.json'), JSON.stringify(item, null, 2));
+            const paths = (
+              item.currentExpectedFiles?.map((entry) => entry.path) ??
+              item.snapshotManifest?.expectedFiles?.map((entry) => entry.name) ??
+              []
+            ).filter((path): path is string => !!path);
+            const downloaded: string[] = [];
+            for (const filePath of paths) {
+              const encoded = encodeReviewFilePath(filePath);
+              const res = await client.getStream(
+                `${datasetReviewRequestItemsPath(automationId, reviewId, item.id)}/files/${encoded}?kind=expected`
+              );
+              const bytes = new Uint8Array(await res.arrayBuffer());
+              const dest = resolve(expectedDir, ...filePath.split('/'));
+              const rel = relative(expectedDir, dest);
+              if (rel.startsWith('..') || isAbsolute(rel)) {
+                throw new Error(`refusing to write outside ${expectedDir}: ${filePath}`);
+              }
+              await mkdir(dirname(dest), { recursive: true });
+              await writeFile(dest, bytes);
+              downloaded.push(filePath);
+              fileCount += 1;
+            }
+            summary.push({
+              exampleName: item.exampleName,
+              itemId: item.id,
+              status: item.status,
+              files: downloaded,
+            });
+          }
+          if (opts.json) {
+            return printJson({ out: outDir, examples: summary, fileCount });
+          }
+          success(
+            `Pulled ${fileCount} expected file${fileCount === 1 ? '' : 's'} ` +
+              `across ${summary.length} example${summary.length === 1 ? '' : 's'} ` +
+              `to ${ui.bold(outDir)}`
           );
         }
       )

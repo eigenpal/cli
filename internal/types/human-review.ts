@@ -1119,3 +1119,58 @@ export function applyHumanReviewEdits(
   }
   return result;
 }
+
+/**
+ * Delete object keys from review data. The dataset-review "Removed" correction
+ * (this key must not exist — not even as null) is encoded as key absence in the
+ * persisted `expected` JSON, so removals compose with scalar edits in one
+ * overlay: apply edits first, then remove. Array items cannot be removed — an
+ * index delete would shift every sibling — and neither can the review root.
+ * A pointer whose parent path no longer exists is a no-op (idempotent rebase);
+ * only structural misuse (root, array index) throws.
+ */
+export function removeHumanReviewPaths(
+  machineData: Record<string, unknown> | unknown[],
+  pointers: readonly string[]
+): Record<string, unknown> | unknown[] {
+  if (pointers.length === 0) return machineData;
+  const result = structuredClone(machineData);
+  for (const pointer of pointers) {
+    const segments = decodeHumanReviewJsonPointer(pointer);
+    const key = segments.pop();
+    // '/' decodes to a single empty segment — also the review root.
+    if (key === undefined || key === '') throw new Error('The review root cannot be removed');
+    let parent: unknown = result;
+    let missing = false;
+    for (const segment of segments) {
+      if (Array.isArray(parent)) {
+        // Traversing through an array to reach an object key is fine (only
+        // removing the array element itself would shift siblings); a missing
+        // index simply misses.
+        const index = Number(segment);
+        if (!Number.isInteger(index) || index < 0 || index >= parent.length) {
+          missing = true;
+          break;
+        }
+        parent = parent[index];
+        continue;
+      }
+      if (parent === null || typeof parent !== 'object') {
+        missing = true;
+        break;
+      }
+      if (!Object.hasOwn(parent as Record<string, unknown>, segment)) {
+        missing = true;
+        break;
+      }
+      parent = (parent as Record<string, unknown>)[segment];
+    }
+    if (missing) continue;
+    if (Array.isArray(parent)) {
+      throw new Error(`Cannot remove array item "${pointer}": deletion would shift siblings`);
+    }
+    if (parent === null || typeof parent !== 'object') continue;
+    delete (parent as Record<string, unknown>)[key];
+  }
+  return result;
+}

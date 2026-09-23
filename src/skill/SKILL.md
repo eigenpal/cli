@@ -182,6 +182,18 @@ eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id
   --expected-updated-at <iso> --json
 eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id> \
   --action reject --comment "not usable" --expected-updated-at <iso> --json
+# Expected-output FILES have their own loop: pull the snapshot (or the
+# reviewer's corrected bytes) into <dir>/<example>/expected/, correct a file
+# with edit-file (--file-path corrects, --new-path uploads brand-new), then
+# record a per-file decision with a note. A comment without a decision is a
+# note and needs an existing decision.
+eigenpal workflow dataset review-request pull <workflow-id> <review-id> --out ./review-<id>
+eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id> \
+  --action edit-file --file-path expected/report.pdf --file ./report-fixed.pdf \
+  --comment "fixed total" --expected-updated-at <iso> --json
+eigenpal workflow dataset review-request item <workflow-id> <review-id> <item-id> \
+  --action file-decision --file-path expected/report.pdf --decision approved \
+  --comment "totals match" --expected-updated-at <iso> --json
 eigenpal workflow dataset pull <workflow-id> --out ./dataset.zip
 # Manually copy approved/edited expected.json per example into the dataset,
 # then push. Reject is recommendation-only — nothing is deleted by the API.
@@ -407,8 +419,10 @@ If you were given any examples: request a dataset review BEFORE iterating
 to perfection (`eigenpal agents dataset review-request create agents.<slug>
 --title ... --example-name ... --focus ... --status open --json`). Ship a V0,
 get ground truth reviewed first — poll `.progress.complete`, record field
-decisions / approve / reject with comments, `dataset pull` and MANUAL
-per-example reconcile (no auto-apply), then
+decisions / approve / reject with comments, `review-request pull --out <dir>`
+to fetch expected files (snapshot or reviewer-corrected), correct bytes with
+`item --action edit-file`, record per-file decisions with notes,
+`dataset pull` and MANUAL per-example reconcile (no auto-apply), then
 `review-request update ... --status closed`.
 
 ## Runs And Artifacts

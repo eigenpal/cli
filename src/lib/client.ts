@@ -155,6 +155,16 @@ export class ApiClient {
     return this.handleResponse(res, url);
   }
 
+  async patchFormData(path: string, formData: FormData): Promise<unknown> {
+    const url = this.buildUrl(path);
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: formData,
+    });
+    return this.handleResponse(res, url);
+  }
+
   async delete(path: string): Promise<unknown> {
     const url = this.buildUrl(path);
     const res = await fetch(url, {

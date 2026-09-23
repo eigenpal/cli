@@ -131,6 +131,19 @@ export const S3_PATH_GRAMMAR = {
             'metadata.json': PATH_LEAF,
           },
         },
+        reviews: {
+          $reviewId: {
+            items: {
+              $itemId: {
+                expected: {
+                  $fileId: {
+                    $filename: PATH_LEAF,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       runs: {
         $runId: {
