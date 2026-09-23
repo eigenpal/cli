@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pkg from '../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agents';
-import { authList, authLogin, authLogout, authUse } from './commands/auth';
+import { authList, authLogin, authLogout, authStatus, authUse } from './commands/auth';
 import { completion } from './commands/completion';
 import { registerDocsCommands } from './commands/docs';
 import { registerEmailServersCommands } from './commands/email-servers';
@@ -25,7 +25,7 @@ import { registerWorkflowCommands } from './commands/workflow';
 import { applyCommandAliasConventions } from './lib/command-aliases';
 import { action } from './lib/format-error';
 import { configureGroupedHelp } from './lib/help';
-import { setQuiet } from './lib/ui';
+import { setJsonMode, setQuiet } from './lib/ui';
 
 const __filename = path.resolve(fileURLToPath(import.meta.url));
 
@@ -53,8 +53,14 @@ program
   // Commander hooks fire BEFORE every subcommand action, so this is the
   // right place to flip the quiet flag — `program.opts()` is populated by
   // the time we get here.
-  .hook('preAction', () => {
+  .hook('preAction', (_thisCommand, actionCommand) => {
     if (program.opts().quiet) setQuiet(true);
+    // Pipe-safety: any command invoked with `--json` keeps stdout pure JSON
+    // even when the caller merges streams (`2>&1 | jq`) — all stderr status
+    // chatter except hard errors goes silent. Reads the flag off the action
+    // command (subcommand opts), falling back to the program opts.
+    const actionOpts = actionCommand.opts() as { json?: boolean };
+    if (actionOpts.json ?? (program.opts() as { json?: boolean }).json) setJsonMode(true);
   });
 
 program
@@ -172,6 +178,16 @@ authCmd
   .action(async (profile: string | undefined) => {
     await authUse(profile);
   });
+
+authCmd
+  .command('status')
+  .alias('whoami')
+  .description(
+    'Show the active profile, server base URL, and whether the credential validates. Lighter than top-level `status` (no workflow count). Pair with `--json` for scripting.'
+  )
+  .option('--base-url <url>', 'Server base URL')
+  .option('--json', 'Emit machine-readable JSON instead of human-readable text')
+  .action(action(async (opts: { baseUrl?: string; json?: boolean }) => authStatus(opts)));
 
 registerWorkflowCommands(program);
 registerAgentCommands(program);

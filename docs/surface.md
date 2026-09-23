@@ -11,7 +11,8 @@ eigenpal
 │   ├── login
 │   ├── logout [profile]
 │   ├── list|ls
-│   └── use [profile]
+│   ├── use [profile]
+│   └── status|whoami
 ├── workflow
 │   ├── list|ls
 │   ├── pull <workflow-id>

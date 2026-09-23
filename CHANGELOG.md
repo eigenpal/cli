@@ -1,5 +1,13 @@
 # @eigenpal/cli
 
+## 0.20.5
+
+### Patch Changes
+
+- faf6d1e: `eigenpal auth status` (alias `whoami`) shows the active profile, server URL, and whether the credential validates, with `--json` support for scripting.
+- faf6d1e: `--json` output is now safe to pipe: status chatter stays off stderr so `2>&1 | jq` parses, and re-pushing identical YAML with `workflow push --file X --json` reports `{ unchanged: true }` instead of an error.
+- faf6d1e: `eigenpal reviews` dataset-review actions and decisions now use `remove` / `removed` instead of `reject` / `rejected`, matching the public API rename.
+
 ## 0.20.3
 
 ### Minor Changes

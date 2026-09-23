@@ -13,8 +13,10 @@ import {
 } from '@clack/prompts';
 import { exec } from 'child_process';
 import { env } from '../../env';
-import { ApiClient } from '../../lib/client';
+import { ApiClient, ApiError } from '../../lib/client';
+import { resolveConfig, resolveSource } from '../../lib/config';
 import {
+  activeProfileName,
   deleteProfile,
   listProfiles,
   setCurrentProfile,
@@ -435,4 +437,116 @@ export async function authUse(profileName?: string): Promise<void> {
       `${ui.ok('✓')} Switched to ${ui.bold(target)}${tenantSuffix}\n  ${ui.dim(`In scripts: \`eigenpal auth use ${target}\` or \`EIGENPAL_PROFILE=${target}\``)}`
     );
   }
+}
+
+/** Shape of `GET /v1/auth/check` used by `authStatus`. */
+interface AuthCheckResult {
+  ok: boolean;
+  tenantId?: string;
+  tenantName?: string | null;
+  email?: string | null;
+  name?: string | null;
+  keyId?: string;
+}
+
+/**
+ * `eigenpal auth status` (alias `whoami`) — the first thing agents guess.
+ * Shows the active profile, the server it points at, where the key came
+ * from, and whether the credential validates. Deliberately lighter than the
+ * top-level `status` dashboard: no workflow count, no extra calls.
+ *
+ * Exit codes mirror `status`: 0 when the credential validates, 1 when there
+ * is no key or the check fails.
+ */
+export async function authStatus(opts: { baseUrl?: string; json?: boolean }): Promise<void> {
+  const config = resolveConfig(opts);
+  const source = resolveSource();
+  const profile = source.apiKey === 'profile' ? (source.profile ?? activeProfileName()) : null;
+
+  if (!config.apiKey) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          { authenticated: false, profile, baseUrl: config.baseUrl, keySource: source.apiKey },
+          null,
+          2
+        )
+      );
+    } else {
+      error('Not authenticated. Run `eigenpal auth login` or set EIGENPAL_API_KEY.');
+    }
+    process.exit(1);
+  }
+
+  const client = new ApiClient(config);
+  let auth: AuthCheckResult | null = null;
+  try {
+    auth = (await client.get('/v1/auth/check')) as AuthCheckResult;
+  } catch (err) {
+    // Genuine auth failure (bad/revoked key) — report validity, exit 1.
+    // Anything else (unreachable server, 5xx) propagates to `action()` for
+    // the friendly connection-error rendering.
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      auth = null;
+    } else {
+      throw err;
+    }
+  }
+
+  if (!auth || !auth.ok) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          { authenticated: false, profile, baseUrl: config.baseUrl, keySource: source.apiKey },
+          null,
+          2
+        )
+      );
+    } else {
+      error('Credential invalid. Run `eigenpal auth login` for a fresh key.');
+    }
+    process.exit(1);
+  }
+
+  if (opts.json) {
+    console.log(
+      JSON.stringify(
+        {
+          authenticated: true,
+          profile,
+          baseUrl: config.baseUrl,
+          keySource: source.apiKey,
+          tenantId: auth.tenantId ?? null,
+          tenantName: auth.tenantName ?? null,
+          user: { email: auth.email ?? null, name: auth.name ?? null },
+          keyId: auth.keyId ?? null,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  const lines: string[] = [];
+  lines.push(
+    `${ui.dim('profile:')}   ${profile ? ui.bold(profile) : ui.dim('(env key, no profile)')}`
+  );
+  lines.push(`${ui.dim('server:')}    ${config.baseUrl}`);
+  lines.push(`${ui.dim('tenant:')}    ${ui.bold(auth.tenantName ?? auth.tenantId ?? '?')}`);
+  if (auth.tenantId) {
+    lines.push(`${ui.dim('tenant id:')} ${auth.tenantId}`);
+  }
+  if (auth.email) {
+    lines.push(`${ui.dim('user:')}      ${auth.email}${auth.name ? ` (${auth.name})` : ''}`);
+  }
+  if (auth.keyId) {
+    lines.push(`${ui.dim('key:')}       ${auth.keyId}`);
+  }
+  if (source.apiKey === 'env') {
+    lines.push(
+      `${ui.dim('key from:')}  ${ui.warn('EIGENPAL_API_KEY env var (overrides credentials file)')}`
+    );
+  }
+  console.log(lines.join('\n'));
 }

@@ -489,6 +489,10 @@ Update path requires the YAML to carry a top-level \`version: X.Y.Z\`, OR for
 into the YAML before sending so the file-on-disk doesn't have to be edited
 per push). Passing both an explicit \`version:\` in the YAML and
 \`--bump\` / \`--set-version\` on the command line is rejected.
+Re-pushing byte-identical YAML for an existing version with \`--json\` is a
+no-op reporting \`{ unchanged: true, workflowId, version }\` (exit 0);
+without \`--json\` — or with differing content — it stays a
+version-conflict error.
 \`--set-version\` is the long form because the global \`-v, --version\`
 flag would otherwise shadow it. Validation failures come back as
 \`{ issues: [{ field, message, code }], hint }\`; follow the hint and re-run
@@ -606,7 +610,24 @@ new uploads are deleted. The file on disk is not rewritten.
             process.exit(1);
           }
 
-          await preflightVersionConflict(client, workflowId, nextVersion);
+          // No-op comparison YAML: only computable before staging when no
+          // local templates need rewriting (the rewrite happens in staging,
+          // after this gate). Template pushes keep the old loud-conflict
+          // behavior on duplicates.
+          const yamlToSendForCompare =
+            loadedTemplates.length === 0
+              ? cliWantsRewrite
+                ? spliceWorkflowVersion(yamlOnDisk, nextVersion)
+                : yamlOnDisk
+              : undefined;
+          if (
+            await preflightVersionConflict(client, workflowId, nextVersion, {
+              json: opts.json,
+              yamlToSend: yamlToSendForCompare,
+            })
+          ) {
+            return;
+          }
         } else {
           // Create path: server defaults to 1.0.0 if no version is sent.
           // `--bump` is meaningless when there's no current version to bump
@@ -842,18 +863,47 @@ async function preflightWorkflowValidate(
 async function preflightVersionConflict(
   client: ApiClient,
   workflowId: string,
-  nextVersion: string
-): Promise<void> {
+  nextVersion: string,
+  opts?: { json?: boolean; yamlToSend?: string }
+): Promise<boolean> {
   const listed = (await client.get(`/api/workflows/${workflowId}/versions`, {
     limit: '100',
     offset: '0',
   })) as { data?: Array<{ version?: string | null }> };
   const versions = Array.isArray(listed.data) ? listed.data : [];
-  if (versions.some((row) => row.version === nextVersion)) {
-    throw new Error(
-      `Version ${nextVersion} already exists for ${workflowId}. Choose a new --set-version / --bump, or change the YAML version.`
-    );
+  if (!versions.some((row) => row.version === nextVersion)) return false;
+  // The version exists. With `--json`, a byte-identical re-push is a no-op,
+  // not an error: report `{ unchanged: true }` so `| jq` keeps parsing
+  // instead of choking on prose. Content comparison is only attempted for
+  // template-free pushes, where the YAML we'd send is fully determined here
+  // (template rewrites happen during staging, after this gate). Anything
+  // else — different bytes, or templates we can't compare cheaply — stays a
+  // loud version-conflict error, same as before.
+  if (opts?.json && opts.yamlToSend !== undefined) {
+    const current = (await client.get(`/api/workflows/${workflowId}`)) as {
+      currentVersion?: { version?: string | null; yamlContent?: string | null } | null;
+    };
+    if (
+      current?.currentVersion?.version === nextVersion &&
+      normalizeYamlForCompare(current.currentVersion.yamlContent) ===
+        normalizeYamlForCompare(opts.yamlToSend)
+    ) {
+      printJson({ unchanged: true, workflowId, version: nextVersion });
+      return true;
+    }
   }
+  throw new Error(
+    `Version ${nextVersion} already exists for ${workflowId}. Choose a new --set-version / --bump, or change the YAML version.`
+  );
+}
+
+/**
+ * Normalize YAML for no-op comparison: CRLF → LF, surrounding whitespace
+ * trimmed. A true duplicate push (same file twice) is byte-identical, so
+ * this only forgives transport-level noise, never real edits. Exported for tests.
+ */
+export function normalizeYamlForCompare(yaml: string | null | undefined): string {
+  return (yaml ?? '').replace(/\r\n/g, '\n').trim();
 }
 
 async function rethrowAfterTemplateCleanup(

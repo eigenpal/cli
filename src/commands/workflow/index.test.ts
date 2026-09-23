@@ -10,6 +10,7 @@ import {
   bumpSemver,
   datasetExportPath,
   formatShortStatus,
+  normalizeYamlForCompare,
   readJsonInput,
   renderExperimentFailures,
   rollupForJson,
@@ -147,6 +148,22 @@ describe('datasetReviewRequestsPath', () => {
     expect(datasetReviewRequestsPath('wf_abc123', 'dsr_111')).toBe(
       '/v1/automations/wf_abc123/dataset-review-requests/dsr_111'
     );
+  });
+});
+
+describe('normalizeYamlForCompare', () => {
+  test('treats CRLF and surrounding whitespace as transport noise', () => {
+    expect(normalizeYamlForCompare('name: demo\r\nversion: 1.0.0\r\n')).toBe(
+      normalizeYamlForCompare('\nname: demo\nversion: 1.0.0\n')
+    );
+  });
+
+  test('keeps real edits distinct and null/undefined empty', () => {
+    expect(normalizeYamlForCompare('version: 1.0.0')).not.toBe(
+      normalizeYamlForCompare('version: 1.0.1')
+    );
+    expect(normalizeYamlForCompare(null)).toBe('');
+    expect(normalizeYamlForCompare(undefined)).toBe('');
   });
 });
 

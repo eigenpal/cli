@@ -16,9 +16,9 @@ import {
 const CLI = join(import.meta.dir, '../cli.ts');
 
 describe('parseFieldDecision', () => {
-  test('maps approved and rejected', () => {
+  test('maps approved and removed', () => {
     expect(parseFieldDecision({ decision: 'approved' })).toBe('approved');
-    expect(parseFieldDecision({ decision: 'Rejected' })).toBe('rejected');
+    expect(parseFieldDecision({ decision: 'Removed' })).toBe('removed');
   });
 
   test('maps --clear and --decision null/clear to null', () => {
@@ -32,7 +32,7 @@ describe('parseFieldDecision', () => {
       /either --clear or --decision/
     );
     expect(() => parseFieldDecision({})).toThrow(/--decision or --clear/);
-    expect(() => parseFieldDecision({ decision: 'maybe' })).toThrow(/approved, rejected, null/);
+    expect(() => parseFieldDecision({ decision: 'maybe' })).toThrow(/approved, removed, null/);
   });
 });
 
@@ -134,9 +134,9 @@ describe('buildReviewItemPatchBody', () => {
 });
 
 describe('parseFileDecision', () => {
-  test('maps approved, rejected, and clear forms', () => {
+  test('maps approved, removed, and clear forms', () => {
     expect(parseFileDecision({ decision: 'approved' })).toBe('approved');
-    expect(parseFileDecision({ decision: 'Rejected' })).toBe('rejected');
+    expect(parseFileDecision({ decision: 'Removed' })).toBe('removed');
     expect(parseFileDecision({ clear: true })).toBeNull();
     expect(parseFileDecision({ decision: 'null' })).toBeNull();
   });
@@ -146,7 +146,7 @@ describe('parseFileDecision', () => {
       /either --clear or --decision/
     );
     expect(() => parseFileDecision({})).toThrow(/--action file-decision/);
-    expect(() => parseFileDecision({ decision: 'maybe' })).toThrow(/approved, rejected, null/);
+    expect(() => parseFileDecision({ decision: 'maybe' })).toThrow(/approved, removed, null/);
   });
 });
 
@@ -233,9 +233,9 @@ describe('formatReviewItemFiles', () => {
     expect(
       formatReviewItemFiles({
         currentExpectedFiles: [{ path: 'a.pdf' }, { path: 'b.pdf' }],
-        fileDecisions: { 'a.pdf': { decision: 'approved' }, 'b.pdf': { decision: 'rejected' } },
+        fileDecisions: { 'a.pdf': { decision: 'approved' }, 'b.pdf': { decision: 'removed' } },
       })
-    ).toBe('1/2 approved, 1 rejected');
+    ).toBe('1/2 approved, 1 removed');
   });
 
   test('falls back to the snapshot manifest when the overlay is null', () => {
@@ -285,7 +285,7 @@ describe('dataset review-request --help', () => {
     expect(item.stdout).toContain('edit-file');
     expect(item.stdout).toContain('--file-path');
     expect(item.stdout).toContain('--new-path');
-    expect(item.stdout).toContain('reject');
+    expect(item.stdout).toContain('remove');
     expect(item.stdout).toContain('--clear');
     expect(item.stdout).not.toMatch(/\bflag\b/);
     expect(item.stdout).not.toMatch(/\block\b/);

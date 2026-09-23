@@ -20,6 +20,11 @@
  * status helpers (`success`, `info`, `dim`); `error` and `warn` always fire,
  * and stdout (data) is never touched.
  *
+ * `--json` mode (set via `setJsonMode(true)` from the `preAction` hook in
+ * `cli.ts`) goes further: every stderr helper except `error` is silent, so
+ * `cmd --json 2>&1 | jq` parses even with merged streams. Errors stay human
+ * text on stderr with a non-zero exit (gh parity).
+ *
  * Color: picocolors auto-disables on `NO_COLOR=1`, `FORCE_COLOR=0`, or
  * non-TTY stdout. Set the env var to disable; we don't ship a `--no-color`
  * CLI flag because it would just be a verbose alias for the env.
@@ -58,8 +63,26 @@ export function isQuiet(): boolean {
   return quietMode;
 }
 
+// `--json` pipe-safety. Enabled centrally from the `preAction` hook in
+// `cli.ts` whenever the invoked command carries `--json`: stdout must stay
+// pure JSON even when the caller merges streams (`2>&1 | jq`). While active,
+// every stderr status helper EXCEPT `error` is silent — spinners, success
+// ticks, info/dim lines, hints, and warnings would otherwise interleave the
+// JSON. `error` stays loud: a failing command must still say why on stderr
+// (gh parity — `gh --json` errors are human text on stderr, exit non-zero).
+// Tests reset with `setJsonMode(false)` between cases.
+let jsonMode = false;
+
+export function setJsonMode(value: boolean): void {
+  jsonMode = value;
+}
+
+export function isJsonMode(): boolean {
+  return jsonMode;
+}
+
 export function success(message: string): void {
-  if (quietMode) return;
+  if (quietMode || jsonMode) return;
   process.stderr.write(`${pc.green('✓')} ${message}\n`);
 }
 
@@ -68,21 +91,22 @@ export function error(message: string): void {
 }
 
 export function info(message: string): void {
-  if (quietMode) return;
+  if (quietMode || jsonMode) return;
   process.stderr.write(`${pc.cyan('ℹ')} ${message}\n`);
 }
 
 export function warn(message: string): void {
+  if (jsonMode) return;
   process.stderr.write(`${pc.yellow('!')} ${message}\n`);
 }
 
 export function dim(message: string): void {
-  if (quietMode) return;
+  if (quietMode || jsonMode) return;
   process.stderr.write(`${pc.dim(message)}\n`);
 }
 
 export function header(message: string): void {
-  if (quietMode) return;
+  if (quietMode || jsonMode) return;
   process.stderr.write(`\n${pc.bold(message)}\n\n`);
 }
 
@@ -229,7 +253,6 @@ export function renderListResult<T extends Record<string, unknown>>(
 
   if (opts.json) {
     console.log(JSON.stringify(raw, null, 2));
-    if (rows.length > 0) writeRecordCountHint(rows.length, total, label, false);
     return;
   }
 

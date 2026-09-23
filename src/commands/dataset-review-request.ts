@@ -59,7 +59,7 @@ type ReviewProgress = {
   remaining?: number;
   total?: number;
   complete?: boolean;
-  rejected?: number;
+  removed?: number;
 };
 
 type ReviewRequestRow = {
@@ -73,7 +73,7 @@ type ReviewRequestRow = {
 
 type ItemAction =
   | 'approve'
-  | 'reject'
+  | 'remove'
   | 'reopen'
   | 'comment'
   | 'edit'
@@ -91,18 +91,18 @@ function collectRepeatable(val: string, prev: string[]): string[] {
 function formatProgress(progress: ReviewProgress | undefined): string {
   if (!progress) return '-';
   if (progress.complete) {
-    return progress.rejected ? `complete (${progress.rejected} rejected)` : 'complete';
+    return progress.removed ? `complete (${progress.removed} removed)` : 'complete';
   }
   const remaining = progress.remaining ?? 0;
   const total = progress.total ?? remaining;
   return `${remaining}/${total} remaining`;
 }
 
-/** Shared approved/rejected/null parsing for field- and file-decisions. */
+/** Shared approved/removed/null parsing for field- and file-decisions. */
 function parseApprovalDecision(
   opts: { decision?: string; clear?: boolean },
   action: 'field-decision' | 'file-decision'
-): 'approved' | 'rejected' | null {
+): 'approved' | 'removed' | null {
   if (opts.clear) {
     if (opts.decision !== undefined) {
       throw new Error('pass either --clear or --decision, not both');
@@ -116,17 +116,17 @@ function parseApprovalDecision(
   if (normalized === 'null' || normalized === 'clear') {
     return null;
   }
-  if (normalized === 'approved' || normalized === 'rejected') {
+  if (normalized === 'approved' || normalized === 'removed') {
     return normalized;
   }
-  throw new Error('--decision must be approved, rejected, null, or clear');
+  throw new Error('--decision must be approved, removed, null, or clear');
 }
 
 /** Resolve field-decision payload; `null` clears the recorded decision on the server. */
 export function parseFieldDecision(opts: {
   decision?: string;
   clear?: boolean;
-}): 'approved' | 'rejected' | null {
+}): 'approved' | 'removed' | null {
   return parseApprovalDecision(opts, 'field-decision');
 }
 
@@ -134,7 +134,7 @@ export function parseFieldDecision(opts: {
 export function parseFileDecision(opts: {
   decision?: string;
   clear?: boolean;
-}): 'approved' | 'rejected' | null {
+}): 'approved' | 'removed' | null {
   return parseApprovalDecision(opts, 'file-decision');
 }
 
@@ -196,7 +196,7 @@ export function buildReviewItemPatchBody(
       body.decision = parseFileDecision({ decision: opts.decision, clear: opts.clear });
     } else if (!opts.comment?.trim()) {
       throw new Error(
-        'pass --decision approved|rejected (or --clear) or a --comment note when --action file-decision'
+        'pass --decision approved|removed (or --clear) or a --comment note when --action file-decision'
       );
     }
   } else if (opts.filePath !== undefined || opts.newPath !== undefined || opts.file !== undefined) {
@@ -298,17 +298,17 @@ export function formatReviewItemFiles(item: {
   if (!files || files.length === 0) return '-';
   const decisions = item.fileDecisions ?? {};
   let approved = 0;
-  let rejected = 0;
+  let removed = 0;
   for (const file of files) {
     const key = file.path ?? file.name ?? '';
     const decision = decisions[key]?.decision;
     if (decision === 'approved') approved += 1;
-    else if (decision === 'rejected') rejected += 1;
+    else if (decision === 'removed') removed += 1;
   }
   const total = files.length;
-  const decided = approved + rejected;
+  const decided = approved + removed;
   if (decided === 0) return `${total} file${total === 1 ? '' : 's'}, undecided`;
-  return `${approved}/${total} approved${rejected ? `, ${rejected} rejected` : ''}`;
+  return `${approved}/${total} approved${removed ? `, ${removed} removed` : ''}`;
 }
 
 export function registerDatasetReviewRequestCommands(
@@ -433,7 +433,7 @@ Examples:
 
 Agent loop: create with focus/ignore and per-example notes → poll \`get --json\`
 until \`.progress.complete\` → record per-field decisions and per-example
-approve/reject with comments → \`pull --out <dir>\` to fetch expected files
+approve/remove with comments → \`pull --out <dir>\` to fetch expected files
 (snapshot or reviewer-corrected) → correct bytes with
 \`item --action edit-file --file-path <path> --file <local>\` (or
 \`--new-path\` for brand-new files) → record per-file decisions with notes
@@ -441,7 +441,7 @@ via \`item --action file-decision\` → read \`events\` → \`dataset pull\` and
 MANUAL per-example reconcile into the live dataset (no auto-apply exists by
 design; reviewers can err) → \`update --status closed\`.
 
-\`reject\` is a recommendation only — nothing is deleted by any review endpoint.
+\`remove\` is a recommendation only — nothing is deleted by any review endpoint.
 Use \`--json\` from agents; API errors exit non-zero.
 `
     )
@@ -635,7 +635,8 @@ Examples:
 
 At least one of --title, --instructions, --focus/--focus-json, --ignore, or
 --status is required. Closing a request does not write expected outputs back
-to the dataset — reconcile manually after \`dataset pull\`.
+to the dataset — reconcile manually after \`dataset pull\`. A closed request
+accepts only \`--status open\` to reopen it.
 `
     )
     .action(
@@ -707,7 +708,7 @@ to the dataset — reconcile manually after \`dataset pull\`.
 
   addJsonFlag(withBaseUrl(reviewRequest.command('items <automation-id> <review-id>')))
     .description('List snapshotted review items and their statuses.')
-    .option('--status <csv>', 'Filter by item status (pending,approved,edited,rejected)')
+    .option('--status <csv>', 'Filter by item status (pending,approved,edited,removed)')
     .action(
       action(
         async (
@@ -803,10 +804,10 @@ to the dataset — reconcile manually after \`dataset pull\`.
 
   addJsonFlag(withBaseUrl(reviewRequest.command('item <automation-id> <review-id> <item-id>')))
     .description(
-      'Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.'
+      'Approve, remove, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.'
     )
     .requiredOption(
-      '--action <approve|reject|reopen|comment|edit|field-decision|file-decision|edit-file>',
+      '--action <approve|remove|reopen|comment|edit|field-decision|file-decision|edit-file>',
       'Item action'
     )
     .requiredOption(
@@ -822,7 +823,7 @@ to the dataset — reconcile manually after \`dataset pull\`.
     )
     .option('--file <local path>', 'Local file bytes to upload when --action edit-file')
     .option(
-      '--decision <approved|rejected|null>',
+      '--decision <approved|removed|null>',
       'Field or file decision for --action field-decision or file-decision (null/clear removes it)'
     )
     .option('--clear', 'Clear a field or file decision (sends decision: null)', false)
@@ -847,10 +848,10 @@ Examples:
       --action edit-file --new-path expected/appendix.pdf --file ./appendix.pdf \\
       --expected-updated-at 2026-01-01T00:00:00.000Z --json
   $ eigenpal workflow dataset review-request item wf_abc123 dsr_... dsri_... \\
-      --action reject --comment "wrong vendor" \\
+      --action remove --comment "wrong vendor" \\
       --expected-updated-at 2026-01-01T00:00:00.000Z --json
 
-\`reject\` marks the example as not recommended for the dataset; it does not
+\`remove\` marks the example as not recommended for the dataset; it does not
 delete anything. \`--clear\` / \`--decision null\` removes a prior field or
 file decision (API: decision: null). A file-decision \`--comment\` without a
 decision is a note and needs an existing decision server-side. \`edit-file\`
@@ -963,7 +964,7 @@ Layout (mirrors the dataset archive so reconcile is a copy):
 
 There is no write-back: copy approved/edited files and expected JSON into the
 live dataset example-by-example by hand (reviewers can err), then
-\`dataset push\`. \`reject\` is a recommendation only — nothing is deleted.
+\`dataset push\`. \`remove\` is a recommendation only — nothing is deleted.
 `
     )
     .action(

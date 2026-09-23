@@ -188,7 +188,7 @@ agents
 | `eigenpal agents dataset review-request update [options] <automation-id> <review-id>`         | Update review metadata or lifecycle status. Set --status closed when review is finished.                                                             |
 | `eigenpal agents dataset review-request items [options] <automation-id> <review-id>`          | List snapshotted review items and their statuses.                                                                                                    |
 | `eigenpal agents dataset review-request events [options] <automation-id> <review-id>`         | List review activity, including example and field notes.                                                                                             |
-| `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>` | Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file. |
+| `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>` | Approve, remove, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file. |
 | `eigenpal agents dataset review-request pull [options] <automation-id> <review-id>`           | Download review snapshots: per-example expected files (snapshot or reviewer-corrected) plus item JSON.                                               |
 
 ### Experiment
@@ -797,11 +797,11 @@ List snapshotted review items and their statuses.
 
 ### Options
 
-| Flag               | Required | Default | Description                                              |
-| ------------------ | -------- | ------- | -------------------------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                                          |
-| `--json`           | no       |         | Emit machine-readable JSON on stdout                     |
-| `--status <csv>`   | no       |         | Filter by item status (pending,approved,edited,rejected) |
+| Flag               | Required | Default | Description                                             |
+| ------------------ | -------- | ------- | ------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                         |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                    |
+| `--status <csv>`   | no       |         | Filter by item status (pending,approved,edited,removed) |
 
 ### `eigenpal agents dataset review-request events [options] <automation-id> <review-id>`
 
@@ -823,7 +823,7 @@ List review activity, including example and field notes.
 
 ### `eigenpal agents dataset review-request item [options] <automation-id> <review-id> <item-id>`
 
-Approve, reject, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.
+Approve, remove, reopen, comment, edit, or record a field- or file-decision on one review item. Upload corrected expected-file bytes with edit-file.
 
 ### Arguments
 
@@ -839,14 +839,14 @@ Approve, reject, reopen, comment, edit, or record a field- or file-decision on o
 | --------------------------------------------------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
 | `--base-url <url>`                                                                            | no       |         | Server base URL                                                                             |
 | `--json`                                                                                      | no       |         | Emit machine-readable JSON on stdout                                                        |
-| `--action <approve\|reject\|reopen\|comment\|edit\|field-decision\|file-decision\|edit-file>` | yes      |         | Item action                                                                                 |
+| `--action <approve\|remove\|reopen\|comment\|edit\|field-decision\|file-decision\|edit-file>` | yes      |         | Item action                                                                                 |
 | `--expected-updated-at <iso>`                                                                 | yes      |         | Item updatedAt the client last observed (optimistic concurrency)                            |
 | `--comment <text>`                                                                            | no       |         | Note stored on the item, field, or file                                                     |
 | `--field-path <path>`                                                                         | no       |         | Dotted expected-output path for comment or field-decision                                   |
 | `--file-path <path>`                                                                          | no       |         | Expected-file path for file-decision or edit-file (correct)                                 |
 | `--new-path <path>`                                                                           | no       |         | Expected-file path for edit-file uploads of brand-new reviewer files                        |
 | `--file <local path>`                                                                         | no       |         | Local file bytes to upload when --action edit-file                                          |
-| `--decision <approved\|rejected\|null>`                                                       | no       |         | Field or file decision for --action field-decision or file-decision (null/clear removes it) |
+| `--decision <approved\|removed\|null>`                                                        | no       |         | Field or file decision for --action field-decision or file-decision (null/clear removes it) |
 | `--clear`                                                                                     | no       | `false` | Clear a field or file decision (sends decision: null)                                       |
 | `--expected-json <json>`                                                                      | no       |         | Replacement expected JSON when --action edit                                                |
 

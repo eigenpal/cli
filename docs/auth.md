@@ -12,6 +12,7 @@ Manage authentication. Credentials live in ~/.config/eigenpal/credentials.json a
   - [`eigenpal auth logout [options] [profile]`](#eigenpal-auth-logout-options-profile)
   - [`eigenpal auth list|ls [options]`](#eigenpal-auth-listls-options)
   - [`eigenpal auth use [options] [profile]`](#eigenpal-auth-use-options-profile)
+  - [`eigenpal auth status|whoami [options]`](#eigenpal-auth-statuswhoami-options)
 
 ## Surface
 
@@ -20,7 +21,8 @@ auth
 ├── login
 ├── logout [profile]
 ├── list|ls
-└── use [profile]
+├── use [profile]
+└── status|whoami
 ```
 
 ## Commands
@@ -33,6 +35,7 @@ auth
 | `eigenpal auth logout [options] [profile]` | Remove a profile from the credentials file. Defaults to the active profile if no name is given. After removal the next available profile becomes active.                                                                             |
 | `eigenpal auth list\|ls [options]`         | List configured profiles. The active one is marked ● — switch with `auth use`.                                                                                                                                                       |
 | `eigenpal auth use [options] [profile]`    | Switch the active profile (persistent across shells). Omit `[profile]` to pick from a list. For one-shot per-shell switching, set `EIGENPAL_PROFILE=<name>` instead.                                                                 |
+| `eigenpal auth status\|whoami [options]`   | Show the active profile, server base URL, and whether the credential validates. Lighter than top-level `status` (no workflow count). Pair with `--json` for scripting.                                                               |
 
 ## Details
 
@@ -69,3 +72,14 @@ Switch the active profile (persistent across shells). Omit `[profile]` to pick f
 | Name      | Required | Variadic | Description |
 | --------- | -------- | -------- | ----------- |
 | `profile` | no       | no       |             |
+
+### `eigenpal auth status|whoami [options]`
+
+Show the active profile, server base URL, and whether the credential validates. Lighter than top-level `status` (no workflow count). Pair with `--json` for scripting.
+
+### Options
+
+| Flag               | Required | Default | Description                                               |
+| ------------------ | -------- | ------- | --------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                           |
+| `--json`           | no       |         | Emit machine-readable JSON instead of human-readable text |

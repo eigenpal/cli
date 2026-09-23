@@ -1,5 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { formatDuration, intArg, renderListResult, table } from './ui';
+import {
+  dim,
+  error,
+  formatDuration,
+  header,
+  info,
+  intArg,
+  isJsonMode,
+  renderListResult,
+  setJsonMode,
+  success,
+  table,
+  warn,
+} from './ui';
 
 describe('table', () => {
   test('renders header, separator, and rows aligned to widest cell', () => {
@@ -77,9 +90,8 @@ describe('renderListResult', () => {
     // payload (envelope + every field), no projection. Pipe through
     // `jq '.data'` to unwrap the array.
     expect(JSON.parse(captured.stdout)).toEqual(payload);
-    // stderr still shows the count hint so the user sees pagination state
-    expect(stripAnsi(captured.stderr)).toContain('2 records');
-    expect(stripAnsi(captured.stderr)).not.toContain('use --json');
+    // Pipe-safe: no count hint on stderr in json mode, so `2>&1 | jq` parses.
+    expect(captured.stderr).toBe('');
   });
 
   test('human mode renders table to stdout and hint to stderr', () => {
@@ -138,6 +150,40 @@ describe('renderListResult', () => {
     });
     expect(stripAnsi(captured.stdout).trim()).toBe('(no rows)');
     expect(captured.stderr).toBe('');
+  });
+});
+
+describe('jsonMode', () => {
+  test('silences status chatter on stderr but keeps errors loud', () => {
+    expect(isJsonMode()).toBe(false);
+    setJsonMode(true);
+    try {
+      expect(isJsonMode()).toBe(true);
+      const captured = captureStdio(() => {
+        success('pushed');
+        info('detail');
+        dim('hint');
+        header('section');
+        warn('careful');
+      });
+      expect(captured.stderr).toBe('');
+      const errCaptured = captureStdio(() => {
+        error('boom');
+      });
+      expect(stripAnsi(errCaptured.stderr)).toContain('boom');
+    } finally {
+      setJsonMode(false);
+    }
+    expect(isJsonMode()).toBe(false);
+  });
+
+  test('status helpers write normally when json mode is off', () => {
+    const captured = captureStdio(() => {
+      success('pushed');
+      warn('careful');
+    });
+    expect(stripAnsi(captured.stderr)).toContain('pushed');
+    expect(stripAnsi(captured.stderr)).toContain('careful');
   });
 });
 
