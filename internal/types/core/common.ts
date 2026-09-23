@@ -17,6 +17,8 @@ export const ID_PREFIXES = {
   USER: 'user',
   TENANT: 'org',
   TENANT_INVITE: 'inv',
+  /** Row in the durable per-user organization-creation ledger. */
+  ORGANIZATION_CREATION: 'orgc',
   API_KEY: 'eig',
   PROCESSOR: 'proc',
   AI_PROVIDER: 'aip',

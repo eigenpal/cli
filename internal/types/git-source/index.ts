@@ -52,6 +52,8 @@ export {
   type RerunVersionKind,
 } from './rerun-version';
 
+export { deriveGitTenantToken, parseGitTenantToken, verifyGitTenantToken } from './operator-token';
+
 export {
   SourceLockPackageSchema,
   SourceLockfileSchema,

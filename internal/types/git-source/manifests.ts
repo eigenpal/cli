@@ -183,7 +183,22 @@ const TriggerConfigSchema = z
               z
                 .object({
                   address: z.string().includes('@'),
-                  allowlist: z.array(z.string()).default([]),
+                  /**
+                   * Omitted means "git does not manage the sender allowlist for
+                   * this alias", NOT "allow nobody". It must stay `.optional()`
+                   * with no default.
+                   *
+                   * An empty allowlist used to mean "accepts mail from anyone"
+                   * and now means "accepts no mail". Defaulting the omitted
+                   * case to `[]` made every source sync write that deny-all
+                   * value over whatever the dashboard (or the grandfather
+                   * migration) had put there, so an agent whose manifest simply
+                   * does not mention an allowlist lost inbound mail on its next
+                   * release and could never get it back. The string shorthand
+                   * (`aliases: [invoices@...]`) cannot express an allowlist at
+                   * all, so it is always this case.
+                   */
+                  allowlist: z.array(z.string()).optional(),
                   replyConfig: z.record(z.string(), z.unknown()).default({}),
                   requireSenderAuth: z.boolean().default(true),
                   enabled: z.boolean().optional(),
