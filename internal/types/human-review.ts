@@ -589,6 +589,13 @@ export type HumanReviewApprove = z.infer<typeof HumanReviewApproveSchema>;
 export type HumanReviewReject = z.infer<typeof HumanReviewRejectSchema>;
 export type HumanReviewSelectionReason = z.infer<typeof HumanReviewSelectionReasonSchema>;
 export type HumanReviewScalar = string | number | boolean | null;
+/**
+ * A staged review edit value: scalars plus the empty containers field
+ * authoring stages — a copied array-item shape, or a null retyped to
+ * object/array. Containers only ever enter through those two paths, so the
+ * overlay treats them as structural seeds, never as reviewer data.
+ */
+export type HumanReviewEditValue = HumanReviewScalar | Record<string, unknown> | unknown[];
 export type HumanReviewConfidence = number | 'low' | 'medium' | 'high';
 export type HumanReviewMetadataFrom = z.infer<typeof HumanReviewMetadataFromSchema>;
 
@@ -1047,6 +1054,21 @@ function isHumanReviewScalar(value: unknown): value is HumanReviewScalar {
 }
 
 /**
+ * Guard for staged edit values: scalars plus plain containers. Non-finite
+ * numbers are rejected at any depth — JSON serialization would silently turn
+ * them into null, corrupting ground truth.
+ */
+function isHumanReviewEditValue(value: unknown): value is HumanReviewEditValue {
+  if (isHumanReviewScalar(value)) return true;
+  if (typeof value === 'number') return false;
+  if (Array.isArray(value)) return value.every(isHumanReviewEditValue);
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).every(isHumanReviewEditValue);
+  }
+  return false;
+}
+
+/**
  * Captured JSON null is absence, not a closed scalar type. Null may become a
  * string/number/boolean (and vice versa); the effective schema decides whether
  * that edit is valid. Other scalar type changes stay rejected here so a number
@@ -1073,7 +1095,7 @@ export function validateHumanReviewEffectiveSchema(
 
 export function applyHumanReviewEdits(
   machineData: Record<string, unknown> | unknown[],
-  edits: Record<string, HumanReviewScalar>,
+  edits: Record<string, HumanReviewEditValue>,
   options?: { allowScalarTypeChange?: boolean }
 ): Record<string, unknown> | unknown[] {
   const result = structuredClone(machineData);
@@ -1084,8 +1106,8 @@ export function applyHumanReviewEdits(
     if (typeof next === 'number' && !Number.isFinite(next)) {
       throw new Error(`Edit for "${pointer}" may not be a non-finite number`);
     }
-    if (!isHumanReviewScalar(next)) {
-      throw new Error(`Edit for "${pointer}" is not a scalar value`);
+    if (!isHumanReviewEditValue(next)) {
+      throw new Error(`Edit for "${pointer}" is not a JSON value`);
     }
     const segments = decodeHumanReviewJsonPointer(pointer);
     const original = valueAtHumanReviewPointer(machineData, pointer);

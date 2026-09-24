@@ -94,6 +94,7 @@ export {
   type HumanReviewConfidence,
   type HumanReviewConfirmField,
   type HumanReviewConflict,
+  type HumanReviewEditValue,
   type HumanReviewFieldDecision,
   type HumanReviewFieldMetadata,
   type HumanReviewFieldPolicy,
