@@ -331,7 +331,7 @@ export function registerDatasetReviewRequestCommands(
     withPagination(
       withBaseUrl(reviewRequest.command('list <automation-id>')).option(
         '--status <csv>',
-        'Filter by review status (comma-separated: draft,open,paused,closed)'
+        'Filter by review status (comma-separated: draft,open,paused,closed,cancelled)'
       ),
       50
     )
@@ -623,7 +623,7 @@ Use \`--json\` from agents; API errors exit non-zero.
     )
     .option('--focus-json <json>', 'JSON array of { path, reason? } focus fields (replaces focus)')
     .option('--ignore <path>', 'Replace ignored paths (repeatable)', collectRepeatable)
-    .option('--status <draft|open|paused|closed>', 'Lifecycle status')
+    .option('--status <draft|open|paused|closed|cancelled>', 'Lifecycle status')
     .addHelpText(
       'after',
       `
@@ -636,7 +636,8 @@ Examples:
 At least one of --title, --instructions, --focus/--focus-json, --ignore, or
 --status is required. Closing a request does not write expected outputs back
 to the dataset — reconcile manually after \`dataset pull\`. A closed request
-accepts only \`--status open\` to reopen it.
+accepts only \`--status open\` to reopen it. \`--status cancelled\` abandons
+the request (frozen like closed, reopenable with \`--status open\`).
 `
     )
     .action(
@@ -651,7 +652,7 @@ accepts only \`--status open\` to reopen it.
             focusReason?: string[];
             focusJson?: string;
             ignore?: string[];
-            status?: 'draft' | 'open' | 'paused' | 'closed';
+            status?: 'draft' | 'open' | 'paused' | 'closed' | 'cancelled';
             json?: boolean;
           }
         ) => {

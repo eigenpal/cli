@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.9
+
+### Patch Changes
+
+- 9a30b02: Reviews → Datasets: dataset review requests gain a `cancelled` lifecycle status. The CLI accepts `update --status cancelled` (and shows it in `list --status` filters), and the TypeScript/Python SDK status enums include the new value.
+
 ## 0.20.5
 
 ### Patch Changes

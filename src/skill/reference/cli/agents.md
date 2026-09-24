@@ -705,13 +705,13 @@ Validate a local dataset directory against the canonical examples/<name> layout.
 
 ### Options
 
-| Flag               | Required | Default | Description                                                         |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------- |
-| `--base-url <url>` | no       |         | Server base URL                                                     |
-| `--status <csv>`   | no       |         | Filter by review status (comma-separated: draft,open,paused,closed) |
-| `--limit <n>`      | no       | `50`    | Page size                                                           |
-| `--offset <n>`     | no       | `0`     | Page offset                                                         |
-| `--json`           | no       |         | Emit machine-readable JSON on stdout                                |
+| Flag               | Required | Default | Description                                                                   |
+| ------------------ | -------- | ------- | ----------------------------------------------------------------------------- |
+| `--base-url <url>` | no       |         | Server base URL                                                               |
+| `--status <csv>`   | no       |         | Filter by review status (comma-separated: draft,open,paused,closed,cancelled) |
+| `--limit <n>`      | no       | `50`    | Page size                                                                     |
+| `--offset <n>`     | no       | `0`     | Page offset                                                                   |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout                                          |
 
 ### `eigenpal agents dataset review-request create [options] <automation-id>`
 
@@ -772,17 +772,17 @@ Update review metadata or lifecycle status. Set --status closed when review is f
 
 ### Options
 
-| Flag                                     | Required | Default | Description                                                              |
-| ---------------------------------------- | -------- | ------- | ------------------------------------------------------------------------ |
-| `--base-url <url>`                       | no       |         | Server base URL                                                          |
-| `--json`                                 | no       |         | Emit machine-readable JSON on stdout                                     |
-| `--title <title>`                        | no       |         | New review request title                                                 |
-| `--instructions <text>`                  | no       |         | Note shown to the reviewer for the whole request                         |
-| `--focus <path>`                         | no       | `[]`    | Replace focus paths (repeatable; use with --focus-reason / --focus-json) |
-| `--focus-reason <spec>`                  | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)            |
-| `--focus-json <json>`                    | no       |         | JSON array of { path, reason? } focus fields (replaces focus)            |
-| `--ignore <path>`                        | no       |         | Replace ignored paths (repeatable)                                       |
-| `--status <draft\|open\|paused\|closed>` | no       |         | Lifecycle status                                                         |
+| Flag                                                | Required | Default | Description                                                              |
+| --------------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------ |
+| `--base-url <url>`                                  | no       |         | Server base URL                                                          |
+| `--json`                                            | no       |         | Emit machine-readable JSON on stdout                                     |
+| `--title <title>`                                   | no       |         | New review request title                                                 |
+| `--instructions <text>`                             | no       |         | Note shown to the reviewer for the whole request                         |
+| `--focus <path>`                                    | no       | `[]`    | Replace focus paths (repeatable; use with --focus-reason / --focus-json) |
+| `--focus-reason <spec>`                             | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)            |
+| `--focus-json <json>`                               | no       |         | JSON array of { path, reason? } focus fields (replaces focus)            |
+| `--ignore <path>`                                   | no       |         | Replace ignored paths (repeatable)                                       |
+| `--status <draft\|open\|paused\|closed\|cancelled>` | no       |         | Lifecycle status                                                         |
 
 ### `eigenpal agents dataset review-request items [options] <automation-id> <review-id>`
 
