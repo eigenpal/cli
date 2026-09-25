@@ -11,7 +11,7 @@ import {
   spinner,
   text,
 } from '@clack/prompts';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { env } from '../../env';
 import { ApiClient, ApiError } from '../../lib/client';
 import { resolveConfig, resolveSource } from '../../lib/config';
@@ -27,9 +27,15 @@ import { dim, error, success, ui } from '../../lib/ui';
 const CLOUD_BASE_URL = 'https://studio.eigenpal.com';
 
 function openBrowser(url: string): void {
-  const cmd =
-    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-  exec(`${cmd} "${url}"`);
+  // execFile, not exec: the URL must never be parsed by a shell. The callback
+  // swallows launch failures; the caller prints the URL either way.
+  const [cmd, args]: [string, string[]] =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+        : ['xdg-open', [url]];
+  execFile(cmd, args, () => {});
 }
 
 /** Treat clack cancellation (Ctrl-C / Esc) as a graceful exit, not a crash. */
@@ -53,7 +59,7 @@ function exitOnCancel<T>(value: T): Exclude<T, symbol> {
  *   - trailing slashes stripped
  *
  * Strict on:
- *   - scheme: only http or https accepted (no file://, ftp://, ws://, …)
+ *   - scheme: only http or https accepted (no file, ftp, or websocket schemes)
  *   - structure: URL must parse cleanly
  *   - path/query/hash: rejected — baseUrl is an origin, not a route
  *

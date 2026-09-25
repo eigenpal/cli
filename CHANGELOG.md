@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.20.11
+
+### Patch Changes
+
+- 112e490: The bundled self-hosting docs now explain that `EIGENPAL_BROWSER_STORAGE_ORIGINS` is read from the app container environment.
+
+## 0.20.11
+
+### Patch Changes
+
+- e187c5e: `eigenpal auth login` now opens the dashboard in your browser without routing the URL through a shell, so an unusual server address can never be interpreted as a command.
+
 ## 0.20.9
 
 ### Patch Changes
