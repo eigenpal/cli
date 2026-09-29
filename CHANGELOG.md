@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.13
+
+### Patch Changes
+
+- 812c311: Apply security updates to workflow validation dependencies.
+
 ## 0.20.11
 
 ### Patch Changes
