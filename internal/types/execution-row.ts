@@ -10,6 +10,16 @@ export type DurableExecutionType = (typeof DURABLE_EXECUTION_TYPES)[number];
 /** Sentinel for `GET /api/v1/runs?triggeredBy=` — matches runs with no `created_by`. */
 export const RUNS_TRIGGERED_BY_SYSTEM = '__system__';
 
+/** Order for the runs "Triggered by" options: by name (or email), System last. */
+export function compareTriggeredByActors(
+  a: { id: string; name: string | null; email: string },
+  b: { id: string; name: string | null; email: string }
+): number {
+  if (a.id === RUNS_TRIGGERED_BY_SYSTEM) return 1;
+  if (b.id === RUNS_TRIGGERED_BY_SYSTEM) return -1;
+  return (a.name ?? a.email).localeCompare(b.name ?? b.email);
+}
+
 export const EXECUTION_STATUSES = [
   'created',
   'pending',

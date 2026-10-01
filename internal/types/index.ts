@@ -576,6 +576,7 @@ export {
   NON_SUCCESS_TERMINAL_EXECUTION_STATUSES,
   RUNS_TRIGGERED_BY_SYSTEM,
   TERMINAL_EXECUTION_STATUSES,
+  compareTriggeredByActors,
   executionPhaseDurationMs,
   executionPhaseLabel,
   executionWallClockMs,
