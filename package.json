@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.20.19",
+  "version": "0.20.20",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -66,7 +66,7 @@
     "pizzip": "^3.2.0",
     "prettier": "^3.8.1",
     "sucrase": "3.35.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "2.9.1",
     "zod": "^4.4.3"
