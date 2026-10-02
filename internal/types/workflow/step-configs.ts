@@ -1787,6 +1787,12 @@ export const ActionHttpOutputSchema = z.object({
  */
 export const ActionInvokeWorkflowConfigSchema = z
   .object({
+    tags: z
+      .union([z.string().min(1), z.array(z.string().min(1)).max(100)])
+      .optional()
+      .describe(
+        'Child mode only. One tag or a list. Supports templates resolving to a string or string array. Tags are not inherited.'
+      ),
     workflow: z
       .string()
       .min(1)
@@ -1843,6 +1849,12 @@ export const ActionInvokeWorkflowConfigSchema = z
     }
     const mode = data.execution === 'child' ? 'child' : 'inline';
     if (mode === 'inline') {
+      if (data.tags !== undefined)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'tags are only supported with execution: child',
+          path: ['tags'],
+        });
       if (data.wait === false) {
         ctx.addIssue({
           code: 'custom',

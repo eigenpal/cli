@@ -123,6 +123,7 @@ List runs across workflows and agents, optionally scoped to one source.
 | `--limit <n>`                  | no       | `50`    | Page size                                                 |
 | `--offset <n>`                 | no       | `0`     | Page offset                                               |
 | `--json`                       | no       |         | Emit machine-readable JSON on stdout                      |
+| `--tag <tag>`                  | no       |         | Filter by an exact, case-sensitive execution tag          |
 | `--type <type>`                | no       |         | Filter by run type: workflow\|agent                       |
 | `--status <status>`            | no       |         | Filter by run status                                      |
 | `--source-ref <ref>`           | no       |         | Filter agent runs by source ref                           |

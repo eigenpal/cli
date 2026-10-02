@@ -58,6 +58,7 @@ export function registerRunsCommands(program: Command): void {
   const listRunsCmd = addJsonFlag(withPagination(withBaseUrl(runs.command('list [source]')), 50))
     .alias('ls')
     .description('List runs across workflows and agents, optionally scoped to one source.')
+    .option('--tag <tag>', 'Filter by an exact, case-sensitive execution tag')
     .option('--type <type>', 'Filter by run type: workflow|agent')
     .option('--status <status>', 'Filter by run status')
     .option('--source-ref <ref>', 'Filter agent runs by source ref')
@@ -1458,6 +1459,7 @@ async function listRuns(
   source: string | undefined,
   opts: BaseOpts &
     PaginationOpts & {
+      tag?: string;
       type?: string;
       status?: string;
       batchId?: string;
@@ -1538,6 +1540,7 @@ export function buildRunListParams<T extends object>(
   }
 ): Record<string, string> {
   return compactParams({
+    tag: 'tag' in opts ? opts.tag : undefined,
     type: 'type' in opts ? opts.type : undefined,
     sourceRef: 'sourceRef' in opts ? opts.sourceRef : undefined,
     status: 'status' in opts ? opts.status : undefined,

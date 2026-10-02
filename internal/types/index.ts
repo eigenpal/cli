@@ -672,3 +672,5 @@ export {
   type S3PathTemplateParams,
   type TenantS3PathBuilder,
 } from './storage/s3-paths';
+
+export { ExecutionTagSchema, ExecutionTagsSchema } from './execution-tags';

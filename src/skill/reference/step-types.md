@@ -5706,6 +5706,7 @@ Execute another workflow and return its output
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `tags` | string \| array<string> | no |  | Child mode only. One tag or a list. Supports templates resolving to a string or string array. Tags are not inherited. |
 | `workflow` | string | no |  | Workflow to invoke — definition name or wf_ id (tenant-scoped) |
 | `workflowId` | string | no |  | Legacy alias for workflow when the value is a wf_ id |
 | `execution` | `"inline"` \| `"child"` | no |  | inline: run target steps in this execution (default). child: spawn a separate run with lineage. |
@@ -5727,6 +5728,23 @@ Config schema:
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
+    "tags": {
+      "description": "Child mode only. One tag or a list. Supports templates resolving to a string or string array. Tags are not inherited.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
     "workflow": {
       "description": "Workflow to invoke — definition name or wf_ id (tenant-scoped)",
       "type": "string",

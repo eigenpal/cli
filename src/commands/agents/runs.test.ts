@@ -265,3 +265,7 @@ describe('agent execution comparison helpers', () => {
     });
   });
 });
+
+test('run tag filters preserve the complete tag including commas and case', () => {
+  expect(buildRunListParams({ tag: 'Request,123' })).toEqual({ tag: 'Request,123' });
+});

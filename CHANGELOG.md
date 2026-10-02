@@ -1,5 +1,13 @@
 # @eigenpal/cli
 
+## 0.20.21
+
+### Minor Changes
+
+- 7e2ebe0: Use `eigenpal runs list --tag <tag>` to find runs with an exact tag, such as a request ID.
+
+  Start an ad-hoc workflow or agent run with `eigenpal run <target> --tag <tag>`. Repeat `--tag` for multiple tags.
+
 ## 0.20.13
 
 ### Patch Changes

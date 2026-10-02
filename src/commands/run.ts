@@ -1,4 +1,5 @@
 import {
+  ExecutionTagsSchema,
   parseRunTarget,
   runStartJsonBody,
   runStartMultipartTarget,
@@ -22,6 +23,7 @@ import { runSavedWorkflowExamples } from './workflow/execution';
 export function registerRunCommands(program: Command): void {
   addJsonFlag(withBaseUrl(program.command('run <target>')))
     .description('Start a workflow or agent run, e.g. workflows.extract-invoice.')
+    .option('--tag <tag>', 'Execution tag. Repeat for multiple tags.', collectRepeated, [])
     .option('--input-json <json>', 'JSON input object')
     .option(
       '--input-file <field=path>',
@@ -81,6 +83,7 @@ Exit codes
 async function runTarget(
   target: string,
   opts: BaseOpts & {
+    tag?: string[];
     inputJson?: string;
     inputFile?: string[];
     example?: string;
@@ -92,7 +95,10 @@ async function runTarget(
   }
 ) {
   const parsed = parseRunTarget(target);
+  const tags = opts.tag?.length ? ExecutionTagsSchema.parse(opts.tag) : undefined;
   if (opts.example) {
+    if (tags)
+      throw new Error('--tag is supported for ad-hoc runs; example runs do not accept tags');
     if (opts.inputJson || (opts.inputFile && opts.inputFile.length > 0)) {
       throw new Error('--example cannot be combined with --input-json or --input-file');
     }
@@ -119,6 +125,7 @@ async function runTarget(
       target: pathTarget,
       inputFile: opts.inputFile,
       inputJson: opts.inputJson,
+      tags,
     });
     if (prepared.hasMultipartFiles) {
       payload = await client.postFormData(runPath, prepared.form);
@@ -128,13 +135,13 @@ async function runTarget(
         string,
         unknown
       >;
-      payload = await client.post(runPath, runStartJsonBody(target, input));
+      payload = await client.post(runPath, { ...runStartJsonBody(target, input), tags });
     }
   } else {
-    payload = await client.post(
-      runPath,
-      runStartJsonBody(target, opts.inputJson ? JSON.parse(opts.inputJson) : {})
-    );
+    payload = await client.post(runPath, {
+      ...runStartJsonBody(target, opts.inputJson ? JSON.parse(opts.inputJson) : {}),
+      tags,
+    });
   }
   const runId = String((payload as { id?: string }).id ?? '');
   let waitedForTerminalRun = false;

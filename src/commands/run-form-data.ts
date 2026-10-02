@@ -47,6 +47,7 @@ export async function buildPreparedRunRequest(
   client: ApiClient,
   input: {
     target: string;
+    tags?: string[];
     inputJson?: string;
     input?: Record<string, unknown>;
     inputFile?: string | string[];
@@ -128,6 +129,7 @@ export async function buildPreparedRunRequest(
   const remaining = localFiles.filter((_, index) => !preUploadIndices.has(index));
   const form = new FormData();
   form.append('target', input.target);
+  if (input.tags?.length) form.append('tags', JSON.stringify(input.tags));
   form.append('input', JSON.stringify(inputObj));
   if (input.overrides) form.append('overrides', JSON.stringify(input.overrides));
   if (input.metadata) form.append('metadata', JSON.stringify(input.metadata));

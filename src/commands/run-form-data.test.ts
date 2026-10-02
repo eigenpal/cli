@@ -47,6 +47,16 @@ function multipartFileParts(form: FormData, fieldName: string): File[] {
 }
 
 describe('buildRunFormData', () => {
+  test('keeps a file named tags separate from execution tags', async () => {
+    const { form } = await buildPreparedRunRequest(createMockUploadClient([]), {
+      target: 'workflows.example',
+      tags: ['request-123'],
+      files: [{ fieldName: 'tags', content: Buffer.from('example'), filename: 'tags.txt' }],
+    });
+    expect(JSON.parse(form.get('tags') as string)).toEqual(['request-123']);
+    expect(await (form.get('files.tags') as File).text()).toBe('example');
+  });
+
   test('uses canonical multipart envelope fields', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'run-form-data-'));
     try {

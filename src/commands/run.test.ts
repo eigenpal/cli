@@ -56,6 +56,40 @@ function runCli(
 }
 
 describe('root run commands', () => {
+  test('repeated --tag values are deduplicated and sent outside input', async () => {
+    let captured: unknown;
+    await withRunServer(
+      async (request) => {
+        captured = await request.json();
+        return json({ id: 'run_tags', type: 'workflow', finished: false }, { status: 201 });
+      },
+      async (baseUrl) => {
+        const result = await runCli(
+          [
+            'run',
+            'workflows.tag-demo',
+            '--input-json',
+            '{"requestId":"r1"}',
+            '--tag',
+            'request,123',
+            '--tag',
+            'batch',
+            '--tag',
+            'batch',
+            '--json',
+            '--base-url',
+            baseUrl,
+          ],
+          { baseUrl }
+        );
+        expect(result.status).toBe(0);
+        expect(captured).toMatchObject({
+          tags: ['request,123', 'batch'],
+          input: { requestId: 'r1' },
+        });
+      }
+    );
+  });
   test('runs get --select reads business output from output.*', async () => {
     await withRunServer(
       () =>
