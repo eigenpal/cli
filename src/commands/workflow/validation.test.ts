@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { countInvokeWorkflowSteps, discoverWorkflowProjectRoots } from './validation';
+import { countInvokeWorkflowSteps, discoverWorkflowProjectRoots, printIssues } from './validation';
 
 describe('countInvokeWorkflowSteps', () => {
   test('counts top-level invoke-workflow steps', () => {
@@ -84,4 +84,21 @@ describe('discoverWorkflowProjectRoots', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+test('online validation warnings are reported without failing the command', () => {
+  expect(
+    printIssues('workflow', 'workflow.yaml', [
+      {
+        field: 'steps.call.with.workflow',
+        message: 'Target checked at runtime',
+        severity: 'warning',
+      },
+    ])
+  ).toBe(true);
+  expect(
+    printIssues('workflow', 'workflow.yaml', [
+      { field: 'steps.call.with.workflow', message: 'Target missing', severity: 'error' },
+    ])
+  ).toBe(false);
 });

@@ -104,11 +104,20 @@ export interface InternalExecutionFailure {
   rawMessage?: string;
   occurredAt: string;
   metadata?: Record<string, unknown>;
+  /** Authored input location and run id only; never document text or storage URLs. */
+  diagnostic?: { inputPath?: string; correlationId: string };
 }
 
 export type PublicExecutionFailure = Pick<
   InternalExecutionFailure,
-  'phase' | 'code' | 'category' | 'provider' | 'retryable' | 'userMessage' | 'occurredAt'
+  | 'phase'
+  | 'code'
+  | 'category'
+  | 'provider'
+  | 'retryable'
+  | 'userMessage'
+  | 'occurredAt'
+  | 'diagnostic'
 >;
 
 export interface ExecutionPhaseSpan {
@@ -143,7 +152,16 @@ export function publicExecutionFailure(
 ): PublicExecutionFailure | undefined {
   if (!failure) return undefined;
   const { phase, code, category, provider, retryable, userMessage, occurredAt } = failure;
-  return { phase, code, category, provider, retryable, userMessage, occurredAt };
+  return {
+    phase,
+    code,
+    category,
+    provider,
+    retryable,
+    userMessage,
+    occurredAt,
+    ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+  };
 }
 
 /**

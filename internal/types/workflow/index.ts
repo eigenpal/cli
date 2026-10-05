@@ -345,6 +345,7 @@ export {
   getInvokeExecutionMode,
   getInvokeWorkflowRef,
   hasDeclaredOutput,
+  isDynamicWorkflowRef,
   isWorkflowIdRef,
   workflowInputAcceptsType,
   type InvokeExecutionMode,

@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.22
+
+### Patch Changes
+
+- c675df3: Evaluation summaries now distinguish execution success from evaluator verdicts. Existing success-count fields remain available, and online validation warnings no longer cause a failed validation exit.
+
 ## 0.20.21
 
 ### Minor Changes

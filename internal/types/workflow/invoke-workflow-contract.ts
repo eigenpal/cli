@@ -114,6 +114,11 @@ export interface InvokeWorkflowTargetRef {
   stepName?: string;
 }
 
+/** Liquid targets are resolved at execution time, not as literal workflow names. */
+export function isDynamicWorkflowRef(ref: string): boolean {
+  return ref.includes('{{') || ref.includes('{%');
+}
+
 /** Whether a invoke target reference is a workflow id (`wf_…`). */
 export function isWorkflowIdRef(ref: string): boolean {
   return ref.startsWith('wf_');

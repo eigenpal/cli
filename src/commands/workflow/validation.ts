@@ -40,6 +40,7 @@ import {
 import { error, info, success, ui, warn, withBaseUrl } from '../../lib/ui';
 
 interface ValidationIssue {
+  severity?: 'error' | 'warning';
   field: string;
   message: string;
 }
@@ -425,7 +426,11 @@ export function validateDatasetFolder(root: string): ValidationIssue[] {
 
 // ---------- shared printer ------------------------------------------------
 
-export function printIssues(label: string, path: string, issues: ValidationIssue[]): boolean {
+export function printIssues(label: string, path: string, allIssues: ValidationIssue[]): boolean {
+  for (const issue of allIssues.filter((item) => item.severity === 'warning')) {
+    warn(`${issue.field}: ${issue.message}`);
+  }
+  const issues = allIssues.filter((item) => item.severity !== 'warning');
   if (issues.length === 0) {
     success(`${label} ${ui.dim(`(${path})`)} ✓`);
     return true;

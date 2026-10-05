@@ -104,6 +104,8 @@ describe('summarize + formatEvalSummary', () => {
     expect(summary.graded).toBe(3);
     expect(summary.passedCases).toBe(2);
     expect(summary.failedCases).toBe(1);
+    expect(summary.execution).toEqual({ succeeded: 3, failed: 0 });
+    expect(summary.evaluation).toEqual({ passed: 2, failed: 1, ungraded: 0 });
     expect(summary.weightedAvg).toBeCloseTo(0.733, 2);
 
     const out = plain(formatEvalSummary(summary));
@@ -237,6 +239,8 @@ describe('runWorkflowExamplesWithEval (orchestration)', () => {
     expect(summary.mode).toBe('diff');
     expect(summary.examples[0].mode).toBe('diff');
     expect(summary.examples[0].matched).toBe(false);
+    expect(summary.execution).toEqual({ succeeded: 1, failed: 0 });
+    expect(summary.evaluation).toEqual({ passed: 0, failed: 1, ungraded: 0 });
     expect(summary.examples[0].diffCount).toBe(1);
     expect(summary.failedCases).toBe(1);
   });

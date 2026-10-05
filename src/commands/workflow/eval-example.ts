@@ -80,6 +80,8 @@ export interface EvalRunSummary {
   workflow: string;
   mode: GradeMode;
   total: number;
+  execution: { succeeded: number; failed: number };
+  evaluation: { passed: number; failed: number; ungraded: number };
   ok: number;
   errored: number;
   /** Examples that produced a grade (an evaluator score, or a diff verdict). */
@@ -434,6 +436,12 @@ export function summarize(
     workflow,
     mode,
     total: examples.length,
+    execution: { succeeded: ok, failed: errored },
+    evaluation: {
+      passed: passedCases,
+      failed: gradedResults.length - passedCases,
+      ungraded: ok - gradedResults.length,
+    },
     ok,
     errored,
     graded: gradedResults.length,

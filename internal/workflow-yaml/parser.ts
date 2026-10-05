@@ -5,6 +5,7 @@ import {
   type WorkflowDefinition,
 } from '@eigenpal/types';
 import { parse as parseYaml } from 'yaml';
+import { validateReviewSelectors } from './review-selectors';
 import { upgradeWorkflow } from './upgrades';
 
 /** Validation error details */
@@ -112,7 +113,10 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
   // never enforced at push time — only at runtime by the worker, which
   // means a malformed workflow can be pushed and only fails when invoked.
   // Run the per-step schemas here so push-time catches what runtime would.
-  const configIssues = validateStepConfigsRecursive(result.data.steps, ['steps']);
+  const configIssues = [
+    ...validateStepConfigsRecursive(result.data.steps, ['steps']),
+    ...validateReviewSelectors(result.data),
+  ];
   if (configIssues.length > 0) {
     const errorMessages = configIssues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     throw new WorkflowValidationError(
@@ -363,7 +367,10 @@ export function validateWorkflow(obj: unknown): ParseResult {
     };
   }
 
-  const configIssues = validateStepConfigsRecursive(result.data.steps, ['steps']);
+  const configIssues = [
+    ...validateStepConfigsRecursive(result.data.steps, ['steps']),
+    ...validateReviewSelectors(result.data),
+  ];
   if (configIssues.length > 0) {
     const errorMessages = configIssues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     return {
