@@ -1,7 +1,6 @@
 import {
   HUMAN_REVIEW_CONTINUATION_EXPIRED_REASON,
   type HumanReviewSourceKind,
-  type HumanReviewTaskStatus,
 } from './human-review';
 
 /** Closed event names for human-review logs. Do not interpolate caller strings. */
@@ -56,7 +55,7 @@ export type HumanReviewTelemetryOutcome = (typeof HUMAN_REVIEW_TELEMETRY_OUTCOME
 
 /**
  * Allowlisted log fields. Identifiers are fine in pino; Prometheus labels stay
- * on the closed `source_kind` / `status` sets in {@link formatHumanReviewMetricsText}.
+ * on the closed `source_kind` / `outcome` sets (see docs/METRICS.md).
  */
 export const HUMAN_REVIEW_TELEMETRY_KEYS = [
   'event',
@@ -166,28 +165,6 @@ const EVENT_MESSAGE: Record<HumanReviewTelemetryEvent, string> = {
   'human-review-queue': 'Human review queue health',
 };
 
-export interface HumanReviewQueueMetrics {
-  sourceKind: HumanReviewSourceKind;
-  pendingCount: number;
-  oldestAgeSeconds: number;
-  selectedCount: number;
-  confirmedCount: number;
-}
-
-export interface HumanReviewStoredMetrics {
-  sourceKind: HumanReviewSourceKind;
-  status: Extract<HumanReviewTaskStatus, 'approved' | 'rejected' | 'cancelled'>;
-  count: number;
-}
-
-export interface HumanReviewMetricsSnapshot {
-  pending: HumanReviewQueueMetrics[];
-  stored: HumanReviewStoredMetrics[];
-}
-
-const SOURCE_KINDS: HumanReviewSourceKind[] = ['workflow_step', 'agent_tool'];
-const STORED_STATUSES: HumanReviewStoredMetrics['status'][] = ['approved', 'rejected', 'cancelled'];
-
 export function humanReviewWaitDurationMs(
   createdAt: Date | string | null | undefined,
   completedAt: Date | string | null | undefined = new Date()
@@ -270,104 +247,6 @@ export function logHumanReviewTelemetry(
   const meta = buildHumanReviewLogFields(event, fields);
   logger[EVENT_LEVEL[event]](EVENT_MESSAGE[event], meta);
   return meta;
-}
-
-export function emptyHumanReviewMetricsSnapshot(): HumanReviewMetricsSnapshot {
-  return {
-    pending: SOURCE_KINDS.map((sourceKind) => ({
-      sourceKind,
-      pendingCount: 0,
-      oldestAgeSeconds: 0,
-      selectedCount: 0,
-      confirmedCount: 0,
-    })),
-    stored: SOURCE_KINDS.flatMap((sourceKind) =>
-      STORED_STATUSES.map((status) => ({ sourceKind, status, count: 0 }))
-    ),
-  };
-}
-
-export function normalizeHumanReviewMetricsSnapshot(
-  snapshot: HumanReviewMetricsSnapshot
-): HumanReviewMetricsSnapshot {
-  const pendingByKind = new Map(snapshot.pending.map((row) => [row.sourceKind, row]));
-  const storedKey = (sourceKind: string, status: string) => `${sourceKind}:${status}`;
-  const storedByKey = new Map(
-    snapshot.stored.map((row) => [storedKey(row.sourceKind, row.status), row])
-  );
-  return {
-    pending: SOURCE_KINDS.map((sourceKind) => {
-      const row = pendingByKind.get(sourceKind);
-      return {
-        sourceKind,
-        pendingCount: row?.pendingCount ?? 0,
-        oldestAgeSeconds: row?.oldestAgeSeconds ?? 0,
-        selectedCount: row?.selectedCount ?? 0,
-        confirmedCount: row?.confirmedCount ?? 0,
-      };
-    }),
-    stored: SOURCE_KINDS.flatMap((sourceKind) =>
-      STORED_STATUSES.map((status) => ({
-        sourceKind,
-        status,
-        count: storedByKey.get(storedKey(sourceKind, status))?.count ?? 0,
-      }))
-    ),
-  };
-}
-
-/**
- * Prometheus text for human-review gauges. Labels are only `source_kind` and
- * `status` (closed sets) so scrape cardinality stays bounded.
- */
-export function formatHumanReviewMetricsText(snapshot: HumanReviewMetricsSnapshot): string {
-  const normalized = normalizeHumanReviewMetricsSnapshot(snapshot);
-  const lines: string[] = [
-    '# HELP eigenpal_human_review_pending Pending human-review tasks.',
-    '# TYPE eigenpal_human_review_pending gauge',
-  ];
-  for (const row of normalized.pending) {
-    lines.push(
-      `eigenpal_human_review_pending{source_kind="${row.sourceKind}"} ${row.pendingCount}`
-    );
-  }
-  lines.push(
-    '# HELP eigenpal_human_review_oldest_age_seconds Age of the oldest pending human-review task.',
-    '# TYPE eigenpal_human_review_oldest_age_seconds gauge'
-  );
-  for (const row of normalized.pending) {
-    lines.push(
-      `eigenpal_human_review_oldest_age_seconds{source_kind="${row.sourceKind}"} ${row.oldestAgeSeconds}`
-    );
-  }
-  lines.push(
-    '# HELP eigenpal_human_review_selected_fields Required fields on pending human-review tasks.',
-    '# TYPE eigenpal_human_review_selected_fields gauge'
-  );
-  for (const row of normalized.pending) {
-    lines.push(
-      `eigenpal_human_review_selected_fields{source_kind="${row.sourceKind}"} ${row.selectedCount}`
-    );
-  }
-  lines.push(
-    '# HELP eigenpal_human_review_confirmed_fields Confirmed fields on pending human-review tasks.',
-    '# TYPE eigenpal_human_review_confirmed_fields gauge'
-  );
-  for (const row of normalized.pending) {
-    lines.push(
-      `eigenpal_human_review_confirmed_fields{source_kind="${row.sourceKind}"} ${row.confirmedCount}`
-    );
-  }
-  lines.push(
-    '# HELP eigenpal_human_review_tasks_stored Terminal human-review tasks currently stored.',
-    '# TYPE eigenpal_human_review_tasks_stored gauge'
-  );
-  for (const row of normalized.stored) {
-    lines.push(
-      `eigenpal_human_review_tasks_stored{source_kind="${row.sourceKind}",status="${row.status}"} ${row.count}`
-    );
-  }
-  return `${lines.join('\n')}\n`;
 }
 
 export interface HumanReviewLifecycleEventInput {

@@ -243,22 +243,6 @@ export const EXECUTION_AGENT_REAP_SCAN_STATUSES = [
   'created',
 ] as const satisfies readonly ExecutionStatus[];
 
-/**
- * Agent rows included in cluster metrics breakdown by status.
- * Includes `waiting` for parked human-review continuations (not active concurrency).
- */
-export const EXECUTION_AGENT_METRICS_STATUSES = [
-  'created',
-  'pending',
-  'running',
-  'waiting',
-  'finalizing',
-  'completed',
-  'failed',
-  'cancelled',
-  'rejected',
-] as const satisfies readonly ExecutionStatus[];
-
 /** Counted as “running” in lightweight eval aggregates (pending + running). */
 export const EXECUTION_EVAL_RUNNING_STATUSES = [
   'running',

@@ -155,19 +155,13 @@ export {
   classifyHumanReviewConflict,
   classifyHumanReviewResumeFailure,
   collectSensitiveHumanReviewFragments,
-  emptyHumanReviewMetricsSnapshot,
-  formatHumanReviewMetricsText,
   humanReviewWaitDurationMs,
   logHumanReviewTelemetry,
-  normalizeHumanReviewMetricsSnapshot,
   serializedHumanReviewSurfaceContains,
   type HumanReviewConflictCode,
   type HumanReviewLifecycleEvent,
   type HumanReviewLifecycleEventInput,
-  type HumanReviewMetricsSnapshot,
-  type HumanReviewQueueMetrics,
   type HumanReviewResumeFailureCode,
-  type HumanReviewStoredMetrics,
   type HumanReviewTelemetryEvent,
   type HumanReviewTelemetryFields,
   type HumanReviewTelemetryLogger,
@@ -559,7 +553,6 @@ export {
 export {
   DURABLE_EXECUTION_TYPES,
   EXECUTION_AGENT_CANCEL_REQUESTABLE_STATUSES,
-  EXECUTION_AGENT_METRICS_STATUSES,
   EXECUTION_AGENT_QUEUED_STATUSES,
   EXECUTION_AGENT_REAP_SCAN_STATUSES,
   EXECUTION_CONCURRENCY_ACTIVE_STATUSES,
@@ -674,3 +667,17 @@ export {
 } from './storage/s3-paths';
 
 export { ExecutionTagSchema, ExecutionTagsSchema } from './execution-tags';
+
+// API key scopes
+export {
+  API_KEY_ACCESS_LEVELS,
+  API_KEY_SCOPE,
+  apiKeyHasFullAccess,
+  apiKeyHasScope,
+  canUseObservabilityKeys,
+  describeApiKeyScopes,
+  isApiKeyAccessLevel,
+  scopesForApiKeyAccessLevel,
+  type ApiKeyAccessLevel,
+  type ApiKeyScopeId,
+} from './api-key-scopes';
