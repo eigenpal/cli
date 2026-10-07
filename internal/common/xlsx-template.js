@@ -217,7 +217,9 @@ class Workbook {
 
       if (needsFileCopy.indexOf(relType) !== -1) {
         var sheetDirectory = path.dirname(sheet.filename);
-        var sourceFilePath = path.join(sheetDirectory, target).replace(/\\/g, '/');
+        var sourceFilePath = path
+          .join(/* turbopackIgnore: true */ sheetDirectory, target)
+          .replace(/\\/g, '/');
         var sourceFile = self.archive.file(sourceFilePath);
 
         if (sourceFile) {
@@ -227,8 +229,12 @@ class Workbook {
           var fileDir = path.dirname(target);
           var baseNameWithoutNumber = fileBaseName.replace(/\d+$/, '');
           var newFileName = baseNameWithoutNumber + newSheetIndex + fileExtension;
-          var newTarget = path.join(fileDir, newFileName).replace(/\\/g, '/');
-          var newFilePath = path.join(sheetDirectory, newTarget).replace(/\\/g, '/');
+          var newTarget = path
+            .join(/* turbopackIgnore: true */ fileDir, newFileName)
+            .replace(/\\/g, '/');
+          var newFilePath = path
+            .join(/* turbopackIgnore: true */ sheetDirectory, newTarget)
+            .replace(/\\/g, '/');
 
           // Copy file in binary mode to preserve UTF-8 encoding
           var binaryContent = sourceFile.asBinary();
@@ -2368,9 +2374,12 @@ class Workbook {
           this.option && this.option.imageRootPath
             ? `${this.option.imageRootPath}/${imageObj}`
             : imageObj;
-        if (fs.existsSync(imagePath)) {
+        if (fs.existsSync(/* turbopackIgnore: true */ imagePath)) {
           return checkImage(
-            Buffer.from(fs.readFileSync(imagePath, { encoding: 'base64' }), 'base64')
+            Buffer.from(
+              fs.readFileSync(/* turbopackIgnore: true */ imagePath, { encoding: 'base64' }),
+              'base64'
+            )
           );
         }
         //}

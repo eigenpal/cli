@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.27
+
+### Patch Changes
+
+- f92892c: Simplify the bundled Prometheus metrics guide to bearer API key authentication and the metrics reference.
+
 ## 0.20.22
 
 ### Patch Changes

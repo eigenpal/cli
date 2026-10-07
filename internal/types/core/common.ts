@@ -47,6 +47,9 @@ export const ID_PREFIXES = {
   TABLE_ROW: 'row',
   // Folders
   FOLDER: 'fldr',
+  // Access control (workflow / folder grants and access groups)
+  ACCESS_GRANT: 'agr',
+  ACCESS_GROUP: 'grp',
   // Agent workflows
   AGENT_WORKFLOW: 'awf',
   AGENT_EXECUTION: 'aex',
