@@ -20,6 +20,7 @@ eigenpal
 │   ├── push
 │   ├── move <workflow-id>
 │   ├── delete <workflow-id>
+│   ├── migrate-parser <file>
 │   ├── folders
 │   │   ├── list|ls
 │   │   ├── create <path>
@@ -139,6 +140,7 @@ eigenpal
 │   └── env
 │       └── pull [target]
 ├── models
+│   ├── parser-readiness
 │   └── list|ls
 ├── email-servers|email-server
 │   ├── list|ls

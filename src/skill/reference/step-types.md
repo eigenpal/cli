@@ -35,8 +35,8 @@ the catalog tells you what fields it takes.
 
 | Use case                          | Step                                              |
 | --------------------------------- | ------------------------------------------------- |
-| Read a PDF / DOCX / image (native-first) | `ai.parse` with `parseMode: native` or `native-or-ocr` |
-| Read a PDF / DOCX / image (full OCR/vision) | `ai.parse` with `parseMode: ocr` or `vision` |
+| Read a PDF / DOCX / image | `ai.parse-v2` with defaults (automatic native/OCR/vision) |
+| Restrict document reading | `ai.parse-v2` with `policy.native` and `policy.imageReading.order` |
 | Pull a typed object from text     | `ai.extract` with `config.schema`                 |
 | Pick one label from a fixed set   | `ai.classify` with `config.labels`                |
 | Reject bad inputs with a 4xx code | `control.fail` (often after `ai.classify`)        |
@@ -475,7 +475,1258 @@ _Generated from `STEP_SCHEMAS` in `@eigenpal/types/src/workflow/step-configs.ts`
 
 ### AI steps — model-backed processing
 
-#### `ai.parse` — Parse Document
+#### `ai.parse-v2` — Parse Document
+
+Automatically read native, scanned, and mixed documents with capability-aware OCR/vision fallback and explicit completeness.
+
+**Behavior and examples:** `eigenpal docs read steps/ai/parse-v2`
+
+**Durable retry:** Provider request retries are separate; the workflow engine does not durably retry this step.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `policy` | object | yes |  |  |
+| `providers` | object | yes |  |  |
+| `output` | object | yes |  |  |
+| `enrichment` | object | yes |  |  |
+| `advanced` | object | yes |  |  |
+| `input` | string | yes |  | File reference or template expression for the document |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `document` | object | yes |  |  |
+| `usage` | object | yes |  |  |
+| `pages` | array<object> | yes |  |  |
+| `text` | string | yes |  | Combined text from all pages |
+| `parserType` | `"plaintext"` \| `"office"` \| `"llm-vision"` \| `"ocr"` | yes |  |  |
+| `parserVersion` | `"2"` | yes |  |  |
+| `model` | string | no |  | Model used (for LLM/OCR parsers) |
+| `processingStrategy` | `"native"` \| `"ocr"` \| `"vision"` \| `"hybrid"` | no |  | How this result was produced: `native` (local PDF text only), `ocr`, `vision`, or `hybrid` (native pages merged with OCR on fallback pages). |
+| `structured` | record<string, unknown> | no |  | Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser |
+| `completeness` | object | yes |  |  |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "policy": {
+      "type": "object",
+      "properties": {
+        "native": {
+          "default": "prefer",
+          "description": "Prefer local text extraction, require local text extraction with no image transcription, or skip native PDF extraction. Figure enrichment is independent.",
+          "type": "string",
+          "enum": [
+            "prefer",
+            "require",
+            "skip"
+          ]
+        },
+        "imageReading": {
+          "type": "object",
+          "properties": {
+            "order": {
+              "default": [
+                "ocr",
+                "vision"
+              ],
+              "description": "Ordered allowed backends. A single entry prohibits the other backend.",
+              "minItems": 1,
+              "maxItems": 2,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ocr",
+                  "vision"
+                ]
+              }
+            }
+          },
+          "required": [
+            "order"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "native",
+        "imageReading"
+      ],
+      "additionalProperties": false
+    },
+    "providers": {
+      "type": "object",
+      "properties": {
+        "ocr": {
+          "description": "Exact configured OCR provider ID. Missing pins fail; they never resolve to another provider.",
+          "type": "string",
+          "minLength": 1
+        },
+        "vision": {
+          "description": "Exact configured vision provider ID. Otherwise uses the deployment parsing default or vision role.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "textFormat": {
+          "default": "markdown",
+          "type": "string",
+          "enum": [
+            "plain",
+            "markdown",
+            "html",
+            "djot"
+          ]
+        },
+        "includeCellMetadata": {
+          "default": false,
+          "description": "Include spreadsheet cell evidence in pages[].spreadsheet and annotate text for downstream extraction. Preserves raw/displayed values and workbook date system.",
+          "type": "boolean"
+        },
+        "nativeWhitespace": {
+          "default": "reading-order",
+          "description": "Spatial preserves native PDF column spacing. It does not promise OCR/vision coordinates.",
+          "type": "string",
+          "enum": [
+            "reading-order",
+            "spatial"
+          ]
+        },
+        "require": {
+          "default": [],
+          "description": "Required evidence capabilities on nonblank pages. Backends unable to satisfy them are rejected.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "wordCoordinates",
+              "tables"
+            ]
+          }
+        }
+      },
+      "required": [
+        "textFormat",
+        "includeCellMetadata",
+        "nativeWhitespace",
+        "require"
+      ],
+      "additionalProperties": false
+    },
+    "enrichment": {
+      "type": "object",
+      "properties": {
+        "figures": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instructions": {
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string",
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            }
+          },
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "figures"
+      ],
+      "additionalProperties": false
+    },
+    "advanced": {
+      "type": "object",
+      "properties": {
+        "vision": {
+          "type": "object",
+          "properties": {
+            "maxConcurrency": {
+              "default": 3,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "pagesPerBatch": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "renderScale": {
+              "default": 2,
+              "type": "number",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "imageQuality": {
+              "default": 85,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "instructions": {
+              "description": "Transcription instructions, never document-specific extraction/schema instructions.",
+              "type": "string"
+            },
+            "reasoningEffort": {
+              "type": "string",
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ]
+            }
+          },
+          "required": [
+            "maxConcurrency",
+            "pagesPerBatch",
+            "renderScale",
+            "imageQuality"
+          ],
+          "additionalProperties": false
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "allowPartial": {
+          "default": false,
+          "description": "Return unresolved pages explicitly instead of failing. Default false.",
+          "type": "boolean"
+        },
+        "cache": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "vision",
+        "allowPartial",
+        "cache"
+      ],
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "string",
+      "minLength": 1,
+      "description": "File reference or template expression for the document"
+    }
+  },
+  "required": [
+    "policy",
+    "providers",
+    "output",
+    "enrichment",
+    "advanced",
+    "input"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number",
+          "description": "File size in bytes"
+        },
+        "storageRef": {
+          "description": "Storage reference for the original file",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "mimeType",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "pageCount": {
+          "type": "number"
+        },
+        "processingTimeMs": {
+          "type": "number"
+        },
+        "ocrPagesProcessed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "visionPagesProcessed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "visionPromptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "visionCompletionTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cached": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pageCount",
+        "visionPagesProcessed"
+      ],
+      "additionalProperties": false
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "spreadsheet": {
+            "description": "Opt-in original spreadsheet cell evidence",
+            "type": "object",
+            "properties": {
+              "dateSystem": {
+                "type": "string",
+                "enum": [
+                  "1900",
+                  "1904"
+                ]
+              },
+              "declaredRange": {
+                "type": "string"
+              },
+              "cells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "address": {
+                      "type": "string",
+                      "description": "Original A1 cell address"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Excel storage type: n=number, s=string, b=boolean, e=error, d=date, z=blank. A numeric date remains type n."
+                    },
+                    "rawValue": {
+                      "description": "Stored cached value; formulas are never evaluated",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "displayedValue": {
+                      "type": "string",
+                      "description": "Value formatted using the workbook number format and date system"
+                    },
+                    "numberFormat": {
+                      "type": "string"
+                    },
+                    "formula": {
+                      "type": "string"
+                    },
+                    "dateValue": {
+                      "description": "Calendar rendering for a valid date-formatted serial, without a timezone. Evidence of Excel formatting, not a business classification.",
+                      "type": "string"
+                    },
+                    "excelLeapDay": {
+                      "description": "True for the fictitious 1900-02-29 in the Excel 1900 date system",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "address",
+                    "type",
+                    "displayedValue"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "dateSystem",
+              "cells"
+            ],
+            "additionalProperties": false
+          },
+          "pageIndex": {
+            "type": "number",
+            "description": "0-based page index"
+          },
+          "text": {
+            "type": "string",
+            "description": "Extracted page text (markdown/HTML/plain, or spatial layout text)"
+          },
+          "pageName": {
+            "description": "Page/sheet name (e.g., Excel sheet name)",
+            "type": "string"
+          },
+          "layoutElements": {
+            "description": "Semantic layout elements in reading order",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "paragraph",
+                    "title",
+                    "sectionHeading",
+                    "pageHeader",
+                    "pageFooter",
+                    "pageNumber",
+                    "footnote",
+                    "table",
+                    "figure",
+                    "formulaBlock"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "object",
+                  "properties": {
+                    "cells": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "content": {
+                            "type": "string"
+                          },
+                          "rowIndex": {
+                            "type": "number"
+                          },
+                          "columnIndex": {
+                            "type": "number"
+                          },
+                          "rowSpan": {
+                            "default": 1,
+                            "type": "number"
+                          },
+                          "columnSpan": {
+                            "default": 1,
+                            "type": "number"
+                          },
+                          "boundingRegion": {
+                            "type": "object",
+                            "properties": {
+                              "polygon": {
+                                "minItems": 3,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "x": {
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "x",
+                                    "y"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "unit": {
+                                "type": "string",
+                                "enum": [
+                                  "pixel",
+                                  "inch",
+                                  "point",
+                                  "normalized"
+                                ]
+                              },
+                              "pageIndex": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "polygon",
+                              "unit",
+                              "pageIndex"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "content",
+                          "rowIndex",
+                          "columnIndex",
+                          "rowSpan",
+                          "columnSpan"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "rowCount": {
+                      "type": "number"
+                    },
+                    "columnCount": {
+                      "type": "number"
+                    },
+                    "boundingRegion": {
+                      "type": "object",
+                      "properties": {
+                        "polygon": {
+                          "minItems": 3,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "x",
+                              "y"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "unit": {
+                          "type": "string",
+                          "enum": [
+                            "pixel",
+                            "inch",
+                            "point",
+                            "normalized"
+                          ]
+                        },
+                        "pageIndex": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "polygon",
+                        "unit",
+                        "pageIndex"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "cells",
+                    "rowCount",
+                    "columnCount"
+                  ],
+                  "additionalProperties": false
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "figureId": {
+                  "type": "string"
+                },
+                "boundingRegion": {
+                  "type": "object",
+                  "properties": {
+                    "polygon": {
+                      "minItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "pixel",
+                        "inch",
+                        "point",
+                        "normalized"
+                      ]
+                    },
+                    "pageIndex": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "polygon",
+                    "unit",
+                    "pageIndex"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "type",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "words": {
+            "description": "Word-level positions",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "boundingRegion": {
+                  "type": "object",
+                  "properties": {
+                    "polygon": {
+                      "minItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "pixel",
+                        "inch",
+                        "point",
+                        "normalized"
+                      ]
+                    },
+                    "pageIndex": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "polygon",
+                    "unit",
+                    "pageIndex"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "lines": {
+            "description": "Line-level positions",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "boundingRegion": {
+                  "type": "object",
+                  "properties": {
+                    "polygon": {
+                      "minItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "pixel",
+                        "inch",
+                        "point",
+                        "normalized"
+                      ]
+                    },
+                    "pageIndex": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "polygon",
+                    "unit",
+                    "pageIndex"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "tables": {
+            "description": "Extracted tables",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string"
+                      },
+                      "rowIndex": {
+                        "type": "number"
+                      },
+                      "columnIndex": {
+                        "type": "number"
+                      },
+                      "rowSpan": {
+                        "default": 1,
+                        "type": "number"
+                      },
+                      "columnSpan": {
+                        "default": 1,
+                        "type": "number"
+                      },
+                      "boundingRegion": {
+                        "type": "object",
+                        "properties": {
+                          "polygon": {
+                            "minItems": 3,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "number"
+                                },
+                                "y": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "unit": {
+                            "type": "string",
+                            "enum": [
+                              "pixel",
+                              "inch",
+                              "point",
+                              "normalized"
+                            ]
+                          },
+                          "pageIndex": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "polygon",
+                          "unit",
+                          "pageIndex"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "content",
+                      "rowIndex",
+                      "columnIndex",
+                      "rowSpan",
+                      "columnSpan"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "rowCount": {
+                  "type": "number"
+                },
+                "columnCount": {
+                  "type": "number"
+                },
+                "boundingRegion": {
+                  "type": "object",
+                  "properties": {
+                    "polygon": {
+                      "minItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "x",
+                          "y"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "pixel",
+                        "inch",
+                        "point",
+                        "normalized"
+                      ]
+                    },
+                    "pageIndex": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "polygon",
+                    "unit",
+                    "pageIndex"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "cells",
+                "rowCount",
+                "columnCount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "width": {
+            "description": "Page width",
+            "type": "number"
+          },
+          "height": {
+            "description": "Page height",
+            "type": "number"
+          },
+          "unit": {
+            "description": "Unit for width/height and bounding regions",
+            "type": "string",
+            "enum": [
+              "pixel",
+              "inch",
+              "point",
+              "normalized"
+            ]
+          },
+          "confidence": {
+            "description": "Overall page confidence",
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "nativeTextQuality": {
+            "description": "Per-page diagnosis of native-extracted text. Reports objectively detectable anomalies (empty, U+FFFD, forbidden controls, unassigned/noncharacter code points, heavy private-use). Does not certify semantic correctness — valid-looking wrong mappings and literal \"?\" cannot be distinguished from legitimate text.",
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "clean",
+                  "empty",
+                  "suspect"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "empty",
+                    "replacement-character",
+                    "lone-surrogate",
+                    "forbidden-control",
+                    "unassigned",
+                    "noncharacter",
+                    "private-use"
+                  ]
+                }
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "codePoints": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "nonWhitespace": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "replacement": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "loneSurrogate": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "forbiddenControl": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "unassigned": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "noncharacter": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "privateUse": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "codePoints",
+                  "nonWhitespace",
+                  "replacement",
+                  "loneSurrogate",
+                  "forbiddenControl",
+                  "unassigned",
+                  "noncharacter",
+                  "privateUse"
+                ],
+                "additionalProperties": false
+              },
+              "profile": {
+                "type": "object",
+                "properties": {
+                  "replacementRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "loneSurrogateRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "forbiddenControlRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unassignedRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "noncharacterRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "privateUseRatio": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "replacementRatio",
+                  "loneSurrogateRatio",
+                  "forbiddenControlRatio",
+                  "unassignedRatio",
+                  "noncharacterRatio",
+                  "privateUseRatio"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "reasons",
+              "counts",
+              "profile"
+            ],
+            "additionalProperties": false
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "ocr",
+                  "vision"
+                ]
+              },
+              "provider": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "textFormat": {
+                "type": "string",
+                "enum": [
+                  "plain",
+                  "markdown",
+                  "html",
+                  "djot"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "wordCoordinates",
+                    "tables"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "source",
+              "reason",
+              "textFormat",
+              "capabilities"
+            ],
+            "additionalProperties": false
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "blank",
+              "no-text",
+              "unresolved"
+            ]
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "pageIndex",
+          "text",
+          "provenance",
+          "status",
+          "warnings"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "text": {
+      "type": "string",
+      "description": "Combined text from all pages"
+    },
+    "parserType": {
+      "type": "string",
+      "enum": [
+        "plaintext",
+        "office",
+        "llm-vision",
+        "ocr"
+      ]
+    },
+    "parserVersion": {
+      "type": "string",
+      "const": "2"
+    },
+    "model": {
+      "description": "Model used (for LLM/OCR parsers)",
+      "type": "string"
+    },
+    "processingStrategy": {
+      "description": "How this result was produced: `native` (local PDF text only), `ocr`, `vision`, or `hybrid` (native pages merged with OCR on fallback pages).",
+      "type": "string",
+      "enum": [
+        "native",
+        "ocr",
+        "vision",
+        "hybrid"
+      ]
+    },
+    "structured": {
+      "description": "Canonical structured document with ordered blocks, regions, bounding boxes, tables, figures, and chunks when supported by the parser",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "completeness": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "unresolvedPageIndexes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "required": [
+        "status",
+        "unresolvedPageIndexes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "document",
+    "usage",
+    "pages",
+    "text",
+    "parserType",
+    "parserVersion",
+    "completeness"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+#### `ai.parse` — Parse Document — legacy
 
 Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models
 
@@ -705,6 +1956,21 @@ Output schema:
           "minimum": 0,
           "maximum": 9007199254740991
         },
+        "visionPagesProcessed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "visionPromptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "visionCompletionTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
         "cached": {
           "type": "boolean"
         }
@@ -719,6 +1985,84 @@ Output schema:
       "items": {
         "type": "object",
         "properties": {
+          "spreadsheet": {
+            "description": "Opt-in original spreadsheet cell evidence",
+            "type": "object",
+            "properties": {
+              "dateSystem": {
+                "type": "string",
+                "enum": [
+                  "1900",
+                  "1904"
+                ]
+              },
+              "declaredRange": {
+                "type": "string"
+              },
+              "cells": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "address": {
+                      "type": "string",
+                      "description": "Original A1 cell address"
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "Excel storage type: n=number, s=string, b=boolean, e=error, d=date, z=blank. A numeric date remains type n."
+                    },
+                    "rawValue": {
+                      "description": "Stored cached value; formulas are never evaluated",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "displayedValue": {
+                      "type": "string",
+                      "description": "Value formatted using the workbook number format and date system"
+                    },
+                    "numberFormat": {
+                      "type": "string"
+                    },
+                    "formula": {
+                      "type": "string"
+                    },
+                    "dateValue": {
+                      "description": "Calendar rendering for a valid date-formatted serial, without a timezone. Evidence of Excel formatting, not a business classification.",
+                      "type": "string"
+                    },
+                    "excelLeapDay": {
+                      "description": "True for the fictitious 1900-02-29 in the Excel 1900 date system",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "address",
+                    "type",
+                    "displayedValue"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "dateSystem",
+              "cells"
+            ],
+            "additionalProperties": false
+          },
           "pageIndex": {
             "type": "number",
             "description": "0-based page index"
@@ -4258,8 +5602,9 @@ Convert an XLS or XLSX spreadsheet to a JSON array of row objects. Supports head
 | --- | --- | --- | --- | --- |
 | `input` | string | yes |  | File input - template expression e.g. {{input.document}} resolving to a scoped $file artifact at runtime |
 | `sheet` | integer \| string | no |  | Sheet to read: 0-based index or exact sheet name. Omit for the first sheet. |
-| `outputCsv` | boolean | no | `false` | If true, also write CSV to storage and include fileId. Zero-config uses the historical full-sheet SheetJS CSV. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection. |
-| `includeMetadata` | boolean | no | `false` | If true, include sheet metadata and diagnostics in the step output. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false. |
+| `outputCsv` | boolean | no | `false` | If true, also write CSV to storage and include fileId. Zero-config uses SheetJS CSV of the effective sheet extent, excluding empty trailing rows and columns. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection. |
+| `includeCellMetadata` | boolean | no | `false` | Include original cell address, type, raw/displayed value, number format and date rendering. Also includes sheet metadata with the workbook date system. Does not classify identifiers or clean names. |
+| `includeMetadata` | boolean | no | `false` | If true, include sheet metadata and diagnostics in the step output. includeCellMetadata also enables these. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false. |
 | `outputFilename` | string | no |  | Output CSV filename when outputCsv is true - supports LiquidJS e.g. {{filename}}.csv |
 | `headerRow` | `false` \| integer | no |  | Header row: a positive 1-based Excel row, or false to keep the first effective row as data. Omit to use the first effective row as the header. When range is set and this is omitted, the first range row is the header. |
 | `columns` | array<object> | no |  | Ordered output columns. Each item needs a key and exactly one source: index (0-based absolute column) or header (exact displayed header text). Named header sources require a header row. Omit to keep every column in the effective range. |
@@ -4273,10 +5618,11 @@ Convert an XLS or XLSX spreadsheet to a JSON array of row objects. Supports head
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `cellMetadata` | array<object> | no |  | Evidence for nonblank projected data cells, linked to rows by outputRowIndex and key. Present when includeCellMetadata is true. |
 | `rows` | array<record<string, unknown>> | yes |  | Array of row objects (first row = headers as keys unless headerRow is false) |
 | `fileId` | string | no |  | File ID of stored CSV when outputCsv is true |
-| `sheet` | object | no |  | Selected sheet metadata after projection. Present only when includeMetadata is true. |
-| `diagnostics` | array<object> | no |  | Non-fatal warnings collected while reading the sheet. Present only when includeMetadata is true. Warnings are still logged when metadata is omitted. |
+| `sheet` | object | no |  | Selected sheet metadata after projection. Present when includeMetadata or includeCellMetadata is true. |
+| `diagnostics` | array<object> | no |  | Non-fatal warnings collected while reading the sheet. Present when includeMetadata or includeCellMetadata is true. Warnings are still logged when metadata is omitted. |
 
 ##### Complete machine-readable schemas
 
@@ -4306,12 +5652,17 @@ Config schema:
       ]
     },
     "outputCsv": {
-      "description": "If true, also write CSV to storage and include fileId. Zero-config uses the historical full-sheet SheetJS CSV. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection.",
+      "description": "If true, also write CSV to storage and include fileId. Zero-config uses SheetJS CSV of the effective sheet extent, excluding empty trailing rows and columns. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection.",
+      "default": false,
+      "type": "boolean"
+    },
+    "includeCellMetadata": {
+      "description": "Include original cell address, type, raw/displayed value, number format and date rendering. Also includes sheet metadata with the workbook date system. Does not classify identifiers or clean names.",
       "default": false,
       "type": "boolean"
     },
     "includeMetadata": {
-      "description": "If true, include sheet metadata and diagnostics in the step output. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false.",
+      "description": "If true, include sheet metadata and diagnostics in the step output. includeCellMetadata also enables these. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false.",
       "default": false,
       "type": "boolean"
     },
@@ -4449,6 +5800,74 @@ Output schema:
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
+    "cellMetadata": {
+      "description": "Evidence for nonblank projected data cells, linked to rows by outputRowIndex and key. Present when includeCellMetadata is true.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Original A1 cell address"
+          },
+          "type": {
+            "type": "string",
+            "description": "Excel storage type: n=number, s=string, b=boolean, e=error, d=date, z=blank. A numeric date remains type n."
+          },
+          "rawValue": {
+            "description": "Stored cached value; formulas are never evaluated",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "displayedValue": {
+            "type": "string",
+            "description": "Value formatted using the workbook number format and date system"
+          },
+          "numberFormat": {
+            "type": "string"
+          },
+          "formula": {
+            "type": "string"
+          },
+          "dateValue": {
+            "description": "Calendar rendering for a valid date-formatted serial, without a timezone. Evidence of Excel formatting, not a business classification.",
+            "type": "string"
+          },
+          "excelLeapDay": {
+            "description": "True for the fictitious 1900-02-29 in the Excel 1900 date system",
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "outputRowIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "address",
+          "type",
+          "displayedValue",
+          "key",
+          "outputRowIndex"
+        ],
+        "additionalProperties": false
+      }
+    },
     "rows": {
       "type": "array",
       "items": {
@@ -4465,12 +5884,24 @@ Output schema:
       "type": "string"
     },
     "sheet": {
-      "description": "Selected sheet metadata after projection. Present only when includeMetadata is true.",
+      "description": "Selected sheet metadata after projection. Present when includeMetadata or includeCellMetadata is true.",
       "type": "object",
       "properties": {
         "name": {
           "type": "string",
           "description": "Selected sheet name"
+        },
+        "declaredRange": {
+          "description": "Worksheet declared extent before empty trailing rows/columns were removed",
+          "type": "string"
+        },
+        "dateSystem": {
+          "description": "Workbook Excel date system",
+          "type": "string",
+          "enum": [
+            "1900",
+            "1904"
+          ]
         },
         "index": {
           "type": "integer",
@@ -4506,7 +5937,7 @@ Output schema:
       "additionalProperties": false
     },
     "diagnostics": {
-      "description": "Non-fatal warnings collected while reading the sheet. Present only when includeMetadata is true. Warnings are still logged when metadata is omitted.",
+      "description": "Non-fatal warnings collected while reading the sheet. Present when includeMetadata or includeCellMetadata is true. Warnings are still logged when metadata is omitted.",
       "type": "array",
       "items": {
         "type": "object",

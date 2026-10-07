@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.28
+
+### Minor Changes
+
+- 6f7d5e5: Review document-parser migrations before publishing them with the new parser migration command. Updated workflow templates and agent guidance use automatic parsing by default. Inspect parsing configuration readiness through the CLI and SDKs to check whether your deployment has providers for scanned documents.
+
 ## 0.20.27
 
 ### Patch Changes

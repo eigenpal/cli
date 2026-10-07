@@ -54,6 +54,33 @@ export function registerModelsCommands(program: Command): void {
   addJsonFlag(
     withBaseUrl(
       models
+        .command('parser-readiness')
+        .description(
+          'Inspect deployment-approved ai.parse-v2 defaults. Catalog state only; document smoke tests are required for live readiness.'
+        )
+    )
+  ).action(
+    action(async (opts: ModelsListOpts) => {
+      const config = resolveConfig(opts);
+      requireApiKey(config);
+      const result = (await new ApiClient(config).get('/api/v1/parsing/readiness')) as {
+        imageReading: string;
+        providers: { ocr: string | null; vision: string | null };
+        warnings: string[];
+      };
+      if (opts.json) console.log(JSON.stringify(result));
+      else {
+        console.log(
+          `Image reading: ${result.imageReading}\nOCR: ${result.providers.ocr ?? 'none'}\nVision: ${result.providers.vision ?? 'none'}`
+        );
+        for (const warning of result.warnings) console.error(warning);
+      }
+    })
+  );
+
+  addJsonFlag(
+    withBaseUrl(
+      models
         .command('list')
         .description(
           'List configured text, vision, and OCR models. This is a catalog inventory from the server, not a live provider health probe. `health` is `configured` or `unconfigured` from local credentials. Pair with `--json` for scripting.'

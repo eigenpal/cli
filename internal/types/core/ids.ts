@@ -11,6 +11,7 @@ export const PROCESSOR_IDS = {
 
   // Document processing
   DOCUMENT_PARSER: 'builtin/parser',
+  DOCUMENT_PARSER_V2: 'builtin/parser-v2',
   EXTRACT: 'builtin/extract',
   SPLIT: 'builtin/split',
   SEGMENT: 'builtin/segment',

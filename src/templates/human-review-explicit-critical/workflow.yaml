@@ -12,7 +12,7 @@ inputs:
 
 steps:
   - name: parse
-    type: ai.parse
+    type: ai.parse-v2
     with:
       input: '{{ input.document }}'
 

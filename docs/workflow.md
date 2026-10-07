@@ -23,6 +23,7 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
   - [`eigenpal workflow move [options] <workflow-id>`](#eigenpal-workflow-move-options-workflow-id)
   - [`eigenpal workflow delete [options] <workflow-id>`](#eigenpal-workflow-delete-options-workflow-id)
+  - [`eigenpal workflow migrate-parser [options] <file>`](#eigenpal-workflow-migrate-parser-options-file)
   - [`eigenpal workflow validate [options] [path]`](#eigenpal-workflow-validate-options-path)
   - [`eigenpal workflow clear-local [options] [examples...]`](#eigenpal-workflow-clear-local-options-examples)
   - [`eigenpal workflow folders list|ls [options]`](#eigenpal-workflow-folders-listls-options)
@@ -82,6 +83,7 @@ workflow
 ├── push
 ├── move <workflow-id>
 ├── delete <workflow-id>
+├── migrate-parser <file>
 ├── folders
 │   ├── list|ls
 │   ├── create <path>
@@ -155,6 +157,7 @@ workflow
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                                                                                                                                                                             |
 | `eigenpal workflow move [options] <workflow-id>`        | Move a workflow to a folder path, creating folders as needed                                                                                                                                                                                                                                                                                                                                                                              |
 | `eigenpal workflow delete [options] <workflow-id>`      | Delete a workflow definition while preserving past runs.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `eigenpal workflow migrate-parser [options] <file>`     | Write a reviewable ai.parse-v2 workflow migration to a new file. Never pushes or changes the source.                                                                                                                                                                                                                                                                                                                                      |
 | `eigenpal workflow validate [options] [path]`           | Local-only validation. Without [path]: runs the templated three-way check (./workflow.yaml + ./evaluators.yaml + ./dataset/) in the project root. When the root has no workflow.yaml, discovers nested projects under eigenpal/workflows/<slug>/ or workflows/<slug>/ and validates each. With [path] pointing at a YAML file: validates that workflow.yaml only. For per-noun targeting use `evaluators validate` or `dataset validate`. |
 | `eigenpal workflow clear-local [options] [examples...]` | Delete local execution artifacts under ./dataset/examples/. Keeps the latest run per example by default.                                                                                                                                                                                                                                                                                                                                  |
 
@@ -351,6 +354,24 @@ Delete a workflow definition while preserving past runs.
 | `--yes`            | no       |         | Skip typed-id confirmation (required in CI / agent terminals without a TTY) |
 | `--base-url <url>` | no       |         | Server base URL                                                             |
 | `--json`           | no       |         | Emit machine-readable JSON on stdout                                        |
+
+### `eigenpal workflow migrate-parser [options] <file>`
+
+Write a reviewable ai.parse-v2 workflow migration to a new file. Never pushes or changes the source.
+
+### Arguments
+
+| Name   | Required | Variadic | Description |
+| ------ | -------- | -------- | ----------- |
+| `file` | yes      | no       |             |
+
+### Options
+
+| Flag                | Required | Default | Description                                                                         |
+| ------------------- | -------- | ------- | ----------------------------------------------------------------------------------- |
+| `--policy <policy>` | yes      |         | preserve backend restrictions, or auto to adopt automatic native/OCR/vision parsing |
+| `--out <file>`      | yes      |         | New YAML output file (must not already exist)                                       |
+| `--json`            | no       |         | Emit migration summary as JSON                                                      |
 
 ### `eigenpal workflow validate [options] [path]`
 

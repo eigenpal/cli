@@ -115,6 +115,23 @@ Use stable ids in scripts:
 - Workflow dataset example id: `evx_...`
 - Agent dataset example id: `aeg_...`
 
+## Document Parsing
+
+Use `ai.parse-v2` for new workflows. Start with only `input`: Eigenpal preserves native PDF text and recovers scanned/mixed pages through available, allowed OCR then vision. Text/Office parsing stays local. Do not add workflow-specific fallback branches.
+
+
+For mixed spreadsheet date/identifier columns, use `ai.parse-v2` with `output.includeCellMetadata: true`, or `transform.xlsx-to-json` with `valueMode: displayed` and `includeCellMetadata: true`. V2 includes raw/displayed value, type, address, number format, workbook date system and optional date rendering in page evidence and text. JSON conversion puts evidence in `cellMetadata`, linked by `outputRowIndex` and `key`; pass the full output to the extraction LLM, not just `rows`. Recorded date formats control rendering; headers and numeric magnitude do not classify dates. Preserve ambiguous identifiers/strings and ask extraction to flag conflicting evidence. Never guess missing date formats or clean names during parsing. Conversion trims only implicit empty trailing extent; explicit ranges and real distant cells retain limits. Formulas use cached values and are never evaluated.
+
+Before authoring, check the live server supports v2 with `eigenpal workflow step-type get ai.parse-v2`, then read `eigenpal docs read steps/ai/parse-v2`. Inspect `eigenpal models parser-readiness --json`; catalog readiness is not a live provider or worker-binary probe. Test native, scanned, and mixed inputs.
+
+Figure enrichment is independently opt-in; it may call vision even with native-only text transcription. Leave enrichment disabled for fully local processing.
+
+Configure `policy.native` (`prefer`, `require`, `skip`) and `policy.imageReading.order` only to express intentional restrictions/preferences. `providers.ocr` and `providers.vision` are exact pins. Deployment parsing defaults and provider boundaries apply; general text-generation defaults do not select the parser vision model.
+
+Use `output.textFormat` for representation and `output.require` for required evidence. Vision cannot supply word coordinates. Native spatial whitespace requires plain text. Unresolved pages fail by default; if the user explicitly chooses `advanced.allowPartial`, inspect `completeness` before downstream extraction.
+
+Legacy `ai.parse` remains supported. Never mix its flat `parseMode`/`nativeText` settings into v2. Migrate to a new file with `eigenpal workflow migrate-parser workflow.yaml --policy preserve --out workflow-v2.yaml` or `--policy auto` to adopt recommended defaults. Preserve mode retains OCR-only restrictions; automatic mode can broaden egress and costs. Review reported changes and representative outputs before publishing.
+
 ## Workflow Loop
 
 ```bash

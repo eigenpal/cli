@@ -1003,6 +1003,7 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
               "type": "string",
               "enum": [
                 "ai.parse",
+                "ai.parse-v2",
                 "ai.extract",
                 "ai.split",
                 "ai.segment",

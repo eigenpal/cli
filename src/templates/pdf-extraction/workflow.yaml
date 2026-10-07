@@ -8,15 +8,13 @@ triggerMethods:
 inputs:
   - name: document
     type: file
-    file: true
     description: PDF or image to extract from
 
 steps:
   - name: parse
-    type: ai.document-parser
+    type: ai.parse-v2
     with:
-      file: '{{ input.document }}'
-      parser: auto
+      input: '{{ input.document }}'
 
   - name: extract
     type: ai.extract
@@ -32,7 +30,7 @@ steps:
         required: [invoiceNumber, totalAmount, vendorName]
 
 output:
-  invoiceNumber: '{{ steps.extract.output.invoiceNumber }}'
-  totalAmount: '{{ steps.extract.output.totalAmount }}'
-  vendorName: '{{ steps.extract.output.vendorName }}'
-  dueDate: '{{ steps.extract.output.dueDate | default: null }}'
+  invoiceNumber: '{{ steps.extract.output.extracted.invoiceNumber }}'
+  totalAmount: '{{ steps.extract.output.extracted.totalAmount }}'
+  vendorName: '{{ steps.extract.output.extracted.vendorName }}'
+  dueDate: '{{ steps.extract.output.extracted.dueDate | default: null }}'

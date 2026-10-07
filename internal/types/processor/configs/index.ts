@@ -18,6 +18,7 @@ import { PROCESSOR_IDS } from '../../core/ids';
 export * from './classify';
 export * from './classify-pages';
 export * from './document-parser';
+export * from './document-parser-v2';
 export * from './extract';
 export * from './json-to-xlsx';
 export * from './merge';
@@ -26,6 +27,12 @@ export * from './segment';
 export * from './split';
 export * from './template';
 export * from './xlsx-to-json';
+
+import {
+  DocumentParserV2ConfigSchema,
+  DocumentParserV2InputSchema,
+  ParseV2ResultSchema,
+} from './document-parser-v2';
 
 // Import for registry
 import { ClassifyConfigSchema, ClassifyInputSchema, ClassifyOutputSchema } from './classify';
@@ -74,6 +81,12 @@ export interface ProcessorSchemas {
  * Registry of all builtin processor schemas
  */
 export const PROCESSOR_SCHEMAS: Record<string, ProcessorSchemas> = {
+  [PROCESSOR_IDS.DOCUMENT_PARSER_V2]: {
+    id: PROCESSOR_IDS.DOCUMENT_PARSER_V2,
+    inputSchema: DocumentParserV2InputSchema,
+    outputSchema: ParseV2ResultSchema,
+    configSchema: DocumentParserV2ConfigSchema,
+  },
   [PROCESSOR_IDS.EXTRACT]: {
     id: PROCESSOR_IDS.EXTRACT,
     inputSchema: ExtractInputSchema,

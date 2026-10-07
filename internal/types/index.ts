@@ -6,6 +6,8 @@
  */
 
 export { AGENT_REFERENCE_TOPICS, type AgentReferenceTopic } from './docs/topic-ids';
+export * from './processor/configs/document-parser-v2';
+export * from './processor/configs/parse-v2-migration';
 export { PROVIDER_LOGO_DATA, type ProviderLogoName } from './provider-logo-data.generated';
 
 // Core utilities (ID generation, timestamps, pagination, JSON Schema)
@@ -681,3 +683,7 @@ export {
   type ApiKeyAccessLevel,
   type ApiKeyScopeId,
 } from './api-key-scopes';
+
+export { modelSupportsVision } from './client/model-capabilities';
+
+export * from './parser/spreadsheet-evidence';

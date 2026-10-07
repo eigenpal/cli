@@ -80,6 +80,7 @@ import {
 } from './experiment-results';
 import { registerWorkflowFolderCommands } from './folders';
 import { fetchAutomation, parseAutomationDeleteResult } from './lifecycle-shared';
+import { registerParserMigrationCommand } from './migrate-parser';
 import { registerStepExecCommands } from './step-exec';
 import { registerTemplateCommands } from './templates';
 import {
@@ -328,6 +329,7 @@ YAML's \`name:\` field). Both:
   // dataset, experiment, execution, versions, step-type) so the help tree
   // mirrors the model. Keep `eigenpal agents` parallel when adding new nouns.
   registerWorkflowCoreCommands(workflow);
+  registerParserMigrationCommand(workflow);
   registerWorkflowFolderCommands(workflow);
   registerEvaluatorsCommands(workflow);
   registerDatasetCommands(workflow);

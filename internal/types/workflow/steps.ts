@@ -14,6 +14,7 @@ import { StepRetryPolicySchema } from './retry';
 // AI step types
 export const AI_STEP_TYPES = [
   'ai.parse',
+  'ai.parse-v2',
   'ai.extract',
   'ai.split',
   'ai.segment',
@@ -79,6 +80,7 @@ export type StepType = (typeof STEP_TYPES)[number];
 export const StepTypeValue = {
   // AI
   AI_PARSE: 'ai.parse',
+  AI_PARSE_V2: 'ai.parse-v2',
   AI_EXTRACT: 'ai.extract',
   AI_SPLIT: 'ai.split',
   AI_SEGMENT: 'ai.segment',

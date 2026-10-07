@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ReasoningEffortSchema } from '../client/ai-client';
 import { NativeTextQualitySchema } from './native-text-quality';
+import { SpreadsheetPageEvidenceSchema } from './spreadsheet-evidence';
 
 export {
   assessNativeTextQuality,
@@ -201,6 +202,10 @@ export const ParseUsageSchema = z.object({
   processingTimeMs: z.number().optional(),
   /** Pages actually sent through OCR during hybrid native-or-ocr fallback. */
   ocrPagesProcessed: z.number().int().nonnegative().optional(),
+  /** V2 vision pages dispatched, including successful batch recovery calls. */
+  visionPagesProcessed: z.number().int().nonnegative().optional(),
+  visionPromptTokens: z.number().int().nonnegative().optional(),
+  visionCompletionTokens: z.number().int().nonnegative().optional(),
   /** True when this run served a prior parse from tenant content cache (no OCR/vision work). */
   cached: z.boolean().optional(),
 });
@@ -332,6 +337,9 @@ export type LayoutElement = z.infer<typeof LayoutElementSchema>;
  * Per-page result with optional metadata
  */
 export const PageResultSchema = z.object({
+  spreadsheet: SpreadsheetPageEvidenceSchema.optional().describe(
+    'Opt-in original spreadsheet cell evidence'
+  ),
   pageIndex: z.number().describe('0-based page index'),
   text: z.string().describe('Extracted page text (markdown/HTML/plain, or spatial layout text)'),
 
@@ -396,6 +404,7 @@ export type ParseResult = z.infer<typeof ParseResultSchema>;
  * Parse options/config
  */
 export const ParseOptionsSchema = z.object({
+  includeCellMetadata: z.boolean().optional(),
   // Output format preference. Shared vocabulary (`ParseOutputFormatSchema`).
   // `plain` / `markdown` / `djot` / `html` are Kreuzberg-only (native PDF and
   // Office). `layout` is native-PDF spatial text via Poppler and is never
@@ -445,6 +454,8 @@ export const ParseOptionsSchema = z.object({
   // provider when `provider` is unset. Not exposed in step YAML; the worker
   // injects it at parse time.
   tenantId: z.string().optional(),
+  /** Internal v2: recover ambiguous batches instead of accepting missing pages. */
+  requireCompletePages: z.boolean().optional(),
 });
 
 export type ParseOptions = z.infer<typeof ParseOptionsSchema>;

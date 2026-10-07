@@ -32,6 +32,10 @@ import {
   refineNativeParseModeConflicts,
 } from '../parser/parser';
 import {
+  AiParseV2ConfigSchema,
+  ParseV2ResultSchema,
+} from '../processor/configs/document-parser-v2';
+import {
   JsonToXlsxColumnSchema,
   JsonToXlsxLimitsSchema,
   JsonToXlsxOutputSchema,
@@ -2218,6 +2222,7 @@ const FILE_OUTPUT_RETRY_CAPABILITY: StepRetryCapability = {
 
 export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'ai.parse': AI_RETRY_CAPABILITY,
+  'ai.parse-v2': AI_RETRY_CAPABILITY,
   'ai.extract': AI_RETRY_CAPABILITY,
   'ai.split': AI_RETRY_CAPABILITY,
   'ai.segment': AI_RETRY_CAPABILITY,
@@ -2273,10 +2278,20 @@ export function getStepRetryCapability(stepType: StepType): StepRetryCapability 
 
 export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
   // AI Steps
+  'ai.parse-v2': {
+    type: 'ai.parse-v2',
+    category: 'ai',
+    name: 'Parse Document',
+    description:
+      'Automatically read native, scanned, and mixed documents with capability-aware OCR/vision fallback and explicit completeness.',
+    configSchema: AiParseV2ConfigSchema,
+    outputSchema: ParseV2ResultSchema,
+    configInWith: true,
+  },
   'ai.parse': {
     type: 'ai.parse',
     category: 'ai',
-    name: 'Parse Document',
+    name: 'Parse Document — legacy',
     description:
       'Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models',
     configSchema: AiParseConfigSchema,

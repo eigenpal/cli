@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ResolvedProcessorFileSchema } from '../../files/runtime-file-ref';
+import { SpreadsheetCellEvidenceSchema } from '../../parser/spreadsheet-evidence';
 
 /**
  * Spreadsheet to JSON processor schemas (`transform.xlsx-to-json`).
@@ -213,6 +214,11 @@ export const XlsxToJsonInputSchema = ResolvedProcessorFileSchema;
 
 export const XlsxToJsonSheetMetaSchema = z.object({
   name: z.string().describe('Selected sheet name'),
+  declaredRange: z
+    .string()
+    .optional()
+    .describe('Worksheet declared extent before empty trailing rows/columns were removed'),
+  dateSystem: z.enum(['1900', '1904']).optional().describe('Workbook Excel date system'),
   index: z.number().int().min(0).describe('0-based sheet index in the workbook'),
   range: z.string().describe('Effective rectangular A1 range that was read'),
   rowCount: z.number().int().min(0).describe('Number of data rows returned in rows'),
@@ -229,18 +235,29 @@ export const XlsxToJsonDiagnosticSchema = z.object({
 });
 
 export const XlsxToJsonOutputSchema = z.object({
+  cellMetadata: z
+    .array(
+      SpreadsheetCellEvidenceSchema.extend({
+        key: z.string(),
+        outputRowIndex: z.number().int().nonnegative(),
+      })
+    )
+    .optional()
+    .describe(
+      'Evidence for nonblank projected data cells, linked to rows by outputRowIndex and key. Present when includeCellMetadata is true.'
+    ),
   rows: z
     .array(z.record(z.string(), z.unknown()))
     .describe('Array of row objects (first row = headers as keys unless headerRow is false)'),
   fileId: z.string().optional().describe('File ID of stored CSV when outputCsv is true'),
   sheet: XlsxToJsonSheetMetaSchema.optional().describe(
-    'Selected sheet metadata after projection. Present only when includeMetadata is true.'
+    'Selected sheet metadata after projection. Present when includeMetadata or includeCellMetadata is true.'
   ),
   diagnostics: z
     .array(XlsxToJsonDiagnosticSchema)
     .optional()
     .describe(
-      'Non-fatal warnings collected while reading the sheet. Present only when includeMetadata is true. Warnings are still logged when metadata is omitted.'
+      'Non-fatal warnings collected while reading the sheet. Present when includeMetadata or includeCellMetadata is true. Warnings are still logged when metadata is omitted.'
     ),
 });
 
@@ -271,14 +288,21 @@ export const XlsxToJsonConfigSchema = z
       .default(false)
       .optional()
       .describe(
-        'If true, also write CSV to storage and include fileId. Zero-config uses the historical full-sheet SheetJS CSV. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection.'
+        'If true, also write CSV to storage and include fileId. Zero-config uses SheetJS CSV of the effective sheet extent, excluding empty trailing rows and columns. When columns, range, headerRow, valueMode, blankCells, or blankRows are set, CSV matches that projection.'
+      ),
+    includeCellMetadata: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'Include original cell address, type, raw/displayed value, number format and date rendering. Also includes sheet metadata with the workbook date system. Does not classify identifiers or clean names.'
       ),
     includeMetadata: z
       .boolean()
       .default(false)
       .optional()
       .describe(
-        'If true, include sheet metadata and diagnostics in the step output. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false.'
+        'If true, include sheet metadata and diagnostics in the step output. includeCellMetadata also enables these. Omit to keep output as rows (and fileId when outputCsv is true). Warnings are still logged when this is false.'
       ),
     outputFilename: z.string().optional().describe('Output CSV filename when outputCsv is true'),
     headerRow: z
