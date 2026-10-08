@@ -167,6 +167,8 @@ export const WebhookEndpointSchema = z.object({
   name: z.string().min(1).max(200),
   url: z.string().url(),
   eventTypes: z.array(WebhookEventTypeSchema).min(1),
+  workflowIds: z.array(z.string()).nullable(),
+  restricted: z.boolean(),
   enabled: z.boolean(),
   signingConfigured: z.literal(true),
   customHeaders: z.array(RedactedWebhookCustomHeaderSchema),
@@ -236,11 +238,25 @@ function validateWebhookHeaderCollection(
   }
 }
 
+export const WEBHOOK_MAX_SCOPED_WORKFLOWS = 100;
+
+/**
+ * The workflows whose runs an endpoint receives. Null means every run in the
+ * organization (workflows and agents), which only owners and admins may set.
+ */
+export const WebhookWorkflowScopeSchema = z
+  .array(z.string().trim().min(1).max(200))
+  .min(1, 'Choose at least one workflow')
+  .max(WEBHOOK_MAX_SCOPED_WORKFLOWS)
+  .transform((ids) => [...new Set(ids)])
+  .nullable();
+
 export const CreateWebhookEndpointSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     url: WebhookDestinationUrlSchema,
     eventTypes: z.array(WebhookEventTypeSchema).min(1),
+    workflowIds: WebhookWorkflowScopeSchema.default(null),
     customHeaders: z.array(WebhookCustomHeaderSchema).max(WEBHOOK_MAX_HEADERS).default([]),
   })
   .superRefine(validateWebhookHeaderCollection);
@@ -250,6 +266,7 @@ export const UpdateWebhookEndpointSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     url: WebhookDestinationUrlSchema.optional(),
     eventTypes: z.array(WebhookEventTypeSchema).min(1).optional(),
+    workflowIds: WebhookWorkflowScopeSchema.optional(),
     customHeaders: z
       .array(z.union([WebhookCustomHeaderSchema, RetainedWebhookCustomHeaderSchema]))
       .max(WEBHOOK_MAX_HEADERS)
