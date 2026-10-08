@@ -635,6 +635,7 @@ export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/s
 export * from './email-servers';
 
 // Organization-managed outbound webhook contracts
+export * from './webhook-delivery-settings';
 export * from './webhooks';
 
 // Typed-TS function compile pipeline (transform.script + custom-script eval)

@@ -1,4 +1,5 @@
 import type { ErrorObject } from 'ajv';
+import { BUILTIN_FILE_SOURCE_DESCRIPTORS } from '../file-source/descriptor';
 import { WORKFLOW_FILE_REF_JSON_SCHEMA } from '../files/runtime-file-ref';
 import { getEigenpalAjv } from './ajv';
 
@@ -100,10 +101,14 @@ export function workflowInputsToJsonSchema(
 }
 
 function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string, unknown> {
-  // A file input sourced from an external resolver receives a plain string id
-  // at run start; the worker resolves it to a file artifact before execution.
+  // A file input sourced from an external resolver receives a file reference
+  // at run start, as a string (`stackId/fileId`) or as an object of its two
+  // parts (`{ stackId, fileId }`); the worker resolves it to a file artifact
+  // before execution and checks the parts match the connection's type.
   if (def.source && def.type === 'file') {
-    return { type: 'string', minLength: 1 };
+    return {
+      anyOf: [{ type: 'string', minLength: 1 }, ...fileReferenceObjectSchemas()],
+    };
   }
   if (def.type === 'file') {
     return { ...WORKFLOW_FILE_REF_JSON_SCHEMA };
@@ -417,4 +422,23 @@ function coerceScalar(value: string, type: unknown): unknown {
     return n;
   }
   return undefined;
+}
+
+/** JSON Schemas for the object forms of a file reference, one per built-in type. */
+function fileReferenceObjectSchemas(): Array<Record<string, unknown>> {
+  return BUILTIN_FILE_SOURCE_DESCRIPTORS.flatMap((descriptor) => {
+    const parts = descriptor.referenceParts;
+    if (!parts) return [];
+    return [
+      {
+        type: 'object',
+        properties: {
+          [parts.container]: { type: 'string', minLength: 1 },
+          [parts.id]: { type: 'string', minLength: 1 },
+        },
+        required: [parts.container, parts.id],
+        additionalProperties: false,
+      },
+    ];
+  });
 }

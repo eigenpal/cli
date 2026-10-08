@@ -1,6 +1,28 @@
 import type { FileSourceConfig, FileSourceDescriptor } from './descriptor';
 
 /**
+ * Error a resolver throws. `permanent` marks failures a retry cannot fix (a
+ * malformed reference, invalid settings, a missing file, denied access): the
+ * worker does not retry them and records the run failure as not retryable.
+ * Anything else (timeouts, 5xx, network errors) is transient and retried in
+ * place a couple of times. Messages reach the run's operator message and logs,
+ * so they must never contain secrets.
+ */
+export class FileSourceError extends Error {
+  readonly permanent: boolean;
+  constructor(message: string, options?: { permanent?: boolean }) {
+    super(message);
+    this.name = 'FileSourceError';
+    this.permanent = options?.permanent ?? false;
+  }
+}
+
+/** True for a {@link FileSourceError} that retrying cannot fix. */
+export function isPermanentFileSourceError(error: unknown): boolean {
+  return error instanceof FileSourceError && error.permanent;
+}
+
+/**
  * Result of resolving an external file id to its bytes. `contentType` and
  * `filename` are best-effort hints from the source used to name the stored
  * artifact (the worker also falls back to magic-byte detection).

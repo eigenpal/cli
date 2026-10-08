@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.20.29
+
+### Patch Changes
+
+- a58599b: The bundled webhooks guide and reference now cover delivery settings, the retry schedule, and how to ask for a retry while your receiver is still storing a run.
+- 01f6337: The bundled Prometheus metrics guide now documents webhook delivery metrics and example alert rules.
+
 ## 0.20.28
 
 ### Minor Changes
