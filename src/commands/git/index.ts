@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { ApiClient, ApiError } from '../../lib/client';
 import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
+import { buildCliTelemetryHeaders } from '../../lib/telemetry';
 import { addJsonFlag, dim, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
 import { registerSourceInitCommand } from './init';
 import { runGitPassthrough, type BaseOpts } from './passthrough';
@@ -368,7 +369,10 @@ async function tryHostedArchive(input: {
   });
   if (!url) return false;
   const response = await fetch(url, {
-    headers: { authorization: `Bearer ${requireApiKey(input.config)}` },
+    headers: {
+      ...buildCliTelemetryHeaders(),
+      authorization: `Bearer ${requireApiKey(input.config)}`,
+    },
   }).catch(() => null);
   if (!response?.ok) return false;
   rmSync(input.outDir, { recursive: true, force: true });

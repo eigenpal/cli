@@ -3,7 +3,6 @@ import { Command } from 'commander';
 import { realpathSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pkg from '../package.json' with { type: 'json' };
 import { registerAgentCommands } from './commands/agents';
 import { authList, authLogin, authLogout, authStatus, authUse } from './commands/auth';
 import { completion } from './commands/completion';
@@ -25,17 +24,16 @@ import { registerWorkflowCommands } from './commands/workflow';
 import { applyCommandAliasConventions } from './lib/command-aliases';
 import { action } from './lib/format-error';
 import { configureGroupedHelp } from './lib/help';
+import { CLI_VERSION } from './lib/telemetry';
 import { setJsonMode, setQuiet } from './lib/ui';
 
 const __filename = path.resolve(fileURLToPath(import.meta.url));
 
 export const program = new Command();
 
-// `0.0.0-placeholder` is the value in source — release.yml rewrites it to the
-// real semver before publishing. If that ever leaks (someone runs the local
-// dev build, or CI skips the pin step), render it as `dev` so it's obvious
-// the binary on PATH isn't the npm-published one.
-const cliVersion = pkg.version === '0.0.0-placeholder' ? 'dev' : pkg.version;
+// `dev` when the source placeholder version leaks into a local build, so it's
+// obvious the binary on PATH isn't the npm-published one.
+const cliVersion = CLI_VERSION;
 
 program
   .name('eigenpal')

@@ -1,5 +1,6 @@
 import { resolveRequestUrl } from './api-paths';
 import type { CliConfig } from './config';
+import { buildCliTelemetryHeaders } from './telemetry';
 
 export class ApiError extends Error {
   constructor(
@@ -59,6 +60,7 @@ export class ApiClient {
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return {
+      ...buildCliTelemetryHeaders(),
       Authorization: `Bearer ${this.apiKey}`,
       // Run-start endpoints record this as the run's trigger provenance so
       // CLI-started runs show up as `cli` (not `api`) in run history.

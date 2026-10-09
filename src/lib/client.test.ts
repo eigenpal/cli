@@ -136,3 +136,23 @@ describe('ApiClient HTML detection', () => {
     }
   });
 });
+
+describe('ApiClient client identity', () => {
+  test('every request identifies itself as the CLI', async () => {
+    const origFetch = global.fetch;
+    let sent: Headers | undefined;
+    global.fetch = (async (_url: string, init?: RequestInit) => {
+      sent = new Headers(init?.headers);
+      return jsonResponse({ ok: true });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new ApiClient({ baseUrl: 'http://localhost:9999', apiKey: 'k', dir: '.' });
+      await client.post('/v1/runs', {});
+      expect(sent?.get('x-eigenpal-sdk')).toBe('cli');
+      expect(sent?.get('user-agent')).toMatch(/^eigenpal-cli\/\S+ \((bun|node)-/);
+      expect(sent?.get('authorization')).toBe('Bearer k');
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
+});

@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.37
+
+### Patch Changes
+
+- fefb517: The CLI now identifies itself on every API request with a `User-Agent: eigenpal-cli/<version> (<runtime>; <os>)` header and the same `X-Eigenpal-Sdk-*` headers the SDKs send, so CLI traffic and errors can be told apart from SDK and browser traffic. Runs started from the CLI record the CLI version in their trigger metadata.
+
 ## 0.20.29
 
 ### Patch Changes
