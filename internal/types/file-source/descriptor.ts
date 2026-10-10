@@ -424,8 +424,17 @@ export const FILE_SOURCE_CONNECTION_NAME = /^[a-z0-9][a-z0-9-]{1,62}$/;
  * the connection's resolver type when known; a connection named after a
  * built-in type (`gpfs`) needs none.
  */
-export function fileReferenceHint(sourceName: string, type?: string): string {
+export function fileReferenceHint(
+  sourceName: string,
+  type?: string,
+  opts?: { multiple?: boolean }
+): string {
   const format = getBuiltinFileSourceDescriptor(type ?? sourceName)?.referenceFormat;
+  if (opts?.multiple) {
+    return format
+      ? `List of file references (${format}), each resolved via the "${sourceName}" file source.`
+      : `List of file ids, each resolved via the "${sourceName}" file source.`;
+  }
   return format
     ? `File reference (${format}) resolved via the "${sourceName}" file source.`
     : `File id resolved via the "${sourceName}" file source.`;

@@ -669,7 +669,7 @@ export {
   type TenantS3PathBuilder,
 } from './storage/s3-paths';
 
-export { ExecutionTagSchema, ExecutionTagsSchema } from './execution-tags';
+export { ExecutionTagSchema, ExecutionTagsSchema, MAX_EXECUTION_TAGS } from './execution-tags';
 
 // API key scopes
 export {

@@ -59,13 +59,20 @@ export interface WorkflowInputDefLike {
   /** Nested shape for `type: 'object'` inputs. Absent = free-form object. */
   properties?: WorkflowInputPropertyLike[];
   /**
-   * External file source (single-tenant). When set on a `type: 'file'` input,
-   * the run carries a plain string **id** for this field (resolved to a file
-   * artifact by the worker), so the input validates as a non-empty string, not
-   * a file reference.
+   * External file source (single-tenant). When set on a `type: 'file'` input
+   * (or an `array` of `file`), the run carries a file **reference** for this
+   * field (or a list of them), resolved to file artifacts by the worker, so
+   * the input validates as references, not platform file refs.
    */
   source?: string;
 }
+
+/**
+ * Most file references one sourced file-list input takes in a run. Each is
+ * fetched in turn and stored, and a reference is only a few bytes, so without
+ * a cap one run start could queue thousands of fetches.
+ */
+export const MAX_FILE_REFERENCES_PER_INPUT = 100;
 
 /**
  * Inputs declared with an external file `source` (single-tenant string-id file
@@ -106,8 +113,16 @@ function workflowInputTypeToJsonSchema(def: WorkflowInputDefLike): Record<string
   // parts (`{ stackId, fileId }`); the worker resolves it to a file artifact
   // before execution and checks the parts match the connection's type.
   if (def.source && def.type === 'file') {
+    return fileReferenceJsonSchema();
+  }
+  // A sourced file list receives one reference per file; each is resolved to
+  // its own file artifact. A required list needs at least one reference.
+  if (def.source && def.type === 'array' && def.items?.type === 'file') {
     return {
-      anyOf: [{ type: 'string', minLength: 1 }, ...fileReferenceObjectSchemas()],
+      type: 'array',
+      items: fileReferenceJsonSchema(),
+      maxItems: MAX_FILE_REFERENCES_PER_INPUT,
+      ...(def.required !== false ? { minItems: 1 } : {}),
     };
   }
   if (def.type === 'file') {
@@ -422,6 +437,11 @@ function coerceScalar(value: string, type: unknown): unknown {
     return n;
   }
   return undefined;
+}
+
+/** A file reference: a string (`container/id`) or one of its object forms. */
+function fileReferenceJsonSchema(): Record<string, unknown> {
+  return { anyOf: [{ type: 'string', minLength: 1 }, ...fileReferenceObjectSchemas()] };
 }
 
 /** JSON Schemas for the object forms of a file reference, one per built-in type. */

@@ -181,6 +181,11 @@ function validateInputProperties(
   });
 }
 
+/** A `type: 'file'` input, or a list of files (`type: 'array'`, `items.type: 'file'`). */
+function isFileOrFileArrayInput(def: { type: string; items?: { type: string } }): boolean {
+  return def.type === 'file' || (def.type === 'array' && def.items?.type === 'file');
+}
+
 /**
  * Input definition for workflow inputs
  */
@@ -242,9 +247,11 @@ export const WorkflowInputDefSchema = z
       .describe('Recursive field definitions when type is object.'),
     /**
      * External file source (single-tenant only). When set on a `type: 'file'`
-     * input, the run is started with a plain string **id** for this field and the
-     * worker resolves that id to a file artifact via the named `FileSourceResolver`
-     * before the workflow executes. The name must match a registered resolver
+     * input, the run is started with a file **reference** for this field and the
+     * worker resolves it to a file artifact via the named `FileSourceResolver`
+     * before the workflow executes. On a file list (`type: 'array'`,
+     * `items.type: 'file'`) the run passes a list of references, each resolved
+     * to its own file. The name must match a registered resolver
      * (e.g. `'gpfs'`). See `@eigenpal/types/file-source`.
      */
     source: z
@@ -252,7 +259,7 @@ export const WorkflowInputDefSchema = z
       .min(1)
       .optional()
       .describe(
-        'Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file.'
+        'Registered external file resolver for single-tenant file-reference inputs, for example gpfs; valid on type file or an array of file (one reference per file).'
       ),
     /**
      * Optional author hint for the resolved file's type when `source` is set.
@@ -295,15 +302,16 @@ export const WorkflowInputDefSchema = z
       validateInputProperties(def.items.properties, ['items', 'properties'], def.name, ctx);
     }
 
-    // `source` only makes sense on a `type: 'file'` input — the worker resolves a
-    // string id to a file artifact. On any other type the id would be silently
-    // skipped (arrays) or overwrite a scalar with a file descriptor (strings), so
+    // `source` only makes sense on a file input (`type: 'file'`, or an array of
+    // files) — the worker resolves each reference to a file artifact. On any
+    // other type a reference would overwrite a scalar with a file descriptor, so
     // reject it at authoring/push time instead.
-    if (def.source && def.type !== 'file') {
+    const isFileShaped = isFileOrFileArrayInput(def);
+    if (def.source && !isFileShaped) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['source'],
-        message: `"source" is only valid on a file input; input "${def.name}" has type "${def.type}"`,
+        message: `"source" is only valid on a file or file-list input; input "${def.name}" has type "${def.type}"`,
       });
     }
 
@@ -313,7 +321,7 @@ export const WorkflowInputDefSchema = z
     // it. At most one may be set (runtime uses `mimeType ?? extension`; setting
     // both is ambiguous). Validate their basic shape so a typo is caught here.
     const hasHint = def.mimeType !== undefined || def.extension !== undefined;
-    if (hasHint && !(def.type === 'file' && def.source)) {
+    if (hasHint && !(isFileShaped && def.source)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [def.mimeType !== undefined ? 'mimeType' : 'extension'],

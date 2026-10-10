@@ -1,6 +1,7 @@
 export { getEigenpalAjv } from './ajv';
 export {
   INPUT_VALIDATION_CODES,
+  MAX_FILE_REFERENCES_PER_INPUT,
   PENDING_FILE_REF,
   coerceInput,
   inputsWithSource,

@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.39
+
+### Patch Changes
+
+- 100a4bf: The workflow reference now documents `source` on file-list inputs (`type: array`, `items: { type: file }`), which take one file reference per file.
+
 ## 0.20.37
 
 ### Patch Changes

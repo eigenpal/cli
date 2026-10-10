@@ -533,7 +533,7 @@ _Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/work
 | `values` | array<string> | no |  | Closed set of allowed strings when type is enum. |
 | `items` | object | no |  | Element definition when type is array. |
 | `properties` | array<unknown> | no |  | Recursive field definitions when type is object. |
-| `source` | string | no |  | Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file. |
+| `source` | string | no |  | Registered external file resolver for single-tenant file-reference inputs, for example gpfs; valid on type file or an array of file (one reference per file). |
 | `mimeType` | string | no |  | MIME hint such as application/pdf for a sourced file; mutually exclusive with extension. |
 | `extension` | string | no |  | Extension hint such as pdf for a sourced file; mutually exclusive with mimeType. |
 
@@ -794,7 +794,7 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
             }
           },
           "source": {
-            "description": "Registered external file resolver for single-tenant string-id file inputs, for example gpfs; valid only with type file.",
+            "description": "Registered external file resolver for single-tenant file-reference inputs, for example gpfs; valid on type file or an array of file (one reference per file).",
             "type": "string",
             "minLength": 1
           },
