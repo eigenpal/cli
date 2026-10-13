@@ -78,6 +78,8 @@ export const PublicWebhookRunSchema = z.object({
   type: z.enum(['workflow', 'agent']),
   status: z.enum(EXECUTION_STATUSES),
   triggerType: z.string(),
+  /** Tags the run was started with; kept when `output` is omitted. */
+  tags: z.array(z.string()).default([]),
   createdAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),

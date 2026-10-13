@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.42
+
+### Patch Changes
+
+- f386a5a: Updated workflow guidance to explain how waiting for child runs frees processing capacity and how to start a child without waiting for its result.
+
 ## 0.20.39
 
 ### Patch Changes

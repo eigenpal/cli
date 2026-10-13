@@ -1875,12 +1875,14 @@ export const ActionInvokeWorkflowConfigSchema = z
       .number()
       .optional()
       .describe(
-        'Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout.'
+        'Child mode only. Max wait time in ms while the child is queued or running (default: 300000). The deadline is stored with the invocation and survives worker restarts; expiry makes the parent eligible to resume and report the timeout. Once the child pauses for human review, the parent pauses durably instead of using this timeout.'
       ),
     pollInterval: z
       .number()
       .optional()
-      .describe('Child mode only. How often to poll status in ms when waiting (default: 1000)'),
+      .describe(
+        'Child mode only. Accepted for compatibility. Durable child waits no longer poll or occupy a worker slot.'
+      ),
   })
   .superRefine((data, ctx) => {
     const hasWorkflow = typeof data.workflow === 'string' && data.workflow.length > 0;

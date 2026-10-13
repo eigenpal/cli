@@ -422,7 +422,9 @@ the final shape in a trailing `transform.script` that handles both cases.
 top-level keys under `steps.<this-step>.output`, with a `files` array alongside.
 Invoked workflow steps run in an isolated scope inside the parent run.
 
-For a separate child run (lineage, fire-and-forget, polling), set `execution: child`.
+For a separate child run with lineage, set `execution: child`. Waiting for the
+child releases worker capacity and resumes automatically when the child finishes.
+Set `wait: false` for fire-and-forget execution.
 
 ## Classify-and-fail pattern
 
@@ -7294,8 +7296,8 @@ Execute another workflow and return its output
 | `execution` | `"inline"` \| `"child"` | no |  | inline: run target steps in this execution (default). child: spawn a separate run with lineage. |
 | `input` | record<string, unknown> | no |  | Input record keyed by the invoked workflow's declared inputs |
 | `wait` | boolean | no |  | Child mode only. Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
-| `timeout` | number | no |  | Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout. |
-| `pollInterval` | number | no |  | Child mode only. How often to poll status in ms when waiting (default: 1000) |
+| `timeout` | number | no |  | Child mode only. Max wait time in ms while the child is queued or running (default: 300000). The deadline is stored with the invocation and survives worker restarts; expiry makes the parent eligible to resume and report the timeout. Once the child pauses for human review, the parent pauses durably instead of using this timeout. |
+| `pollInterval` | number | no |  | Child mode only. Accepted for compatibility. Durable child waits no longer poll or occupy a worker slot. |
 
 **Output:** `record<string, unknown>`
 
@@ -7358,11 +7360,11 @@ Config schema:
       "type": "boolean"
     },
     "timeout": {
-      "description": "Child mode only. Max wait time in ms while the child is queued or running (default: 300000). Once the child pauses for human review, the parent pauses durably instead of using this timeout.",
+      "description": "Child mode only. Max wait time in ms while the child is queued or running (default: 300000). The deadline is stored with the invocation and survives worker restarts; expiry makes the parent eligible to resume and report the timeout. Once the child pauses for human review, the parent pauses durably instead of using this timeout.",
       "type": "number"
     },
     "pollInterval": {
-      "description": "Child mode only. How often to poll status in ms when waiting (default: 1000)",
+      "description": "Child mode only. Accepted for compatibility. Durable child waits no longer poll or occupy a worker slot.",
       "type": "number"
     }
   },
