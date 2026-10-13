@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.20.40",
+  "version": "0.20.41",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -41,7 +41,7 @@
     "dev": "bun src/cli.ts",
     "build": "bun build src/cli.ts --outdir dist --target node --format esm && rm -rf dist/templates dist/skill && cp -R src/templates dist/templates && cp -R src/skill dist/skill && cp src/docs-bundle.json dist/docs-bundle.json",
     "test": "bun test src/ scripts/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun check"
   },
   "dependencies": {},
   "devDependencies": {

@@ -1467,6 +1467,54 @@ export const TransformArchiveExtractOutputSchema = z.object({
 });
 
 /**
+ * transform.merge-documents - Concatenate several files into one PDF run output.
+ * Config goes in step.with. Accepts PDFs, images (multi-page TIFF included) and
+ * paginated Office documents; each source keeps its order and its pages. The
+ * merged file gives downstream page-indexed steps (ai.parse-v2, ai.classify-pages,
+ * ai.vision) one continuous page numbering across every source.
+ */
+export const TransformMergeDocumentsConfigSchema = z.object({
+  files: z
+    .string()
+    .min(1)
+    .describe(
+      'Template expression resolving to the files to merge, in order: a file list input such as {{ input.documents }}, or a single file. PDF, images (JPEG, PNG, TIFF, WebP, GIF) and Word, PowerPoint, OpenDocument or RTF documents.'
+    ),
+  filename: z
+    .string()
+    .optional()
+    .describe('Filename of the merged PDF. Defaults to merged.pdf; .pdf is appended when missing.'),
+});
+
+export const TransformMergeDocumentsSourceSchema = z.object({
+  filename: z.string().describe('Filename of the source file'),
+  mimeType: z.string().describe('MIME type of the source file'),
+  pageCount: z.number().int().min(0).describe('Pages this source contributed'),
+  pageRange: z
+    .tuple([z.number().int(), z.number().int()])
+    .describe('[startIndex, endIndex] inclusive, 0-based page indices in the merged PDF'),
+});
+
+export const TransformMergeDocumentsOutputSchema = z.object({
+  file: z
+    .object({
+      fileId: z.string().describe('File ID of the merged PDF'),
+      filename: z.string().describe('Filename of the merged PDF'),
+      mimeType: z.string().describe('Always application/pdf'),
+      size: z.number().int().min(0).describe('Size of the merged PDF in bytes'),
+    })
+    .describe(
+      'The merged PDF. Pass {{ steps.<step>.output.file }} to Parse, Vision or any other file input.'
+    ),
+  pageCount: z.number().int().min(0).describe('Total pages in the merged PDF'),
+  sources: z
+    .array(TransformMergeDocumentsSourceSchema)
+    .describe(
+      'One entry per input file, in merge order, with the merged page range it occupies. Use it to map a merged page index back to its source file.'
+    ),
+});
+
+/**
  * transform.script — Execute a TypeScript function in a QuickJS sandbox.
  *
  * The user provides a typed function declaration:
@@ -2246,6 +2294,7 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'transform.regex-extract': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.archive-list': DETERMINISTIC_RETRY_CAPABILITY,
   'transform.archive-extract': FILE_OUTPUT_RETRY_CAPABILITY,
+  'transform.merge-documents': FILE_OUTPUT_RETRY_CAPABILITY,
   'action.http': {
     replaySafety: 'requires-idempotency',
     automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
@@ -2291,9 +2340,9 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
   'ai.parse': {
     type: 'ai.parse',
     category: 'ai',
-    name: 'Parse Document — legacy',
+    name: 'Parse Document v1',
     description:
-      'Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models',
+      'Parse Document v1, the retired parser, kept only so existing workflows run unchanged. Do not add it to workflows: use ai.parse-v2 (Parse Document), which picks native text, OCR or vision per page.',
     configSchema: AiParseConfigSchema,
     outputSchema: AiParseOutputSchema,
     configInWith: true,
@@ -2521,6 +2570,17 @@ export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
       'Extract exactly one file from a ZIP archive and store it as a run output file. Downstream steps can pass {{ steps.extract.output }} into Parse, Vision, or another archive step. Nested ZIPs are stored as ZIP files, not unpacked. Each extraction is capped at 64 MiB. ZIP is the only accepted format in this version.',
     configSchema: TransformArchiveExtractConfigSchema,
     outputSchema: TransformArchiveExtractOutputSchema,
+    configInWith: true,
+  },
+
+  'transform.merge-documents': {
+    type: 'transform.merge-documents',
+    category: 'transform',
+    name: 'Merge Documents',
+    description:
+      'Concatenate several files into one PDF run output, in order. Accepts PDFs, images (multi-page TIFF included) and Word, PowerPoint, OpenDocument or RTF documents. Use it when one logical document arrives as several uploads: pass {{ steps.merge.output.file }} into Parse so page labels, page ranges and vision page indices stay continuous across every source. Output sources[] maps each input file to its merged page range.',
+    configSchema: TransformMergeDocumentsConfigSchema,
+    outputSchema: TransformMergeDocumentsOutputSchema,
     configInWith: true,
   },
 
@@ -2817,6 +2877,9 @@ export type TransformArchiveListOutput = z.infer<typeof TransformArchiveListOutp
 export type TransformArchiveListEntry = z.infer<typeof TransformArchiveListEntrySchema>;
 export type TransformArchiveExtractConfig = z.infer<typeof TransformArchiveExtractConfigSchema>;
 export type TransformArchiveExtractOutput = z.infer<typeof TransformArchiveExtractOutputSchema>;
+export type TransformMergeDocumentsConfig = z.infer<typeof TransformMergeDocumentsConfigSchema>;
+export type TransformMergeDocumentsOutput = z.infer<typeof TransformMergeDocumentsOutputSchema>;
+export type TransformMergeDocumentsSource = z.infer<typeof TransformMergeDocumentsSourceSchema>;
 export type TransformScriptConfig = z.infer<typeof TransformScriptConfigSchema>;
 export type TransformTextChunkerConfig = z.infer<typeof TransformTextChunkerConfigSchema>;
 export type TransformTextChunkerOutput = z.infer<typeof TransformTextChunkerOutputSchema>;

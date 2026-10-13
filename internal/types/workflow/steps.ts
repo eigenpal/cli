@@ -42,6 +42,7 @@ export const TRANSFORM_STEP_TYPES = [
   'transform.regex-extract',
   'transform.archive-list',
   'transform.archive-extract',
+  'transform.merge-documents',
 ] as const;
 
 // Action step types
@@ -105,6 +106,7 @@ export const StepTypeValue = {
   TRANSFORM_REGEX_EXTRACT: 'transform.regex-extract',
   TRANSFORM_ARCHIVE_LIST: 'transform.archive-list',
   TRANSFORM_ARCHIVE_EXTRACT: 'transform.archive-extract',
+  TRANSFORM_MERGE_DOCUMENTS: 'transform.merge-documents',
   // Action
   ACTION_HTTP: 'action.http',
   ACTION_INVOKE_WORKFLOW: 'action.invoke-workflow',

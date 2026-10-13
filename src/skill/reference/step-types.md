@@ -317,7 +317,7 @@ the combined shape:
 ```yaml
 steps:
   - name: parse
-    type: ai.parse
+    type: ai.parse-v2
     with: { ... }
   - name: extract
     type: ai.extract
@@ -434,7 +434,7 @@ process.
 
 ```yaml
 - name: parse
-  type: ai.parse
+  type: ai.parse-v2
   with:
     input: '{{ input.document }}'
 
@@ -1726,9 +1726,9 @@ Output schema:
 ```
 
 
-#### `ai.parse` — Parse Document — legacy
+#### `ai.parse` — Parse Document v1
 
-Extract text from documents (PDF, DOCX, images) using native extraction, OCR, or vision models
+Parse Document v1, the retired parser, kept only so existing workflows run unchanged. Do not add it to workflows: use ai.parse-v2 (Parse Document), which picks native text, OCR or vision per page.
 
 **Behavior and examples:** `eigenpal docs read steps/ai/parse`
 
@@ -6986,6 +6986,157 @@ Output schema:
     "filename",
     "mimeType",
     "size"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+#### `transform.merge-documents` — Merge Documents
+
+Concatenate several files into one PDF run output, in order. Accepts PDFs, images (multi-page TIFF included) and Word, PowerPoint, OpenDocument or RTF documents. Use it when one logical document arrives as several uploads: pass {{ steps.merge.output.file }} into Parse so page labels, page ranges and vision page indices stay continuous across every source. Output sources[] maps each input file to its merged page range.
+
+**Behavior and examples:** `eigenpal docs read steps/transform/merge-documents`
+
+**Durable retry:** Transforms, including those that write files, are not durably retried.
+
+**Config** (in `step.with`):
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `files` | string | yes |  | Template expression resolving to the files to merge, in order: a file list input such as {{ input.documents }}, or a single file. PDF, images (JPEG, PNG, TIFF, WebP, GIF) and Word, PowerPoint, OpenDocument or RTF documents. |
+| `filename` | string | no |  | Filename of the merged PDF. Defaults to merged.pdf; .pdf is appended when missing. |
+
+**Output:** `object`
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `file` | object | yes |  | The merged PDF. Pass {{ steps.<step>.output.file }} to Parse, Vision or any other file input. |
+| `pageCount` | integer | yes |  | Total pages in the merged PDF |
+| `sources` | array<object> | yes |  | One entry per input file, in merge order, with the merged page range it occupies. Use it to map a merged page index back to its source file. |
+
+##### Complete machine-readable schemas
+
+Config schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Template expression resolving to the files to merge, in order: a file list input such as {{ input.documents }}, or a single file. PDF, images (JPEG, PNG, TIFF, WebP, GIF) and Word, PowerPoint, OpenDocument or RTF documents."
+    },
+    "filename": {
+      "description": "Filename of the merged PDF. Defaults to merged.pdf; .pdf is appended when missing.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "files"
+  ],
+  "additionalProperties": false
+}
+```
+
+
+Output schema:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "object",
+      "properties": {
+        "fileId": {
+          "type": "string",
+          "description": "File ID of the merged PDF"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Filename of the merged PDF"
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "Always application/pdf"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Size of the merged PDF in bytes"
+        }
+      },
+      "required": [
+        "fileId",
+        "filename",
+        "mimeType",
+        "size"
+      ],
+      "additionalProperties": false,
+      "description": "The merged PDF. Pass {{ steps.<step>.output.file }} to Parse, Vision or any other file input."
+    },
+    "pageCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "Total pages in the merged PDF"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename of the source file"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "MIME type of the source file"
+          },
+          "pageCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Pages this source contributed"
+          },
+          "pageRange": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ],
+            "description": "[startIndex, endIndex] inclusive, 0-based page indices in the merged PDF"
+          }
+        },
+        "required": [
+          "filename",
+          "mimeType",
+          "pageCount",
+          "pageRange"
+        ],
+        "additionalProperties": false
+      },
+      "description": "One entry per input file, in merge order, with the merged page range it occupies. Use it to map a merged page index back to its source file."
+    }
+  },
+  "required": [
+    "file",
+    "pageCount",
+    "sources"
   ],
   "additionalProperties": false
 }

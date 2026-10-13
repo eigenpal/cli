@@ -377,7 +377,7 @@ Description-writing tips (mirrors Reducto's guidance):
 
 ```yaml
 - name: parse
-  type: ai.parse
+  type: ai.parse-v2
   with:
     input: '{{ input.document }}'
 
@@ -1122,7 +1122,8 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "transform.text-chunker",
                 "transform.regex-extract",
                 "transform.archive-list",
-                "transform.archive-extract"
+                "transform.archive-extract",
+                "transform.merge-documents"
               ]
             },
             "name": {

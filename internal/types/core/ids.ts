@@ -27,6 +27,7 @@ export const PROCESSOR_IDS = {
   JSON_TO_XLSX: 'builtin/json-to-xlsx',
   ARCHIVE_LIST: 'builtin/archive-list',
   ARCHIVE_EXTRACT: 'builtin/archive-extract',
+  MERGE_DOCUMENTS: 'builtin/merge-documents',
 } as const;
 
 export type ProcessorId = (typeof PROCESSOR_IDS)[keyof typeof PROCESSOR_IDS];

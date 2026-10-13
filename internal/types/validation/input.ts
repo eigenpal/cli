@@ -401,6 +401,30 @@ export function parseInputSchemaJson(body: Buffer | null): Record<string, unknow
 }
 
 /**
+ * A single file sent for a file-list input (`type: 'array'`, `items.type:
+ * 'file'`) becomes a one-item list, so callers uploading one file need no
+ * list. Only declared file lists are touched; a single file can never satisfy
+ * them, so this only turns a rejected input into a valid one. Pure.
+ */
+export function wrapSingleFileListInputs(
+  input: Record<string, unknown>,
+  inputs: readonly WorkflowInputDefLike[] | undefined
+): Record<string, unknown> {
+  let out: Record<string, unknown> | undefined;
+  for (const def of inputs ?? []) {
+    if (def.type !== 'array' || def.items?.type !== 'file') continue;
+    const value = input[def.name];
+    const isSingleRef =
+      (typeof value === 'string' && value.length > 0) ||
+      (!!value && typeof value === 'object' && !Array.isArray(value));
+    if (!isSingleRef) continue;
+    out ??= { ...input };
+    out[def.name] = [value];
+  }
+  return out ?? input;
+}
+
+/**
  * Walk multipart-derived string values and coerce them to the declared type
  * (`"true"` → `true`, `"42"` → `42`). No-op for keys not declared in the
  * schema, for already-typed values, or for non-`type` declarations. Pure —

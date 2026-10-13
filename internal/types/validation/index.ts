@@ -11,6 +11,7 @@ export {
   withPendingFileRefs,
   workflowInputPropertiesToJsonSchema,
   workflowInputsToJsonSchema,
+  wrapSingleFileListInputs,
   type InputValidationCode,
   type InputValidationIssue,
   type InputValidationResult,
