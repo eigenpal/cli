@@ -125,7 +125,7 @@ export const HumanReviewNumericConfidenceSchema = z.number().finite().min(0).max
 export const HumanReviewMetadataFromSchema = z
   .enum(['ai.extract'])
   .describe(
-    'Producer adapter. `ai.extract` derives field confidence from `_grounding` and strips that reserved key from review data. Grounding is not stripped unless this is set.'
+    'Producer adapter. `ai.extract` derives categorical field confidence from `_grounding`, copies valid numeric grounding scores into fieldMetadata.display.score, and strips that reserved key from review data. Grounding is not stripped unless this is set.'
   );
 
 const CATEGORICAL_CONFIDENCE_RANK: Record<'low' | 'medium' | 'high', number> = {
@@ -164,7 +164,7 @@ export const HumanReviewConfidenceValueSchema = z.union([
 export const HumanReviewFieldMetadataSchema = z
   .object({
     confidence: HumanReviewResolvedConfidenceSchema.optional().describe(
-      'Producer-supplied confidence: 0–1 numeric (legacy) or categorical low|medium|high from ai.extract grounding. Not calibrated by Eigenpal.'
+      'Routing confidence: categorical low|medium|high from ai.extract grounding, or legacy 0–1 numeric when authored. Numeric grounding scores from extract land in display.score instead. Not calibrated by Eigenpal.'
     ),
     label: z.string().max(500).optional().describe('Short label shown in the review UI'),
     description: z
@@ -182,7 +182,9 @@ export const HumanReviewFieldMetadataSchema = z
     display: z
       .record(z.string(), z.unknown())
       .optional()
-      .describe('Opaque display metadata preserved for the review UI'),
+      .describe(
+        'Opaque display metadata preserved for the review UI. When metadataFrom is ai.extract, numeric grounding scores are copied here as display.score; routing confidence stays on confidence as categorical low|medium|high.'
+      ),
   })
   .strict();
 

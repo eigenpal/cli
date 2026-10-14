@@ -1,5 +1,6 @@
 import { resolveRequestUrl } from './api-paths';
 import type { CliConfig } from './config';
+import { isNodeReadableStream, type StreamableRequestInit } from './fetch-body';
 import { buildCliTelemetryHeaders } from './telemetry';
 
 export class ApiError extends Error {
@@ -124,6 +125,20 @@ export class ApiClient {
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+    return this.handleResponse(res, url);
+  }
+
+  /** Authenticated PUT of raw bytes (http-chunked file uploads). */
+  async putBytes(path: string, body: BodyInit): Promise<unknown> {
+    const url = this.buildUrl(path);
+    const stream = isNodeReadableStream(body);
+    const init: StreamableRequestInit = {
+      method: 'PUT',
+      headers: this.headers({ 'Content-Type': 'application/octet-stream' }),
+      body,
+      ...(stream ? { duplex: 'half' as const } : {}),
+    };
+    const res = await fetch(url, init);
     return this.handleResponse(res, url);
   }
 

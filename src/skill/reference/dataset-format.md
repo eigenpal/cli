@@ -42,8 +42,16 @@ are explicit references:
 }
 ```
 
-`expected.json` mirrors the expected automation output. Expected files use the
-same reference shape with the `expected/` prefix.
+`expected.json` must mirror the complete intended automation output one-to-one:
+fields, nesting, array structure, value types, and expected file references.
+Expected files use the same reference shape with the `expected/` prefix.
+Use the correct expected values even when the workflow currently returns wrong
+values. Evaluators define which parts to cross-check and how (tolerances, ignored
+fields, array matching, custom comparison); do not flatten, summarize, omit fields,
+or add comparison-only metadata to ground truth to suit evaluator logic.
+Dataset reviews snapshot that full expected output unchanged. Review scope and
+reviewer evidence belong in focus paths and field comments, not in a reduced or
+augmented expected-output object.
 
 ## Rules
 
@@ -327,6 +335,23 @@ There is **no auto-apply** by design: after review, `dataset pull` and
 manually reconcile each example into the live dataset (reviewers can err).
 Close via `update --status closed`.
 
+Flag only uncertain or incorrect leaf paths with `--focus` / `--focus-reason`.
+A parent path such as `items` flags every descendant; prefer `items.3.amount`
+when only that value needs checking. Focus is shared across the selected examples;
+use separate requests for examples with different concerns. Do not flag every
+field just because the complete dataset is visible. An empty focus list flags
+nothing, while all output fields remain available as context.
+
+`--field-note 'invoice-foo.items.3.amount=Workflow currently returns 12.50; expected 10.50. Verify the source line.'`
+leaves a comment on that exact example and field without flagging it. Add a focus
+path separately if it needs review. For an existing request, use `item --action
+comment --field-path items.3.amount --comment 'Workflow currently returns 12.50; expected 10.50.'
+--expected-updated-at <iso>`. Read the item first to obtain its timestamp.
+Inspect `get --json` before sharing: check the full expected output, the intended
+focus list, and field note events. To repair excessive flags, replace the list
+with `update --focus-json '[{"path":"items.3.amount","reason":"Amount differs from source"}]'`;
+`--focus-json '[]'` clears it. This changes review scope, not dataset content.
+
 ```bash
 # Ask a reviewer to inspect specific fields, with reasons, then poll until done.
 eigenpal workflow dataset review-request create <automation-id> \
@@ -335,7 +360,7 @@ eigenpal workflow dataset review-request create <automation-id> \
   --instructions "Check IBAN checksums and invoice totals." \
   --focus vendor.iban --focus-reason 'vendor.iban=OCR often mangles IBANs' \
   --ignore currency \
-  --field-note 'invoice-foo.total=off by 0.01 last run' \
+  --field-note 'invoice-foo.vendor.iban=Workflow currently returns SK12; expected SK34. Verify against the document.' \
   --status open --json
 
 # List requests; `.progress.complete` means every example was decided.

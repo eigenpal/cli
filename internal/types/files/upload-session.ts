@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { buildS3PathSuffix } from '../storage/s3-paths';
 
 /**
  * Optional upload purpose bound to a pending session and resulting `files` row.
@@ -75,11 +76,14 @@ export function isFileUploadProtectedStatus(status: FileUploadStatus): boolean {
  * `presigned-multipart` is storage-direct S3 MPU with presigned UploadPart URLs.
  * `multipart` is the API-mediated HTTP FormData fallback (local / on-prem /
  * unsupported). Distinct from S3 multipart — do not reuse this value for MPU.
+ * `http-chunked` is app-server chunked PUT for on-prem files that exceed one
+ * HTTP body; the server stages small chunks and assembles the object.
  */
 export const FILE_UPLOAD_TRANSPORTS = [
   'presigned-put',
   'presigned-multipart',
   'multipart',
+  'http-chunked',
 ] as const;
 export const FileUploadTransportSchema = z.enum(FILE_UPLOAD_TRANSPORTS);
 export type FileUploadTransport = z.infer<typeof FileUploadTransportSchema>;
@@ -90,6 +94,12 @@ export function isPresignedMultipartTransport(
   return transport === 'presigned-multipart';
 }
 
+export function isHttpChunkedTransport(
+  transport: string | null | undefined
+): transport is 'http-chunked' {
+  return transport === 'http-chunked';
+}
+
 /**
  * Pending object key suffix (tenant prefix applied by TenantScopedStorage).
  * Server-selected; clients never supply a key. Used only by `presigned-put`
@@ -97,6 +107,22 @@ export function isPresignedMultipartTransport(
  */
 export function pendingFileUploadKey(uploadId: string): string {
   return `file-uploads/${uploadId}`;
+}
+
+/** Staging prefix for `http-chunked` parts. Never write a file at `pendingFileUploadKey`. */
+export function pendingFileUploadChunkPrefix(uploadId: string): string {
+  return buildS3PathSuffix('file-uploads/:uploadId/chunks/', { uploadId });
+}
+
+/** One staged `http-chunked` object. `chunkIndex` is 0-based. */
+export function pendingFileUploadChunkKey(uploadId: string, chunkIndex: number): string {
+  if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0) {
+    throw new Error('chunkIndex must be a non-negative safe integer');
+  }
+  return buildS3PathSuffix('file-uploads/:uploadId/chunks/:chunkIndex', {
+    uploadId,
+    chunkIndex: String(chunkIndex),
+  });
 }
 
 /**

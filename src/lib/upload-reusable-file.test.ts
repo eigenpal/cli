@@ -23,6 +23,7 @@ function createClient(handlers: {
   post: (path: string, body?: unknown) => Promise<unknown>;
   get?: (path: string) => Promise<unknown>;
   postFormData?: (path: string) => Promise<unknown>;
+  putBytes?: (path: string, body: BodyInit) => Promise<unknown>;
   deleted?: string[];
 }): ApiClient {
   const deleted: string[] = handlers.deleted ?? [];
@@ -30,6 +31,11 @@ function createClient(handlers: {
     post: handlers.post,
     get: handlers.get ?? (async () => ({ parts: [] })),
     postFormData: handlers.postFormData ?? (async () => ({ id: 'file_form' })),
+    putBytes:
+      handlers.putBytes ??
+      (async () => {
+        throw new Error('putBytes not mocked');
+      }),
     delete: async (path: string) => {
       deleted.push(path);
     },
@@ -418,5 +424,45 @@ describe('uploadReusableFile presigned-multipart', () => {
 
     expect(result.id).toBe('file_nosize');
     expect(partPuts).toEqual([1]);
+  });
+});
+
+describe('uploadReusableFile http-chunked', () => {
+  test('PUTs sequential chunks then completes', async () => {
+    const chunkPuts: number[] = [];
+    const client = createClient({
+      post: async (path) => {
+        if (path === '/v1/files/uploads') {
+          return {
+            transport: 'http-chunked',
+            uploadId: 'upl_chunk',
+            fileId: 'file_chunk',
+            chunkSizeBytes: 5,
+            chunkCount: 3,
+            chunksUrl: '/api/v1/files/uploads/upl_chunk/chunks',
+            completeUrl: '/api/v1/files/uploads/upl_chunk/complete',
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            maxFileSizeBytes: 100 * 1024 * 1024,
+          };
+        }
+        if (path === '/v1/files/uploads/upl_chunk/complete') {
+          return { id: 'file_chunk', filename: 'notes.txt', size: 12 };
+        }
+        throw new Error(`unexpected POST ${path}`);
+      },
+      putBytes: async (path) => {
+        const match = path.match(/\/chunks\/(\d+)$/);
+        if (!match) throw new Error(`unexpected PUT ${path}`);
+        chunkPuts.push(Number(match[1]));
+        return { accepted: true };
+      },
+    });
+
+    const result = await uploadReusableFile(client, {
+      filename: 'notes.txt',
+      content: Buffer.from('abcdefghijkl'),
+    });
+    expect(result.id).toBe('file_chunk');
+    expect(chunkPuts).toEqual([0, 1, 2]);
   });
 });

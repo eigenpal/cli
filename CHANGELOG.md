@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.20.45
+
+### Minor Changes
+
+- 0be0b92: The CLI now follows the chunked Files upload transport, so large on-prem file uploads work without browser-reachable object storage.
+
+## 0.20.45
+
+### Patch Changes
+
+- ded47bf: Clarify how to flag specific dataset review fields and attach field comments with current workflow values. Agent guidance now keeps expected outputs aligned with the full intended workflow output and leaves comparison rules to evaluators.
+
 ## 0.20.42
 
 ### Patch Changes

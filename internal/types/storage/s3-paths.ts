@@ -43,6 +43,9 @@ const PATH_LEAF = null;
 const PATH_REST = '*';
 
 export const S3_PATH_GRAMMAR = {
+  'file-uploads': {
+    $uploadId: { chunks: { $chunkIndex: PATH_LEAF } },
+  },
   // Legacy/source-agent layout. Runtime artifacts are copied to
   // `automations/<automationId>/...`, but old agents, sessions, source files,
   // and migration fallbacks still read this tree.

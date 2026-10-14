@@ -53,13 +53,37 @@ function isFieldGrounding(value: unknown): value is FieldGrounding {
   );
 }
 
+/** Valid finite 0..1 grounding scores copied into fieldMetadata.display.score. */
+function validGroundingDisplayScore(score: unknown): number | undefined {
+  if (typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1) {
+    return score;
+  }
+  return undefined;
+}
+
 function mergeFieldMetadata(
   derived: Record<string, HumanReviewFieldMetadata>,
   authored: Record<string, HumanReviewFieldMetadata>
 ): Record<string, HumanReviewFieldMetadata> {
   const merged: Record<string, HumanReviewFieldMetadata> = { ...derived };
   for (const [path, meta] of Object.entries(authored)) {
-    merged[path] = { ...merged[path], ...meta };
+    const derivedMetadata = merged[path];
+    let display = meta.display ?? derivedMetadata?.display;
+    if (
+      meta.confidence !== undefined &&
+      meta.display === undefined &&
+      display?.score !== undefined
+    ) {
+      const { score: _staleDerivedScore, ...remainingDisplay } = display;
+      display = Object.keys(remainingDisplay).length > 0 ? remainingDisplay : undefined;
+    }
+    const next: HumanReviewFieldMetadata = {
+      ...derivedMetadata,
+      ...meta,
+    };
+    if (display !== undefined) next.display = display;
+    else delete next.display;
+    merged[path] = next;
   }
   return merged;
 }
@@ -95,6 +119,8 @@ export function fieldMetadataFromAiExtractGrounding(
     if (!isFieldGrounding(entry)) continue;
     const path = dottedPathToJsonPointer(key);
     const display: Record<string, unknown> = {};
+    const score = validGroundingDisplayScore(entry.score);
+    if (score !== undefined) display.score = score;
     if (entry.source_span) display.source_span = entry.source_span;
     if (entry.citations?.length) display.citations = entry.citations;
     if (entry.quote) display.quote = entry.quote;
@@ -110,8 +136,9 @@ export function fieldMetadataFromAiExtractGrounding(
  * Producer adapter for `metadataFrom: ai.extract`.
  *
  * Strips reserved `_grounding` from review data, derives categorical field
- * confidence (never numeric scores), and leaves authored fieldMetadata on top.
- * Does nothing unless the caller opted in.
+ * confidence for selection routing, and copies valid numeric grounding scores
+ * into `fieldMetadata.display.score` for UI display. Authored fieldMetadata
+ * remains authoritative on merge. Does nothing unless the caller opted in.
  */
 export function applyAiExtractReviewAdapter(input: {
   data: Record<string, unknown> | unknown[];

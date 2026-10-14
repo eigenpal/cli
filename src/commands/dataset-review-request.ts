@@ -381,7 +381,7 @@ export function registerDatasetReviewRequestCommands(
     .option('--instructions <text>', 'Note shown to the reviewer for the whole request')
     .option(
       '--focus <path>',
-      'Expected-output path to highlight (repeatable)',
+      'Expected-output leaf path to flag across selected examples; parent paths flag every descendant (repeatable)',
       collectRepeatable,
       [] as string[]
     )
@@ -405,7 +405,7 @@ export function registerDatasetReviewRequestCommands(
     )
     .option(
       '--field-note <spec>',
-      'Field-level note seeded at create time, as exampleName.path=comment (repeatable)',
+      'Field comment only, as exampleName.path=comment; does not flag the field (repeatable)',
       collectRepeatable,
       [] as string[]
     )
@@ -425,11 +425,20 @@ Examples:
       --instructions "Check IBAN checksums and totals." \\
       --focus vendor.iban --focus-reason 'vendor.iban=OCR often mangles IBANs' \\
       --ignore currency \\
-      --field-note 'invoice-foo.total=off by 0.01 last run' \\
+      --field-note 'invoice-foo.vendor.iban=Workflow currently returns SK12; expected SK34. Verify against the document.' \\
       --status open --json
 
   $ eigenpal workflow dataset review-request list wf_abc123 --status open --json
   $ eigenpal workflow dataset review-request get wf_abc123 dsr_... --json
+
+Keep expected.json one-to-one with the complete intended workflow output,
+including nested objects, arrays, types, and expected file references. Evaluators
+define which values to compare and how; never reshape ground truth for scoring.
+Review snapshots must keep that full dataset shape. Flag only uncertain or
+incorrect leaf paths (for example items.3.amount), not every field or a whole
+array unless every descendant needs review. Focus applies to all selected
+examples. A field note adds context without flagging: include the workflow's
+current value, the expected value, and what the reviewer should verify.
 
 Agent loop: create with focus/ignore and per-example notes → poll \`get --json\`
 until \`.progress.complete\` → record per-field decisions and per-example

@@ -58,6 +58,21 @@ describe('buildReviewItemPatchBody', () => {
     );
   });
 
+  test('comments on an exact array field without changing expected output or decisions', () => {
+    expect(
+      buildReviewItemPatchBody('comment', {
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+        fieldPath: 'items.3.amount',
+        comment: 'Workflow currently returns 12.50; expected 10.50. Verify the source line.',
+      })
+    ).toEqual({
+      action: 'comment',
+      expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+      fieldPath: 'items.3.amount',
+      comment: 'Workflow currently returns 12.50; expected 10.50. Verify the source line.',
+    });
+  });
+
   test('file-decision requires --file-path and a decision or note', () => {
     expect(() => buildReviewItemPatchBody('file-decision', { expectedUpdatedAt: 'v1' })).toThrow(
       /--file-path is required/

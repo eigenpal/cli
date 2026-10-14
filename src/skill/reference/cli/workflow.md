@@ -701,21 +701,21 @@ Request human review of dataset ground truth. Snapshot examples and poll progres
 
 ### Options
 
-| Flag                             | Required | Default | Description                                                                      |
-| -------------------------------- | -------- | ------- | -------------------------------------------------------------------------------- |
-| `--base-url <url>`               | no       |         | Server base URL                                                                  |
-| `--json`                         | no       |         | Emit machine-readable JSON on stdout                                             |
-| `--title <title>`                | yes      |         | Review request title                                                             |
-| `--example-name <name>`          | yes      | `[]`    | Example folder name to include (repeatable)                                      |
-| `--instructions <text>`          | no       |         | Note shown to the reviewer for the whole request                                 |
-| `--focus <path>`                 | no       | `[]`    | Expected-output path to highlight (repeatable)                                   |
-| `--focus-reason <spec>`          | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)                    |
-| `--ignore <path>`                | no       | `[]`    | Expected-output path reviewers can skip (repeatable)                             |
-| `--item-note <spec>`             | no       | `[]`    | Example-level note seeded at create time, as exampleName=comment (repeatable)    |
-| `--field-note <spec>`            | no       | `[]`    | Field-level note seeded at create time, as exampleName.path=comment (repeatable) |
-| `--focus-json <json>`            | no       |         | JSON array of { path, reason? } focus fields                                     |
-| `--notes-json <json>`            | no       |         | JSON array of { exampleName, comment?, fields?: [{ path, comment }] }            |
-| `--status <draft\|open\|paused>` | no       |         | Initial lifecycle status (default: draft)                                        |
+| Flag                             | Required | Default | Description                                                                                                 |
+| -------------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `--base-url <url>`               | no       |         | Server base URL                                                                                             |
+| `--json`                         | no       |         | Emit machine-readable JSON on stdout                                                                        |
+| `--title <title>`                | yes      |         | Review request title                                                                                        |
+| `--example-name <name>`          | yes      | `[]`    | Example folder name to include (repeatable)                                                                 |
+| `--instructions <text>`          | no       |         | Note shown to the reviewer for the whole request                                                            |
+| `--focus <path>`                 | no       | `[]`    | Expected-output leaf path to flag across selected examples; parent paths flag every descendant (repeatable) |
+| `--focus-reason <spec>`          | no       | `[]`    | Reason a focus path needs review, as path=reason (repeatable)                                               |
+| `--ignore <path>`                | no       | `[]`    | Expected-output path reviewers can skip (repeatable)                                                        |
+| `--item-note <spec>`             | no       | `[]`    | Example-level note seeded at create time, as exampleName=comment (repeatable)                               |
+| `--field-note <spec>`            | no       | `[]`    | Field comment only, as exampleName.path=comment; does not flag the field (repeatable)                       |
+| `--focus-json <json>`            | no       |         | JSON array of { path, reason? } focus fields                                                                |
+| `--notes-json <json>`            | no       |         | JSON array of { exampleName, comment?, fields?: [{ path, comment }] }                                       |
+| `--status <draft\|open\|paused>` | no       |         | Initial lifecycle status (default: draft)                                                                   |
 
 ### `eigenpal workflow dataset review-request get [options] <automation-id> <review-id>`
 

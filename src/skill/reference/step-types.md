@@ -8294,7 +8294,7 @@ Pause the run for selective field confirmation or correction, then continue with
 | --- | --- | --- | --- | --- |
 | `data` | string \| record<string, unknown> \| array<unknown> | yes |  | Structured data or a template expression resolving to an object or array |
 | `schema` | record<string, unknown> | no |  | Optional JSON Schema for validating edits and exposing downstream autocomplete. When omitted with metadataFrom: ai.extract and a direct whole-output data expression, the extract step schema is reused. |
-| `metadataFrom` | `"ai.extract"` | no |  | Producer adapter. `ai.extract` derives field confidence from `_grounding` and strips that reserved key from review data. Grounding is not stripped unless this is set. |
+| `metadataFrom` | `"ai.extract"` | no |  | Producer adapter. `ai.extract` derives categorical field confidence from `_grounding`, copies valid numeric grounding scores into fieldMetadata.display.score, and strips that reserved key from review data. Grounding is not stripped unless this is set. |
 | `fieldMetadata` | record<string, object> | no | `{}` | RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias. |
 | `selection` | object | yes |  | Field selection policy resolved once when the task is created |
 | `files` | object | no | `{"includeRunInputs":true,"attachments":[]}` | Run input files and optional current-run attachments for reviewers |
@@ -8346,7 +8346,7 @@ Config schema:
       "enum": [
         "ai.extract"
       ],
-      "description": "Producer adapter. `ai.extract` derives field confidence from `_grounding` and strips that reserved key from review data. Grounding is not stripped unless this is set."
+      "description": "Producer adapter. `ai.extract` derives categorical field confidence from `_grounding`, copies valid numeric grounding scores into fieldMetadata.display.score, and strips that reserved key from review data. Grounding is not stripped unless this is set."
     },
     "fieldMetadata": {
       "description": "RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias.",

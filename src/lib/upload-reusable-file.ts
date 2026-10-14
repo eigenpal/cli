@@ -3,9 +3,16 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { apiPath } from './api-paths';
-import type { ApiClient } from './client';
+import { ApiError, type ApiClient } from './client';
 import { isNodeReadableStream, toPutBody, type StreamableRequestInit } from './fetch-body';
 import { guessMimeType } from './fs-helpers';
+import {
+  annotateHttpChunkedCompleteFailure,
+  ChunkUploadHttpError,
+  shouldAbortHttpChunkedUploadSession,
+  uploadHttpChunks,
+  type HttpChunkedSession,
+} from './upload-app-chunked';
 import {
   annotateMultipartCompleteFailure,
   filterStorageHeaders,
@@ -37,6 +44,17 @@ type UploadNegotiation =
       partSizeBytes: number;
       partCount: number;
       partsUrl: string;
+      completeUrl: string;
+      expiresAt: string;
+      maxFileSizeBytes: number;
+    }
+  | {
+      transport: 'http-chunked';
+      uploadId: string;
+      fileId: string;
+      chunkSizeBytes: number;
+      chunkCount: number;
+      chunksUrl: string;
       completeUrl: string;
       expiresAt: string;
       maxFileSizeBytes: number;
@@ -111,6 +129,10 @@ export async function uploadReusableFile(
     return uploadPresignedMultipart(client, source, negotiation);
   }
 
+  if (negotiation.transport === 'http-chunked') {
+    return uploadHttpChunked(client, source, negotiation);
+  }
+
   let putReady = false;
   try {
     const putBody =
@@ -167,6 +189,45 @@ async function resolveUploadSource(input: ReusableFileUploadInput): Promise<Reso
     filename: input.filename,
     contentType,
   };
+}
+
+async function uploadHttpChunked(
+  client: ApiClient,
+  source: ResolvedUploadSource,
+  session: HttpChunkedSession
+): Promise<ReusableFileUploadResult> {
+  const chunksPath = apiPath(session.chunksUrl);
+  const completePath = apiPath(session.completeUrl);
+  let chunksReady = false;
+  try {
+    await uploadHttpChunks({
+      chunkCount: session.chunkCount,
+      chunkSizeBytes: session.chunkSizeBytes,
+      totalSize: source.size,
+      putChunk: async ({ chunkIndex, start, length }) => {
+        const body =
+          source.kind === 'buffer'
+            ? toPutBody(source.content.subarray(start, start + length))
+            : length === 0
+              ? toPutBody(new Uint8Array())
+              : toPutBody(createReadStream(source.filePath, { start, end: start + length - 1 }));
+        try {
+          await client.putBytes(`${chunksPath}/${chunkIndex}`, body);
+        } catch (error) {
+          if (error instanceof ApiError) throw new ChunkUploadHttpError(error.status);
+          throw error;
+        }
+      },
+    });
+    chunksReady = true;
+    return (await client.post(completePath, {})) as ReusableFileUploadResult;
+  } catch (error) {
+    if (shouldAbortHttpChunkedUploadSession({ chunksReady })) {
+      await client.delete(apiPath(`/files/uploads/${session.uploadId}`)).catch(() => undefined);
+      throw error;
+    }
+    throw annotateHttpChunkedCompleteFailure(session.uploadId, error);
+  }
 }
 
 async function uploadPresignedMultipart(

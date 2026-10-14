@@ -154,8 +154,13 @@ const RunTargetSegmentSchema = z
   .string()
   .regex(RUN_TARGET_SEGMENT_PATTERN, 'Use letters, numbers, dashes, and underscores');
 
+function qualifyRunTargetName(name: string): string {
+  return /^wf_[A-Za-z0-9_-]+$/.test(name) ? `workflows.${name}` : name;
+}
+
 /**
  * Run-target strings: `agents.<segments>[@version]` / `workflows.<segments>[@version]`.
+ * Bare `wf_...` ids are shorthand for `workflows.wf_...`.
  * Segments accept mixed-case ids (`wf_…`, `awf_…`) in addition to lowercase
  * slugs; the version ref is validated per root so error messages are
  * actionable at parse time instead of surfacing as raw ZodErrors later.
@@ -166,11 +171,12 @@ export const RunTargetStringSchema = z.string().superRefine((value, ctx) => {
     ctx.addIssue({ code: 'custom', message: 'Run target must be <target> or <target>@<version>' });
     return;
   }
-  const parts = name.split('.');
+  const parts = qualifyRunTargetName(name).split('.');
   if (parts.length < 2) {
     ctx.addIssue({
       code: 'custom',
-      message: 'Run target must start with agents. or workflows. followed by a slug or id',
+      message:
+        'Run target must be a wf_ id or start with agents. or workflows. followed by a slug or id',
     });
     return;
   }
@@ -269,7 +275,7 @@ export function parseRunTarget(target: RunTarget): NormalizedRunTarget {
   const parsed = RunTargetSchema.parse(target);
   if (typeof parsed === 'string') {
     const [name, rawRef] = parsed.split('@') as [string, string | undefined];
-    const [root, ...segments] = name.split('.');
+    const [root, ...segments] = qualifyRunTargetName(name).split('.');
     const slug = segments.join('/');
     if (root === 'agents') {
       return {

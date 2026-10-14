@@ -132,6 +132,39 @@ Use `output.textFormat` for representation and `output.require` for required evi
 
 Legacy `ai.parse` remains supported. Never mix its flat `parseMode`/`nativeText` settings into v2. Migrate to a new file with `eigenpal workflow migrate-parser workflow.yaml --policy preserve --out workflow-v2.yaml` or `--policy auto` to adopt recommended defaults. Preserve mode retains OCR-only restrictions; automatic mode can broaden egress and costs. Review reported changes and representative outputs before publishing.
 
+## Dataset ground truth and targeted reviews
+
+Dataset `expected.json` must match the complete intended workflow output
+one-to-one: the same fields, nesting, arrays, value types, and expected file
+references. Keep the correct expected values, even when the workflow currently
+returns something wrong. Never replace ground truth with the current run output
+just to make an evaluator pass, and never add evaluator-only summaries, flattened
+projections, comparison metadata, or reviewer instructions to expected output.
+Evaluator configuration owns which outputs are cross-checked and how, including
+ignored fields, tolerances, array matching, and custom comparisons.
+
+A dataset review snapshots that complete expected output unchanged. Narrow the
+review with flags and comments, never by pruning or reshaping `expected.json`:
+
+- Use `--focus` or `--focus-reason` only for specific uncertain or incorrect
+  leaf paths, for example `items.3.amount`. A parent such as `items` flags every
+  descendant, potentially thousands of fields. Do not enumerate all fields as
+  focus paths unless the user explicitly requests a full-field review.
+- Focus paths apply to every selected example. Group examples with the same
+  concerns into a request; create separate requests when their focus differs.
+- Use `--field-note 'invoice-foo.items.3.amount=Workflow currently returns 12.50; expected 10.50. Verify the source line.'`
+  to attach evidence to that exact field. Notes do not flag fields: add a focus
+  path separately when it needs a decision. Preserve the actual value as a
+  comment, not as replacement ground truth.
+- For an existing review, use `item --action comment --field-path items.3.amount
+  --comment 'Workflow currently returns 12.50; expected 10.50. Verify the source line.'
+  --expected-updated-at <iso>`. Use `update --focus-json '[{"path":"items.3.amount","reason":"Amount differs from source"}]'`
+  to replace an overly broad focus list, or `--focus-json '[]'` to clear it.
+- Before sharing a review, inspect `get --json`: verify the complete expected
+  output, a short justified `focusFields` list, and field-specific note events.
+  An unflagged field remains visible for context; it does not need a flag merely
+  because it appears in the dataset. Never approve on the human reviewer's behalf.
+
 ## Workflow Loop
 
 ```bash
@@ -188,7 +221,7 @@ eigenpal workflow evaluators push <workflow-id> --file ./evaluators.yaml
 eigenpal workflow dataset review-request create <workflow-id> \
   --title "<topic> GT review" --example-name <example-name> \
   --focus <path> --focus-reason '<path>=why' --ignore <path> \
-  --item-note '<example>=note' --field-note '<example.path>=note' \
+  --item-note '<example>=note' --field-note '<example.path>=Workflow currently returns <actual>; expected <expected>. Verify against the source.' \
   --status open --json
 # Poll .progress.complete until reviewers finish. Record field decisions and
 # approve/reject with comments as needed, then pull and MANUAL reconcile —

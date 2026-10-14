@@ -58,6 +58,36 @@ export interface FieldGrounding {
  */
 export type GroundingResult = Record<string, FieldGrounding>;
 
+const INVALID_GROUNDING_PATH_ESCAPE = /~(?![02])/;
+
+/** Escape one property name for use as a segment in a dotted grounding path. */
+export function encodeGroundingPathSegment(segment: string): string {
+  return segment.replaceAll('~', '~0').replaceAll('.', '~2');
+}
+
+/** Split a dotted grounding path into decoded property names and array indexes. */
+export function parseGroundingPathSegments(path: string): string[] {
+  return path
+    .split('.')
+    .filter(Boolean)
+    .map((segment) => {
+      if (INVALID_GROUNDING_PATH_ESCAPE.test(segment)) {
+        throw new Error(`Invalid grounding path escape in segment "${segment}"`);
+      }
+      return segment.replace(/~(?:0|2)/g, (escape) => (escape === '~2' ? '.' : '~'));
+    });
+}
+
+function compatibleGroundingPathSegments(path: string): string[] {
+  try {
+    return parseGroundingPathSegments(path);
+  } catch {
+    // Historical grounding keys did not escape literal tildes. Preserve those
+    // stored outputs as a best-effort read instead of failing the whole merge.
+    return path.split('.').filter(Boolean);
+  }
+}
+
 /**
  * Deep-strip reserved `_grounding` maps from a value tree.
  *
@@ -86,8 +116,7 @@ export function stripGroundingMetadata(value: unknown): unknown {
  */
 export function dottedPathToJsonPointer(path: string): string {
   if (path.startsWith('/')) return path;
-  return `/${path
-    .split('.')
+  return `/${compatibleGroundingPathSegments(path)
     .map((segment) => segment.replaceAll('~', '~0').replaceAll('/', '~1'))
     .join('/')}`;
 }
@@ -99,7 +128,7 @@ export function dottedPathToJsonPointer(path: string): string {
 export function valueAtDottedPath(root: unknown, path: string): unknown {
   if (!path) return root;
   let current: unknown = root;
-  for (const segment of path.split('.')) {
+  for (const segment of compatibleGroundingPathSegments(path)) {
     if (current == null) return undefined;
     if (Array.isArray(current)) {
       const index = Number(segment);

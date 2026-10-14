@@ -28,7 +28,13 @@ export {
 } from './normalize-extract-input';
 
 // Grounding result types (produced by the worker, consumed by the app)
-export { dottedPathToJsonPointer, stripGroundingMetadata, valueAtDottedPath } from './grounding';
+export {
+  dottedPathToJsonPointer,
+  encodeGroundingPathSegment,
+  parseGroundingPathSegments,
+  stripGroundingMetadata,
+  valueAtDottedPath,
+} from './grounding';
 export type {
   FieldGrounding,
   FieldGroundingCitation,
