@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { z } from 'zod';
 import { getProcessEnv } from '../../env';
 import { ApiClient } from '../../lib/client';
@@ -147,13 +147,26 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function stableHelperRuntime(runtime: string): string {
+  const cellar = runtime.match(/^(.*)\/Cellar\/[^/]+\/[^/]+\/bin\/([^/]+)$/);
+  if (!cellar) return runtime;
+  const stable = `${cellar[1]}/bin/${cellar[2]}`;
+  try {
+    // Persist Homebrew's unversioned entry point only when it is this same runtime.
+    if (realpathSync(stable) === realpathSync(runtime)) return stable;
+  } catch {
+    // Unlinked kegs and missing symlinks keep the working executable path.
+  }
+  return runtime;
+}
+
 function credentialHelperCommand(): string {
   const override = getProcessEnv().EIGENPAL_CLI_HELPER_COMMAND;
   if (override) return `!${override}`;
 
   const script = process.argv[1];
   if (script?.endsWith('/packages/cli/src/cli.ts')) {
-    return `!${shellQuote(process.argv[0] ?? 'bun')} ${shellQuote(script)} git-credential-helper`;
+    return `!${shellQuote(stableHelperRuntime(process.argv[0] ?? 'bun'))} ${shellQuote(script)} git-credential-helper`;
   }
 
   return '!eigenpal git-credential-helper';

@@ -133,13 +133,7 @@ function descriptionLooksCategorical(description: string): boolean {
 
 export function validateSchemaQuality(workflow: WorkflowDefinition): SchemaQualityWarning[] {
   const warnings: SchemaQualityWarning[] = [];
-  for (let i = 0; i < workflow.steps.length; i++) {
-    const step = workflow.steps[i];
-    if (!step) continue;
-    const basePath = `steps.${i}`;
-    walkStep(step, basePath, warnings);
-  }
-  validateStepReferences(workflow, warnings);
+  walkContainer(workflow.steps, new Set<string>(), 'steps', warnings);
   return warnings;
 }
 
@@ -164,10 +158,6 @@ export function validateSchemaQuality(workflow: WorkflowDefinition): SchemaQuali
 
 const STEP_NAME_RE = /\bsteps\.([a-zA-Z0-9_-]+)/g;
 
-function validateStepReferences(workflow: WorkflowDefinition, out: SchemaQualityWarning[]): void {
-  walkContainer(workflow.steps, new Set<string>(), 'steps', out);
-}
-
 function walkContainer(
   steps: WorkflowDefinition['steps'],
   ancestorsInScope: ReadonlySet<string>,
@@ -180,6 +170,7 @@ function walkContainer(
     const step = steps[i];
     if (!step) continue;
     const stepPath = `${pathPrefix}.${i}`;
+    walkStep(step, stepPath, out);
     validateStepRefs(step, stepPath, available, out);
     // Recurse into nested containers with the scope as it was BEFORE this
     // step "ran" — the container step itself is not yet in scope inside its
@@ -382,30 +373,6 @@ function walkStep(
       });
     }
     return;
-  }
-
-  // Recurse into compound steps (parallel branches, control.foreach, etc.).
-  // The exact key varies by step kind; we walk anything that looks like a
-  // nested step list. Conservative — only steps we recognise count.
-  const withAny = step.with as Record<string, unknown> | undefined;
-  const nestedSteps = (withAny as { steps?: unknown } | undefined)?.steps;
-  if (Array.isArray(nestedSteps)) {
-    for (let i = 0; i < nestedSteps.length; i++) {
-      const s = nestedSteps[i] as WorkflowDefinition['steps'][number] | undefined;
-      if (s) walkStep(s, `${basePath}.with.steps.${i}`, out);
-    }
-  }
-  const nestedBranches = (withAny as { branches?: unknown } | undefined)?.branches;
-  if (Array.isArray(nestedBranches)) {
-    for (let b = 0; b < nestedBranches.length; b++) {
-      const branch = nestedBranches[b] as { steps?: unknown } | undefined;
-      if (branch && Array.isArray(branch.steps)) {
-        for (let i = 0; i < branch.steps.length; i++) {
-          const s = branch.steps[i] as WorkflowDefinition['steps'][number] | undefined;
-          if (s) walkStep(s, `${basePath}.with.branches.${b}.steps.${i}`, out);
-        }
-      }
-    }
   }
 }
 

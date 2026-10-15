@@ -109,6 +109,17 @@ function upgradeStepDeep(step: unknown): unknown {
   if (Array.isArray(out.else)) {
     out.else = out.else.map(upgradeStepDeep);
   }
+  if (Array.isArray(out.default)) {
+    out.default = out.default.map(upgradeStepDeep);
+  }
+  if (Array.isArray(out.cases)) {
+    out.cases = out.cases.map((entry: unknown) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      const c = entry as Record<string, unknown>;
+      if (!Array.isArray(c.steps)) return entry;
+      return { ...c, steps: c.steps.map(upgradeStepDeep) };
+    });
+  }
   if (Array.isArray(out.branches)) {
     out.branches = out.branches.map((branch: unknown) => {
       if (!branch || typeof branch !== 'object') return branch;
@@ -175,6 +186,14 @@ function workflowHasUpgradableSteps(steps: unknown[]): boolean {
     if (Array.isArray(s.steps) && workflowHasUpgradableSteps(s.steps as unknown[])) return true;
     if (Array.isArray(s.then) && workflowHasUpgradableSteps(s.then as unknown[])) return true;
     if (Array.isArray(s.else) && workflowHasUpgradableSteps(s.else as unknown[])) return true;
+    if (Array.isArray(s.default) && workflowHasUpgradableSteps(s.default)) return true;
+    if (Array.isArray(s.cases)) {
+      for (const entry of s.cases) {
+        if (!entry || typeof entry !== 'object') continue;
+        const c = entry as Record<string, unknown>;
+        if (Array.isArray(c.steps) && workflowHasUpgradableSteps(c.steps)) return true;
+      }
+    }
     if (Array.isArray(s.branches)) {
       for (const b of s.branches as unknown[]) {
         if (!b || typeof b !== 'object') continue;

@@ -1,10 +1,11 @@
 import {
-  WorkflowDefinitionSchema,
   getStepSchema,
+  StepTypeSchema,
+  WorkflowDefinitionSchema,
   type Step,
   type WorkflowDefinition,
 } from '@eigenpal/types';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { validateReviewSelectors } from './review-selectors';
 import { upgradeWorkflow } from './upgrades';
 
@@ -71,7 +72,8 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
     parsed = parseYaml(yaml);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new YamlParseError(`Invalid YAML: ${message}`);
+    const position = err instanceof YAMLParseError ? err.linePos?.[0] : undefined;
+    throw new YamlParseError(`Invalid YAML: ${message}`, position?.line, position?.col);
   }
 
   // Apply upgrades to convert legacy formats
@@ -97,6 +99,7 @@ export function parseWorkflow(yaml: string): WorkflowDefinition {
       message: e.message,
       code: e.code,
     }));
+    validationIssues.push(...collectUnknownStepTypes(upgraded.steps, ['steps']));
     const errorMessages = validationIssues
       .map((e) => `${e.path.join('.')}: ${e.message}`)
       .join('; ');
@@ -201,6 +204,47 @@ function collectDeprecatedBlockIssues(definition: Record<string, unknown>): Vali
   }
 
   walkSteps(definition.steps, ['steps']);
+  return issues;
+}
+
+/** Enrich failed schema validation without changing which workflows are accepted. */
+function collectUnknownStepTypes(steps: unknown, path: (string | number)[]): ValidationIssue[] {
+  if (!Array.isArray(steps)) return [];
+  const issues: ValidationIssue[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const raw = steps[i];
+    if (!raw || typeof raw !== 'object') continue;
+    const step = raw as Record<string, unknown>;
+    const stepPath = [...path, i];
+    if (typeof step.type === 'string' && !StepTypeSchema.safeParse(step.type).success) {
+      issues.push({
+        path: [...stepPath, 'type'],
+        message: `Unknown step type: ${JSON.stringify(step.type)}`,
+        code: 'unknown_step_type',
+      });
+    }
+    // Only inspect actual control-flow bodies, never arbitrary config payloads.
+    if (step.type === 'control.if') {
+      issues.push(...collectUnknownStepTypes(step.then, [...stepPath, 'then']));
+      issues.push(...collectUnknownStepTypes(step.else, [...stepPath, 'else']));
+    } else if (step.type === 'control.foreach' || step.type === 'control.parallel_map') {
+      issues.push(...collectUnknownStepTypes(step.steps, [...stepPath, 'steps']));
+    } else if (step.type === 'control.switch' || step.type === 'control.parallel') {
+      const key = step.type === 'control.switch' ? 'cases' : 'branches';
+      const branches = step[key];
+      if (Array.isArray(branches)) {
+        for (let j = 0; j < branches.length; j++) {
+          const branch = branches[j];
+          if (branch && typeof branch === 'object') {
+            issues.push(...collectUnknownStepTypes(branch.steps, [...stepPath, key, j, 'steps']));
+          }
+        }
+      }
+      if (step.type === 'control.switch') {
+        issues.push(...collectUnknownStepTypes(step.default, [...stepPath, 'default']));
+      }
+    }
+  }
   return issues;
 }
 
@@ -357,6 +401,7 @@ export function validateWorkflow(obj: unknown): ParseResult {
       message: e.message,
       code: e.code,
     }));
+    validationIssues.push(...collectUnknownStepTypes(upgraded.steps, ['steps']));
     const errorMessages = validationIssues
       .map((e) => `${e.path.join('.')}: ${e.message}`)
       .join('; ');

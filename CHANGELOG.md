@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.47
+
+### Patch Changes
+
+- 80dc888: Git authentication keeps working after runtime upgrades when running the CLI from source.
+
 ## 0.20.45
 
 ### Minor Changes
