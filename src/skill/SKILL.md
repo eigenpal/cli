@@ -302,8 +302,7 @@ eigenpal agents versions agents.<slug> --json
 
 # Edit source.
 $EDITOR agents/<slug>/AGENT.md
-$EDITOR agents/<slug>/eigenpal.yaml
-$EDITOR agents/<slug>/input-schema.json agents/<slug>/output-schema.json
+$EDITOR agents/<slug>/agent.ts
 
 # Validate and save.
 eigenpal agents validate agents/<slug>
@@ -322,6 +321,12 @@ eigenpal runs trace <run-id> --out ./review/<run-id>/trace.jsonl
 eigenpal agents release patch agents/<slug>
 eigenpal agents sync agents.<slug>
 ```
+
+Define agents with `createAgent` from `@eigenpal/automations` in `agent.ts`.
+Set `inputSchema`, `outputSchema`, model pins, triggers, and dependencies there.
+Schemas accept Zod or raw JSON Schema. Keep instructions in `AGENT.md`.
+Compilation happens in the platform sandbox; never import organization source
+into a local host process. Frozen resumes reuse the run's compiled snapshot.
 
 Use schema field names for file inputs when an agent has more than one file
 field:
@@ -413,7 +418,7 @@ eigenpal agents save -m "Add monthly report template"
 eigenpal agents release patch resources/templates/monthly-report
 
 # Consuming agent: pin an exact dependency version, then release and sync.
-$EDITOR agents/<slug>/eigenpal.yaml   # workspace:resources.templates.monthly-report: "1.0.0"
+$EDITOR agents/<slug>/agent.ts   # dependencies: { "workspace:resources.templates.monthly-report": "1.0.0" }
 eigenpal agents validate agents/<slug>
 eigenpal agents save -m "Use monthly report template"
 eigenpal agents release patch agents/<slug>
@@ -440,7 +445,7 @@ eigenpal agents deps --dir agents/<dependent-slug>
 eigenpal agents save -m "Improve shared <slug>"
 eigenpal agents release patch resources/skills/<slug>
 
-$EDITOR agents/<dependent-slug>/eigenpal.yaml
+$EDITOR agents/<dependent-slug>/agent.ts
 eigenpal agents validate agents/<dependent-slug>
 eigenpal agents save -m "Bump <slug> dependency"
 eigenpal agents release patch agents/<dependent-slug>

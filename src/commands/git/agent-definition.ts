@@ -11,7 +11,7 @@ export function captureAgentSource(root: string): {
 } {
   for (const name of ['eigenpal.yaml', 'eigenpal.yml', 'input-schema.json', 'output-schema.json'])
     if (existsSync(path.join(root, name)))
-      throw new Error('Agent package mixes TypeScript and legacy definition files');
+      throw new Error('Define the agent manifest and schemas exclusively in agent.ts');
   const files: Record<string, string> = {};
   let bytes = 0;
   const visit = (directory: string) => {

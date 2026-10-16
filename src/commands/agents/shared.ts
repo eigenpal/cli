@@ -11,9 +11,7 @@ export type AgentFile = { path: string; contentBase64: string; contentType?: str
 export type AgentInputFileSpec = { fieldName: string; filePath: string };
 export type ArtifactInventoryRow = { kind: string; name: string; path: string; present: string };
 
-export const PACKAGE_MANIFEST = 'eigenpal.yaml';
 export const DATASET_DIR = 'dataset';
-export const SCHEMA_FILENAMES = ['input-schema.json', 'output-schema.json'] as const;
 export const AGENT_EXAMPLE_INPUT_JSON = 'input.json';
 export const AGENT_EXAMPLE_EXPECTED_JSON = 'expected.json';
 export const LEGACY_LAYOUTS = [

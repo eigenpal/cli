@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.53
+
+### Patch Changes
+
+- eabef69: Agent packages now use TypeScript for configuration and schemas. Frozen installs require captured definitions so resumed runs continue using the same version.
+
 ## 0.20.49
 
 ### Patch Changes

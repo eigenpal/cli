@@ -1,15 +1,12 @@
 import {
   DATASET_NAME_PATTERN,
   DatasetMetaSchema,
-  SourcePackageManifestSchema,
   getEigenpalAjv,
   isScopedFileRef,
-  validateAgentSchema,
   validateScopedArtifactPath,
 } from '@eigenpal/types';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import YAML from 'yaml';
 import type { CliConfig } from '../../lib/config';
 import { compileLocalAgent } from '../git/agent-definition';
 import {
@@ -17,8 +14,6 @@ import {
   AGENT_EXAMPLE_INPUT_JSON,
   DATASET_DIR,
   LEGACY_LAYOUTS,
-  PACKAGE_MANIFEST,
-  SCHEMA_FILENAMES,
 } from './shared';
 
 export async function validateAgentProject(
@@ -31,34 +26,9 @@ export async function validateAgentProject(
       errors.push(`Legacy layout ${oldName}/ is removed; use Git source under agents/<slug>/`);
     }
   }
-  if (existsSync(path.join(root, 'agent.yaml'))) {
-    errors.push('Legacy agent.yaml layout is removed; use eigenpal.yaml in a Git-backed package');
-  }
-  if (existsSync(path.join(root, 'agent'))) {
-    errors.push('Legacy agent/ directory is removed; use Git source (eigenpal agents clone)');
-  }
-  const manifestPath = path.join(root, PACKAGE_MANIFEST);
-  if (existsSync(path.join(root, 'agent.ts'))) {
-    // Source validation is performed by the isolated platform compiler.
-  } else if (!existsSync(manifestPath)) {
-    errors.push(`Missing ${PACKAGE_MANIFEST}`);
-  } else {
-    try {
-      SourcePackageManifestSchema.parse(YAML.parse(await fs.readFile(manifestPath, 'utf8')));
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
+  if (!existsSync(path.join(root, 'agent.ts'))) errors.push('Missing agent.ts');
   if (!existsSync(path.join(root, 'AGENT.md'))) warnings.push('Missing AGENT.md');
   if (!existsSync(path.join(root, DATASET_DIR))) warnings.push(`Missing ${DATASET_DIR}/`);
-  for (const filename of SCHEMA_FILENAMES) {
-    const schemaPath = path.join(root, filename);
-    if (!existsSync(schemaPath)) continue;
-    const validation = validateAgentSchema(await fs.readFile(schemaPath, 'utf8'), filename);
-    for (const issue of validation.errors) {
-      errors.push(`${filename}: ${issue}`);
-    }
-  }
   return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -78,12 +48,12 @@ export async function validateAgentProject(
  * the agent execution path invokes evaluators only for completed runs, so a
  * failure-expected agent example could never receive a passing rollup.
  *
- * When the agent package directory carries input-schema.json, input.json is
+ * When agent.ts defines an input schema, input.json is
  * validated as the FULL run input object against the authored schema — the
  * same semantics as run-start validation (required fields and value types
  * enforced; unknown keys are rejected only when the schema itself sets
  * `additionalProperties: false`; file-typed fields accept `{ "$file": ... }`
- * refs). With output-schema.json, expected.json may stay partial, so only
+ * refs). With an output schema, expected.json may stay partial, so only
  * fields present in both the JSON and the schema are checked.
  */
 export async function validateDatasetDir(
@@ -126,13 +96,8 @@ export async function validateDatasetDir(
   const compiled = existsSync(path.join(agentDir, 'agent.ts'))
     ? await compileLocalAgent(agentDir, opts.config)
     : null;
-  const inputSchema = compiled
-    ? (compiled.definition.inputSchema ?? null)
-    : await loadOptionalWorkspaceSchema(agentDir, 'input-schema.json', errors);
-  const outputSchema = compiled
-    ? (compiled.definition.outputSchema ?? null)
-    : await loadOptionalWorkspaceSchema(agentDir, 'output-schema.json', errors);
-  if (errors.length > 0) return { valid: false, errors };
+  const inputSchema = compiled?.definition.inputSchema ?? null;
+  const outputSchema = compiled?.definition.outputSchema ?? null;
 
   const examples = (await fs.readdir(examplesDir, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
@@ -406,20 +371,6 @@ function isExpectedErrorRef(value: unknown): value is { $error: unknown } {
 // ---------------------------------------------------------------------------
 // Optional value-level schema conformance (input-schema.json / output-schema.json)
 // ---------------------------------------------------------------------------
-
-async function loadOptionalWorkspaceSchema(
-  agentDir: string,
-  filename: (typeof SCHEMA_FILENAMES)[number],
-  errors: string[]
-): Promise<Record<string, unknown> | null> {
-  const schemaPath = path.join(agentDir, filename);
-  if (!existsSync(schemaPath)) return null;
-  const raw = await fs.readFile(schemaPath, 'utf8');
-  const validation = validateAgentSchema(raw, filename);
-  for (const issue of validation.errors) errors.push(`${filename}: ${issue}`);
-  if (!validation.valid) return null;
-  return JSON.parse(raw) as Record<string, unknown>;
-}
 
 function schemaProperties(
   schema: Record<string, unknown>

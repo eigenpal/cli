@@ -176,9 +176,12 @@ export function writeYamlFile(filePath: string, value: unknown): void {
 }
 
 export function packageManifestExists(gitRoot: string, packagePath: SourcePackagePath): boolean {
-  return (
-    existsSync(path.join(gitRoot, packagePath, 'eigenpal.yaml')) ||
-    (packagePath.startsWith('agents/') && existsSync(path.join(gitRoot, packagePath, 'agent.ts')))
+  return existsSync(
+    path.join(
+      gitRoot,
+      packagePath,
+      packagePath.startsWith('agents/') ? 'agent.ts' : 'eigenpal.yaml'
+    )
   );
 }
 
@@ -195,10 +198,7 @@ export async function readPackageManifest(
   packageRoot: string,
   config?: CliConfig
 ): Promise<SourcePackageManifest> {
-  if (
-    resolveGitSourceContext({ dir: packageRoot }).packagePath?.startsWith('agents/') &&
-    existsSync(path.join(packageRoot, 'agent.ts'))
-  )
+  if (resolveGitSourceContext({ dir: packageRoot }).packagePath?.startsWith('agents/'))
     return SourcePackageManifestSchema.parse(
       (await compileLocalAgent(packageRoot, config)).definition.manifest
     );
@@ -288,18 +288,14 @@ export async function validatePackage(
   let parsedManifest: SourcePackageManifest | null = null;
 
   if (!context.gitRoot) errors.push('Not inside a Git repository.');
-  if (!context.packageRoot || !manifestPath) errors.push('No package eigenpal.yaml found.');
+  if (!context.packageRoot || !manifestPath) errors.push('No source package found.');
   if (context.packageRoot && existsSync(path.join(context.packageRoot, 'eigenpal.yml'))) {
     errors.push('Use eigenpal.yaml; eigenpal.yml package manifests are not supported.');
   }
   if (!context.packagePath)
     errors.push('Package must live under agents/, workflows/, resources/, or evaluators/.');
 
-  if (
-    context.packagePath?.startsWith('agents/') &&
-    context.packageRoot &&
-    existsSync(path.join(context.packageRoot, 'agent.ts'))
-  ) {
+  if (context.packagePath?.startsWith('agents/') && context.packageRoot) {
     try {
       parsedManifest = await readPackageManifest(context.packageRoot, config);
     } catch (error) {
@@ -631,7 +627,7 @@ export async function packageStatus(opts: BaseOpts & ContextOpts): Promise<void>
 
 export async function deps(opts: BaseOpts & ContextOpts): Promise<void> {
   const context = resolveGitSourceContext(opts);
-  if (!context.packageRoot) throw new Error('No package eigenpal.yaml found.');
+  if (!context.packageRoot) throw new Error('No source package found.');
   const manifest = (await readPackageManifest(context.packageRoot, resolveConfig(opts))) as {
     dependencies?: Record<string, string>;
   };

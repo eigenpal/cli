@@ -453,10 +453,9 @@ async function resolvePackageGraph(input: {
     ) {
       throw new Error(`Hosted source export unavailable for ${input.packagePath}@${ref}.`);
     }
-    const compiledAgent =
-      input.packagePath.startsWith('agents/') && existsSync(path.join(packageRoot, 'agent.ts'))
-        ? await compileLocalAgent(packageRoot, input.config)
-        : undefined;
+    const compiledAgent = input.packagePath.startsWith('agents/')
+      ? await compileLocalAgent(packageRoot, input.config)
+      : undefined;
     const manifest = compiledAgent
       ? compiledAgent.definition.manifest
       : await readPackageManifest(packageRoot);
@@ -498,6 +497,8 @@ async function materializeLockPackage(input: {
   lockPackage: InstallLockPackage;
   outDir: string;
 }): Promise<void> {
+  if (input.lockPackage.packagePath.startsWith('agents/') && !input.lockPackage.compiledAgent)
+    throw new Error('Agent definition snapshot is missing');
   const ref = input.lockPackage.commit;
   const usedHostedArchive = await tryHostedArchive({
     config: input.config,
@@ -536,7 +537,7 @@ async function materializeLockPackage(input: {
         existsSync(path.join(input.outDir, filename)) ||
         existsSync(path.join(input.outDir, 'eigenpal.yaml'))
       )
-        throw new Error('Installed agent mixes TypeScript and legacy definitions');
+        throw new Error('Agent schemas must be defined in agent.ts');
       if (definition[key] !== undefined)
         writeFileSync(path.join(input.outDir, filename), JSON.stringify(definition[key], null, 2), {
           flag: 'wx',

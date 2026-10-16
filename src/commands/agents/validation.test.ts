@@ -1,16 +1,45 @@
 import { validateInput } from '@eigenpal/types';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { validateAgentProject, validateDatasetDir } from './validation';
 
+// Portable HTTP fixture; the Git integration tests cover real isolated compilation.
+const compilerChild = Bun.spawn(
+  [process.execPath, resolve(import.meta.dir, '../git/test-fixtures/compiler-server.ts')],
+  { stdout: 'pipe', stderr: 'inherit' }
+);
+const reader = compilerChild.stdout.getReader();
+const initial = await reader.read();
+const compilerBase = 'http://127.0.0.1:' + new TextDecoder().decode(initial.value).trim();
+reader.releaseLock();
+afterAll(async () => {
+  compilerChild.kill();
+  await compilerChild.exited;
+});
+const config = { baseUrl: compilerBase, apiKey: 'eig_test_key', dir: '.' };
+const definitions = new Map<string, Record<string, unknown>>();
+function writeAgentSchema(dir: string, key: 'inputSchema' | 'outputSchema', schema: unknown) {
+  const definition = { ...(definitions.get(dir) ?? { name: 'Schema fixture' }), [key]: schema };
+  definitions.set(dir, definition);
+  writeFileSync(
+    join(dir, 'agent.ts'),
+    "import {createAgent} from '@eigenpal/automations'; export default createAgent(" +
+      JSON.stringify(definition) +
+      ');'
+  );
+}
+
 describe('agent local project validation', () => {
-  test('accepts Git-backed eigenpal.yaml package layout', async () => {
+  test('accepts a TypeScript agent package', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-'));
     try {
       mkdirSync(join(dir, 'dataset', 'example-1'), { recursive: true });
-      writeFileSync(join(dir, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Test Agent\n');
+      writeFileSync(
+        join(dir, 'agent.ts'),
+        "import {createAgent} from '@eigenpal/automations'; export default createAgent({name:'Test Agent'});"
+      );
       writeFileSync(join(dir, 'AGENT.md'), 'Extract invoices.\n');
 
       await expect(validateAgentProject(dir)).resolves.toMatchObject({ valid: true });
@@ -19,64 +48,11 @@ describe('agent local project validation', () => {
     }
   });
 
-  test('accepts valid input and output schema files', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-schema-'));
+  test('requires agent.ts even when a YAML manifest exists', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-yaml-'));
     try {
-      mkdirSync(join(dir, 'dataset', 'example-1'), { recursive: true });
-      writeFileSync(join(dir, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Test Agent\n');
-      writeFileSync(join(dir, 'AGENT.md'), 'Extract invoices.\n');
-      writeFileSync(
-        join(dir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            document: { type: 'string', 'x-eigenpal-type': 'file' },
-            language: { type: 'string' },
-          },
-          required: ['document'],
-        })
-      );
-      writeFileSync(
-        join(dir, 'output-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            total: { type: 'number' },
-            vendor: { type: ['string', 'null'] },
-          },
-          required: ['total', 'vendor'],
-        })
-      );
-
-      await expect(validateAgentProject(dir)).resolves.toMatchObject({ valid: true });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('rejects invalid input and output schema files', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'eigenpal-agent-bad-schema-'));
-    try {
-      mkdirSync(join(dir, 'dataset', 'example-1'), { recursive: true });
-      writeFileSync(join(dir, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Test Agent\n');
-      writeFileSync(join(dir, 'AGENT.md'), 'Extract invoices.\n');
-      writeFileSync(join(dir, 'input-schema.json'), '{"type":"array"}');
-      writeFileSync(
-        join(dir, 'output-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            document: { type: 'string', 'x-eigenpal-type': 'image' },
-          },
-        })
-      );
-
-      const result = await validateAgentProject(dir);
-      expect(result.valid).toBe(false);
-      expect(result.errors.join('\n')).toContain('input-schema.json: Root "type" must be "object"');
-      expect(result.errors.join('\n')).toContain(
-        'output-schema.json: /properties/document: x-eigenpal-type must be "file" if present'
-      );
+      writeFileSync(join(dir, 'eigenpal.yaml'), 'schemaVersion: 1\nname: Old agent\n');
+      expect((await validateAgentProject(dir)).errors).toContain('Missing agent.ts');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -115,6 +91,10 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const root = mkdtempSync(join(tmpdir(), prefix));
     const datasetDir = join(root, 'dataset');
     mkdirSync(datasetDir, { recursive: true });
+    writeFileSync(
+      join(root, 'agent.ts'),
+      `import {createAgent} from '@eigenpal/automations'; export default createAgent(${JSON.stringify({ name: 'Dataset fixture' })});`
+    );
     return { root, datasetDir };
   }
 
@@ -133,7 +113,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'input', 'Contract_2026.pdf'), 'pdf');
       writeFileSync(join(example, 'input', 'Appendix.pdf'), 'pdf');
 
-      await expect(validateDatasetDir(datasetDir, { agentDir: root })).resolves.toEqual({
+      await expect(validateDatasetDir(datasetDir, { agentDir: root, config })).resolves.toEqual({
         valid: true,
         errors: [],
       });
@@ -155,7 +135,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(withFiles, 'expected', 'Invoice.docx'), 'docx');
       writeFileSync(join(withFiles, 'meta.json'), JSON.stringify({ rowOrder: 1 }));
 
-      await expect(validateDatasetDir(datasetDir, { agentDir: root })).resolves.toEqual({
+      await expect(validateDatasetDir(datasetDir, { agentDir: root, config })).resolves.toEqual({
         valid: true,
         errors: [],
       });
@@ -172,7 +152,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(failure, 'input.json'), '{}');
       writeFileSync(join(failure, 'expected.json'), JSON.stringify({ $error: { code: 422 } }));
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain(
@@ -190,7 +170,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       mkdirSync(join(datasetDir, 'invoice-foo'), { recursive: true });
       writeFileSync(join(datasetDir, 'invoice-foo', 'input.json'), '{}');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain('missing examples/ directory');
@@ -209,7 +189,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'input.json'), '{}');
       writeFileSync(join(example, 'input', 'stray.pdf'), 'pdf');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain(
         'examples/foo/input/stray.pdf: file is not referenced from input.json'
@@ -233,7 +213,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
         })
       );
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain(
@@ -254,7 +234,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'input.json'), '{}');
       writeFileSync(join(example, 'expected', 'orphan.pdf'), 'pdf');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain(
         'examples/foo/expected/orphan.pdf: file is not referenced from expected.json'
@@ -271,7 +251,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       mkdirSync(join(datasetDir, 'examples', 'foo'), { recursive: true });
       writeFileSync(join(datasetDir, 'examples', 'foo', 'input.json'), '{}');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain('legacy dataset format');
     } finally {
@@ -291,7 +271,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'expected', 'output.json'), '{}');
       writeFileSync(join(example, 'expected', 'error.json'), '{}');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain('examples/foo/input/arguments.json: legacy workflow archive path');
@@ -308,7 +288,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       mkdirSync(join(datasetDir, 'examples', 'Invoice-Foo'), { recursive: true });
       writeFileSync(join(datasetDir, 'examples', 'Invoice-Foo', 'input.json'), '{}');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain(
         'examples/Invoice-Foo: example folder name must be lowercase kebab/snake-case'
@@ -325,7 +305,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       mkdirSync(join(datasetDir, 'examples', 'not-object'), { recursive: true });
       writeFileSync(join(datasetDir, 'examples', 'not-object', 'input.json'), '[1,2]');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain('examples/missing/input.json: input.json is required');
@@ -345,7 +325,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'expected', 'golden.pdf'), 'pdf');
       writeFileSync(join(example, 'meta.json'), JSON.stringify({ rowOrder: -1 }));
 
-      const result = await validateDatasetDir(datasetDir, { agentDir: root });
+      const result = await validateDatasetDir(datasetDir, { agentDir: root, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain('not supported for agent datasets');
@@ -360,17 +340,14 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const agentDir = join(root, 'agent');
     try {
       mkdirSync(agentDir);
-      writeFileSync(
-        join(agentDir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            document: { type: 'string', 'x-eigenpal-type': 'file' },
-            topic: { type: 'string' },
-          },
-          required: ['document', 'topic'],
-        })
-      );
+      writeAgentSchema(agentDir, 'inputSchema', {
+        type: 'object',
+        properties: {
+          document: { type: 'string', 'x-eigenpal-type': 'file' },
+          topic: { type: 'string' },
+        },
+        required: ['document', 'topic'],
+      });
       const example = join(datasetDir, 'examples', 'foo');
       mkdirSync(join(example, 'input'), { recursive: true });
       writeFileSync(
@@ -379,7 +356,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       );
       writeFileSync(join(example, 'input', 'doc.pdf'), 'pdf');
 
-      await expect(validateDatasetDir(datasetDir, { agentDir })).resolves.toEqual({
+      await expect(validateDatasetDir(datasetDir, { agentDir, config })).resolves.toEqual({
         valid: true,
         errors: [],
       });
@@ -393,31 +370,25 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const agentDir = join(root, 'agent');
     try {
       mkdirSync(agentDir);
-      writeFileSync(
-        join(agentDir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: { topic: { type: 'string' } },
-          required: ['topic'],
-        })
-      );
-      writeFileSync(
-        join(agentDir, 'output-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            topic: { type: 'string' },
-            jokes: { type: 'array', items: { type: 'string' } },
-          },
-          required: ['topic', 'jokes'],
-        })
-      );
+      writeAgentSchema(agentDir, 'inputSchema', {
+        type: 'object',
+        properties: { topic: { type: 'string' } },
+        required: ['topic'],
+      });
+      writeAgentSchema(agentDir, 'outputSchema', {
+        type: 'object',
+        properties: {
+          topic: { type: 'string' },
+          jokes: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['topic', 'jokes'],
+      });
       const example = join(datasetDir, 'examples', 'foo');
       mkdirSync(example, { recursive: true });
       writeFileSync(join(example, 'input.json'), '{"topic":123}');
       writeFileSync(join(example, 'expected.json'), '{"topic":"cats"}');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir });
+      const result = await validateDatasetDir(datasetDir, { agentDir, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain('examples/foo/input.json/topic: must be string');
       expect(result.errors.join('\n')).not.toContain('expected.json');
@@ -431,17 +402,14 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const agentDir = join(root, 'agent');
     try {
       mkdirSync(agentDir);
-      writeFileSync(
-        join(agentDir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            document: { type: 'string', 'x-eigenpal-type': 'file' },
-            topic: { type: 'string' },
-          },
-          required: ['document', 'topic'],
-        })
-      );
+      writeAgentSchema(agentDir, 'inputSchema', {
+        type: 'object',
+        properties: {
+          document: { type: 'string', 'x-eigenpal-type': 'file' },
+          topic: { type: 'string' },
+        },
+        required: ['document', 'topic'],
+      });
 
       const empty = join(datasetDir, 'examples', 'empty-input');
       mkdirSync(empty, { recursive: true });
@@ -455,7 +423,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       );
       writeFileSync(join(misspelled, 'input', 'doc.pdf'), 'pdf');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir });
+      const result = await validateDatasetDir(datasetDir, { agentDir, config });
       expect(result.valid).toBe(false);
       const errors = result.errors.join('\n');
       expect(errors).toContain(
@@ -509,12 +477,12 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       const agentDir = join(root, 'agent');
       try {
         mkdirSync(agentDir);
-        writeFileSync(join(agentDir, 'input-schema.json'), JSON.stringify(schema));
+        writeAgentSchema(agentDir, 'inputSchema', schema);
         const example = join(datasetDir, 'examples', 'foo');
         mkdirSync(example, { recursive: true });
         writeFileSync(join(example, 'input.json'), JSON.stringify(input));
 
-        const result = await validateDatasetDir(datasetDir, { agentDir });
+        const result = await validateDatasetDir(datasetDir, { agentDir, config });
         expect(result.valid).toBe(accepted);
         if (!accepted) {
           expect(result.errors.join('\n')).toContain(
@@ -532,14 +500,11 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const agentDir = join(root, 'agent');
     try {
       mkdirSync(agentDir);
-      writeFileSync(
-        join(agentDir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: { topic: { type: 'string' } },
-          required: ['topic'],
-        })
-      );
+      writeAgentSchema(agentDir, 'inputSchema', {
+        type: 'object',
+        properties: { topic: { type: 'string' } },
+        required: ['topic'],
+      });
       const example = join(datasetDir, 'examples', 'foo');
       mkdirSync(join(example, 'input'), { recursive: true });
       writeFileSync(
@@ -548,7 +513,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       );
       writeFileSync(join(example, 'input', 'doc.pdf'), 'pdf');
 
-      const result = await validateDatasetDir(datasetDir, { agentDir });
+      const result = await validateDatasetDir(datasetDir, { agentDir, config });
       expect(result.valid).toBe(false);
       expect(result.errors.join('\n')).toContain('examples/foo/input.json/topic: must be string');
     } finally {
@@ -561,16 +526,13 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
     const agentDir = join(root, 'agent');
     try {
       mkdirSync(agentDir);
-      writeFileSync(
-        join(agentDir, 'input-schema.json'),
-        JSON.stringify({
-          type: 'object',
-          properties: {
-            contracts: { type: 'array', items: { type: 'string', 'x-eigenpal-type': 'file' } },
-          },
-          required: ['contracts'],
-        })
-      );
+      writeAgentSchema(agentDir, 'inputSchema', {
+        type: 'object',
+        properties: {
+          contracts: { type: 'array', items: { type: 'string', 'x-eigenpal-type': 'file' } },
+        },
+        required: ['contracts'],
+      });
       const example = join(datasetDir, 'examples', 'foo');
       mkdirSync(join(example, 'input'), { recursive: true });
       writeFileSync(
@@ -580,7 +542,7 @@ describe('agent dataset validation (canonical examples/ layout)', () => {
       writeFileSync(join(example, 'input', 'a.pdf'), 'pdf');
       writeFileSync(join(example, 'input', 'b.pdf'), 'pdf');
 
-      await expect(validateDatasetDir(datasetDir, { agentDir })).resolves.toEqual({
+      await expect(validateDatasetDir(datasetDir, { agentDir, config })).resolves.toEqual({
         valid: true,
         errors: [],
       });

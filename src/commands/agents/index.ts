@@ -28,14 +28,7 @@ import { registerEnvCommands, registerSecretsExportCommands } from './env';
 import { registerExperimentCommands } from './experiments';
 import { registerAgentFileCommands } from './files';
 import { registerSessionCommands } from './sessions';
-import {
-  BaseOpts,
-  PACKAGE_MANIFEST,
-  agentAutomationId,
-  buildClient,
-  compactParams,
-  printJson,
-} from './shared';
+import { BaseOpts, agentAutomationId, buildClient, compactParams, printJson } from './shared';
 import { validateAgentProject } from './validation';
 
 export { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';
@@ -151,17 +144,17 @@ async function listAgents(opts: BaseOpts & PaginationOpts & { search?: string })
 
 async function validateAgentCommand(dir = '.', opts: { json?: boolean; baseUrl?: string }) {
   const root = path.resolve(dir);
-  const legacy = await validateAgentProject(root);
+  const project = await validateAgentProject(root);
   const result: {
     valid: boolean;
     errors: string[];
     warnings: string[];
     packagePath?: string;
-  } = { ...legacy };
+  } = { ...project };
 
-  if (existsSync(path.join(root, 'agent.ts')) || existsSync(path.join(root, PACKAGE_MANIFEST))) {
+  if (existsSync(path.join(root, 'agent.ts'))) {
     const source = await validateSourcePackage(root, resolveConfig(opts));
-    result.valid = legacy.valid && source.valid;
+    result.valid = project.valid && source.valid;
     result.packagePath = source.packagePath;
     for (const issue of source.errors) {
       if (!result.errors.includes(issue)) result.errors.push(issue);

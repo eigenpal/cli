@@ -26,7 +26,7 @@ test('captures local modules without reading package config or resources', async
 test('refuses mixed definitions before contacting the compiler', async () => {
   const dir = await fixture();
   await writeFile(path.join(dir, 'output-schema.json'), '{}');
-  expect(() => captureAgentSource(dir)).toThrow('mixes TypeScript');
+  expect(() => captureAgentSource(dir)).toThrow('exclusively in agent.ts');
 });
 test('does not follow symlink source modules', async () => {
   const dir = await fixture();

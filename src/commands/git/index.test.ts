@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -23,6 +23,20 @@ import { checkoutOriginalBranch } from './source-state';
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'cli.ts');
 
+// Separate fixture process lets synchronous CLI subprocesses exercise the HTTP boundary.
+const compilerChild = Bun.spawn(
+  [process.execPath, resolve(import.meta.dir, 'test-fixtures/compiler-server.ts')],
+  { stdout: 'pipe', stderr: 'inherit', env: { ...process.env, SKIP_ENV_VALIDATION: 'true' } }
+);
+const reader = compilerChild.stdout.getReader();
+const initial = await reader.read();
+const compilerBase = 'http://127.0.0.1:' + new TextDecoder().decode(initial.value).trim();
+reader.releaseLock();
+afterAll(async () => {
+  compilerChild.kill();
+  await compilerChild.exited;
+});
+
 function git(args: string[], cwd?: string): void {
   const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
   if (result.status !== 0) {
@@ -41,8 +55,12 @@ function makeSourceRepo(packagePath = 'agents/invoice-agent'): {
   writeFileSync(join(root, 'eigenpal.yaml'), 'schemaVersion: 1\neigenpalVersion: 1.0.0\n');
   writeFileSync(join(root, '.gitignore'), '.eigenpal/\neigenpal_modules/\n');
   writeFileSync(
-    join(packageDir, 'eigenpal.yaml'),
-    'schemaVersion: 1\nname: Invoice Agent\ndescription: Extract invoices\n'
+    join(packageDir, packagePath.startsWith('agents/') ? 'agent.ts' : 'eigenpal.yaml'),
+    packagePath.startsWith('agents/')
+      ? "import {createAgent} from '@eigenpal/automations'; export default createAgent(" +
+          JSON.stringify({ name: 'Invoice Agent', description: 'Extract invoices' }) +
+          ');\n'
+      : 'schemaVersion: 1\nname: Invoice Agent\ndescription: Extract invoices\n'
   );
   const bodyFilename = packagePath.startsWith('agents/') ? 'AGENT.md' : 'README.md';
   writeFileSync(join(packageDir, bodyFilename), 'Extract invoices.\n');
@@ -79,7 +97,7 @@ function cli(args: string[], opts: { cwd?: string; baseUrl?: string } = {}) {
     env: {
       ...process.env,
       EIGENPAL_API_KEY: 'eig_test_key',
-      ...(opts.baseUrl ? { EIGENPAL_BASE_URL: opts.baseUrl } : {}),
+      EIGENPAL_BASE_URL: opts.baseUrl ?? compilerBase,
     },
   });
 }
@@ -94,7 +112,7 @@ function cliAsync(
       env: {
         ...process.env,
         EIGENPAL_API_KEY: 'eig_test_key',
-        ...(opts.baseUrl ? { EIGENPAL_BASE_URL: opts.baseUrl } : {}),
+        EIGENPAL_BASE_URL: opts.baseUrl ?? compilerBase,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -127,7 +145,18 @@ async function withApiServer(
   handler: (request: Request) => Response | Promise<Response>,
   fn: (baseUrl: string) => void | Promise<void>
 ): Promise<void> {
-  const server = Bun.serve({ port: 0, fetch: handler });
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      if (new URL(request.url).pathname.endsWith('/source/agent-definition'))
+        return fetch(compilerBase, {
+          method: 'POST',
+          headers: { authorization: 'Bearer eig_test_key', 'content-type': 'application/json' },
+          body: await request.text(),
+        });
+      return handler(request);
+    },
+  });
   try {
     await fn(`http://127.0.0.1:${server.port}`);
   } finally {
@@ -166,6 +195,7 @@ describe('git passthrough and agents source commands', () => {
     try {
       const validate = spawnSync('bun', [CLI, 'agents', 'validate', packageDir, '--json'], {
         encoding: 'utf8',
+        env: { ...process.env, EIGENPAL_BASE_URL: compilerBase, EIGENPAL_API_KEY: 'eig_test_key' },
       });
       expect(validate.status).toBe(0);
       expect(JSON.parse(validate.stdout)).toMatchObject({
@@ -175,6 +205,7 @@ describe('git passthrough and agents source commands', () => {
 
       const doctor = spawnSync('bun', [CLI, 'agents', 'doctor', '--dir', packageDir, '--json'], {
         encoding: 'utf8',
+        env: { ...process.env, EIGENPAL_BASE_URL: compilerBase, EIGENPAL_API_KEY: 'eig_test_key' },
       });
       expect(doctor.status).toBe(1);
       const checks = JSON.parse(doctor.stdout).checks;
@@ -365,23 +396,13 @@ describe('git passthrough and agents source commands', () => {
     const { root, packageDir } = makeSourceRepo();
     try {
       writeFileSync(
-        join(packageDir, 'eigenpal.yaml'),
-        [
-          'schemaVersion: 1',
-          'name: Invoice Agent',
-          'dependencies:',
-          '  workspace:resources.skills.parser: 1.0.0',
-          'evaluators:',
-          '  items:',
-          '    - use: ./evaluators/exact-fields.yaml',
-          '    - use: workspace:evaluators.invoice-quality',
-          '      version: 1.0.0',
-          '',
-        ].join('\n')
+        join(packageDir, 'agent.ts'),
+        'import {createAgent} from \'@eigenpal/automations\'; export default createAgent({"name":"Invoice Agent","dependencies":{"workspace:resources.skills.parser":"1.0.0"},"evaluators":{"items":[{"use":"./evaluators/exact-fields.yaml"},{"use":"workspace:evaluators.invoice-quality","version":"1.0.0"}]}});\n'
       );
 
       const result = spawnSync('bun', [CLI, 'agents', 'validate', packageDir, '--json'], {
         encoding: 'utf8',
+        env: { ...process.env, EIGENPAL_BASE_URL: compilerBase, EIGENPAL_API_KEY: 'eig_test_key' },
       });
       const body = JSON.parse(result.stdout);
 
@@ -1135,15 +1156,8 @@ describe('git passthrough and agents source commands', () => {
       );
       writeFileSync(join(dependencyDir, 'README.md'), '# Jokes\n\n');
       writeFileSync(
-        join(packageDir, 'eigenpal.yaml'),
-        [
-          'schemaVersion: 1',
-          'name: Invoice Agent',
-          'description: Extract invoices',
-          'dependencies:',
-          '  workspace:resources.knowledge.jokes: 1.0.0',
-          '',
-        ].join('\n')
+        join(packageDir, 'agent.ts'),
+        'import {createAgent} from \'@eigenpal/automations\'; export default createAgent({"name":"Invoice Agent","description":"Extract invoices","dependencies":{"workspace:resources.knowledge.jokes":"1.0.0"}});\n'
       );
       git(['config', 'user.email', 'test@example.com'], root);
       git(['config', 'user.name', 'Test User'], root);
@@ -1172,29 +1186,15 @@ describe('git passthrough and agents source commands', () => {
       const lockfilePath = join(packageDir, '.eigenpal', 'eigenpal.lock');
       const validLockfile = readFileSync(lockfilePath, 'utf8');
       writeFileSync(
-        join(packageDir, 'eigenpal.yaml'),
-        [
-          'schemaVersion: 1',
-          'name: Invoice Agent',
-          'description: Extract invoices',
-          'dependencies:',
-          '  workspace:resources.knowledge.jokes: 2.0.0',
-          '',
-        ].join('\n')
+        join(packageDir, 'agent.ts'),
+        'import {createAgent} from \'@eigenpal/automations\'; export default createAgent({"name":"Invoice Agent","description":"Extract invoices","dependencies":{"workspace:resources.knowledge.jokes":"2.0.0"}});\n'
       );
       const frozenMismatch = cli(['agents', 'install', '--frozen-lockfile'], { cwd: packageDir });
       expect(frozenMismatch.status).toBe(1);
       expect(frozenMismatch.stderr).toContain('does not match current package inputs');
       writeFileSync(
-        join(packageDir, 'eigenpal.yaml'),
-        [
-          'schemaVersion: 1',
-          'name: Invoice Agent',
-          'description: Extract invoices',
-          'dependencies:',
-          '  workspace:resources.knowledge.jokes: 1.0.0',
-          '',
-        ].join('\n')
+        join(packageDir, 'agent.ts'),
+        'import {createAgent} from \'@eigenpal/automations\'; export default createAgent({"name":"Invoice Agent","description":"Extract invoices","dependencies":{"workspace:resources.knowledge.jokes":"1.0.0"}});\n'
       );
 
       const invalidLockfile = JSON.parse(validLockfile);
@@ -1224,14 +1224,8 @@ describe('git passthrough and agents source commands', () => {
       rmSync(out, { recursive: true, force: true });
 
       writeFileSync(
-        join(packageDir, 'eigenpal.yaml'),
-        [
-          'schemaVersion: 1',
-          'name: Invoice Agent',
-          'dependencies:',
-          '  workspace:resources.knowledge.jokes: 2.0.0',
-          '',
-        ].join('\n')
+        join(packageDir, 'agent.ts'),
+        'import {createAgent} from \'@eigenpal/automations\'; export default createAgent({"name":"Invoice Agent","dependencies":{"workspace:resources.knowledge.jokes":"2.0.0"}});\n'
       );
       const mismatch = cli(['agents', 'install'], { cwd: packageDir });
       expect(mismatch.status).toBe(1);
