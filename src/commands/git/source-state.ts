@@ -27,6 +27,7 @@ import YAML from 'yaml';
 import { getProcessEnv } from '../../env';
 import { resolveConfig, type CliConfig } from '../../lib/config';
 import { error, success, table, warn } from '../../lib/ui';
+import { compileLocalAgent } from './agent-definition';
 import {
   configureSourceGitRepo,
   gitBootstrapAuthEnv,
@@ -124,7 +125,11 @@ export function isOrganizationSourceGitRoot(gitRoot: string | null): gitRoot is 
 function findNearestPackageRoot(startDir: string, gitRoot: string | null): string | null {
   let current = path.resolve(startDir);
   while (true) {
-    if (existsSync(path.join(current, 'eigenpal.yaml'))) return current;
+    if (
+      existsSync(path.join(current, 'eigenpal.yaml')) ||
+      existsSync(path.join(current, 'agent.ts'))
+    )
+      return current;
     if (gitRoot && current === gitRoot) return null;
     const parent = path.dirname(current);
     if (parent === current) return null;
@@ -171,7 +176,10 @@ export function writeYamlFile(filePath: string, value: unknown): void {
 }
 
 export function packageManifestExists(gitRoot: string, packagePath: SourcePackagePath): boolean {
-  return existsSync(path.join(gitRoot, packagePath, 'eigenpal.yaml'));
+  return (
+    existsSync(path.join(gitRoot, packagePath, 'eigenpal.yaml')) ||
+    (packagePath.startsWith('agents/') && existsSync(path.join(gitRoot, packagePath, 'agent.ts')))
+  );
 }
 
 function releaseTagExists(
@@ -183,7 +191,17 @@ function releaseTagExists(
   return gitOutput(['tag', '--list', tag], gitRoot) === tag;
 }
 
-export function readPackageManifest(packageRoot: string): SourcePackageManifest {
+export async function readPackageManifest(
+  packageRoot: string,
+  config?: CliConfig
+): Promise<SourcePackageManifest> {
+  if (
+    resolveGitSourceContext({ dir: packageRoot }).packagePath?.startsWith('agents/') &&
+    existsSync(path.join(packageRoot, 'agent.ts'))
+  )
+    return SourcePackageManifestSchema.parse(
+      (await compileLocalAgent(packageRoot, config)).definition.manifest
+    );
   return SourcePackageManifestSchema.parse(readYamlFile(path.join(packageRoot, 'eigenpal.yaml')));
 }
 
@@ -256,11 +274,14 @@ function validatePackageReferences(input: {
   return errors;
 }
 
-export function validatePackage(dir: string): {
+export async function validatePackage(
+  dir: string,
+  config?: CliConfig
+): Promise<{
   valid: boolean;
   errors: string[];
   packagePath?: string;
-} {
+}> {
   const context = resolveGitSourceContext({ dir });
   const errors: string[] = [];
   const manifestPath = context.packageRoot ? path.join(context.packageRoot, 'eigenpal.yaml') : null;
@@ -274,7 +295,17 @@ export function validatePackage(dir: string): {
   if (!context.packagePath)
     errors.push('Package must live under agents/, workflows/, resources/, or evaluators/.');
 
-  if (manifestPath && existsSync(manifestPath)) {
+  if (
+    context.packagePath?.startsWith('agents/') &&
+    context.packageRoot &&
+    existsSync(path.join(context.packageRoot, 'agent.ts'))
+  ) {
+    try {
+      parsedManifest = await readPackageManifest(context.packageRoot, config);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : 'Invalid TypeScript definition');
+    }
+  } else if (manifestPath && existsSync(manifestPath)) {
     const filename = SourceManifestFilenameSchema.safeParse(manifestPath);
     if (!filename.success)
       errors.push(filename.error.issues.map((issue) => issue.message).join('; '));
@@ -485,7 +516,7 @@ export async function doctor(opts: BaseOpts & ContextOpts): Promise<void> {
   }
 
   if (context.packageRoot && context.packageRoot !== context.gitRoot) {
-    const result = validatePackage(context.packageRoot);
+    const result = await validatePackage(context.packageRoot, resolveConfig(opts));
     checks.push({
       check: 'package structure',
       status: result.valid ? 'pass' : 'fail',
@@ -506,23 +537,28 @@ export async function doctor(opts: BaseOpts & ContextOpts): Promise<void> {
   if (checks.some((check) => check.status === 'fail')) process.exit(1);
 }
 
-export function validateSourcePackage(dir: string): {
+export async function validateSourcePackage(
+  dir: string,
+  config?: CliConfig
+): Promise<{
   valid: boolean;
   errors: string[];
   packagePath?: string;
-} {
+}> {
   const context = resolveGitSourceContext({ dir });
   if (context.gitRoot) checkRepoVersion(context.gitRoot, false);
-  return validatePackage(dir);
+  return await validatePackage(dir, config);
 }
 
-export function packageStatus(opts: BaseOpts & ContextOpts): void {
+export async function packageStatus(opts: BaseOpts & ContextOpts): Promise<void> {
   const context = resolveGitSourceContext(opts);
   if (context.gitRoot) checkRepoVersion(context.gitRoot, false);
   const isRepoRootStatus =
     context.gitRoot && context.packageRoot && context.gitRoot === context.packageRoot;
   const validation =
-    context.packageRoot && !isRepoRootStatus ? validatePackage(context.packageRoot) : null;
+    context.packageRoot && !isRepoRootStatus
+      ? await validatePackage(context.packageRoot, resolveConfig(opts))
+      : null;
   const gitStatusLines = context.gitRoot ? readGitStatusLines(context.gitRoot) : [];
   const branch = context.gitRoot ? currentBranchOrNull(context.gitRoot) : null;
   const upstream = context.gitRoot
@@ -531,15 +567,19 @@ export function packageStatus(opts: BaseOpts & ContextOpts): void {
   const head = context.gitRoot ? gitOutput(['rev-parse', 'HEAD'], context.gitRoot) : null;
   const aheadOfMain = context.gitRoot ? countAheadOfMain(context.gitRoot) : null;
   const dirtyPackages = context.gitRoot ? dirtyPackagePaths(context.gitRoot) : [];
-  const packages = dirtyPackages.map((packagePath) => {
-    const packageValidation = validatePackage(path.join(context.gitRoot!, packagePath));
-    return {
+  const packages = [];
+  for (const packagePath of dirtyPackages) {
+    const packageValidation = await validatePackage(
+      path.join(context.gitRoot!, packagePath),
+      resolveConfig(opts)
+    );
+    packages.push({
       packagePath,
       clean: false,
       valid: packageValidation.valid,
       errors: packageValidation.errors,
-    };
-  });
+    });
+  }
   if (
     context.gitRoot &&
     context.packagePath &&
@@ -550,7 +590,12 @@ export function packageStatus(opts: BaseOpts & ContextOpts): void {
       clean: readGitStatusLines(context.gitRoot, [context.packagePath]).length === 0,
       valid:
         validation?.valid ??
-        validatePackage(context.packageRoot ?? opts.dir ?? process.cwd()).valid,
+        (
+          await validatePackage(
+            context.packageRoot ?? opts.dir ?? process.cwd(),
+            resolveConfig(opts)
+          )
+        ).valid,
       errors: validation?.errors ?? [],
     });
   }
@@ -584,12 +629,12 @@ export function packageStatus(opts: BaseOpts & ContextOpts): void {
   }
 }
 
-export function deps(opts: BaseOpts & ContextOpts): void {
+export async function deps(opts: BaseOpts & ContextOpts): Promise<void> {
   const context = resolveGitSourceContext(opts);
   if (!context.packageRoot) throw new Error('No package eigenpal.yaml found.');
-  const manifest = SourcePackageManifestSchema.parse(
-    readYamlFile(path.join(context.packageRoot, 'eigenpal.yaml'))
-  ) as { dependencies?: Record<string, string> };
+  const manifest = (await readPackageManifest(context.packageRoot, resolveConfig(opts))) as {
+    dependencies?: Record<string, string>;
+  };
   const rows = Object.entries(manifest.dependencies ?? {}).map(([name, version]) => ({
     name,
     version,
@@ -659,7 +704,7 @@ function dirtyPackagePaths(gitRoot: string): SourcePackagePath[] {
       const candidate = parts.slice(0, index).join('/');
       if (
         SourcePackagePathSchema.safeParse(candidate).success &&
-        existsSync(path.join(gitRoot, candidate, 'eigenpal.yaml'))
+        packageManifestExists(gitRoot, candidate as SourcePackagePath)
       ) {
         packagePaths.add(candidate as SourcePackagePath);
         break;
@@ -670,9 +715,16 @@ function dirtyPackagePaths(gitRoot: string): SourcePackagePath[] {
 }
 
 function dirtyRootFiles(gitRoot: string): string[] {
-  return readGitStatusLines(gitRoot, ['eigenpal.yaml', '.gitignore'])
+  return readGitStatusLines(gitRoot, [
+    'eigenpal.yaml',
+    '.gitignore',
+    'package.json',
+    'package-lock.json',
+  ])
     .map(statusPath)
-    .filter((file) => file === 'eigenpal.yaml' || file === '.gitignore');
+    .filter((file) =>
+      ['eigenpal.yaml', '.gitignore', 'package.json', 'package-lock.json'].includes(file)
+    );
 }
 
 function hasDirtySharedResources(gitRoot: string): boolean {
@@ -696,7 +748,10 @@ export async function commitSourceChanges(input: {
     throw new Error('Commit requires -m <message> when source changes are dirty.');
   }
   for (const packagePath of packagePaths) {
-    const validation = validatePackage(path.join(input.context.gitRoot, packagePath));
+    const validation = await validatePackage(
+      path.join(input.context.gitRoot, packagePath),
+      input.config
+    );
     if (!validation.valid) {
       throw new Error(
         `Package validation failed for ${packagePath}: ${validation.errors.join('; ')}`

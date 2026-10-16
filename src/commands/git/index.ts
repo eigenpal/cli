@@ -1,4 +1,5 @@
 import {
+  CompiledAgentSnapshotSchema,
   DottedPackageNameSchema,
   dottedPackageNameToPath,
   formatReleaseTag,
@@ -9,6 +10,7 @@ import {
   SourcePackagePathSchema,
   SourceVersionRefSchema,
   workspaceDependencyNameToPackagePath,
+  type CompiledAgentSnapshot,
   type SourcePackagePath,
   type SourceVersionRef,
   type WorkspaceDependencyName,
@@ -25,6 +27,7 @@ import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import { buildCliTelemetryHeaders } from '../../lib/telemetry';
 import { addJsonFlag, dim, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
+import { compileLocalAgent } from './agent-definition';
 import { registerSourceInitCommand } from './init';
 import { runGitPassthrough, type BaseOpts } from './passthrough';
 import { registerSourceSecretCommands } from './secrets';
@@ -74,6 +77,7 @@ type InstallLockPackage = {
   resolvedTag?: string;
   commit: string;
   dependencies: InstallLockPackage[];
+  compiledAgent?: CompiledAgentSnapshot;
 };
 type InstallLockfile = {
   lockfileVersion: 1;
@@ -122,6 +126,7 @@ const InstallLockPackageSchema: z.ZodType<InstallLockPackage> = z.lazy(() =>
     resolvedTag: z.string().min(1).optional(),
     commit: CommitShaSchema,
     dependencies: z.array(InstallLockPackageSchema),
+    compiledAgent: CompiledAgentSnapshotSchema.optional(),
   })
 );
 
@@ -415,7 +420,11 @@ async function resolvePackageGraph(input: {
   packagePath: SourcePackagePath;
   ref: SourceVersionRef;
   seen?: string[];
+  budget?: { remaining: number };
 }): Promise<InstallLockPackage> {
+  const budget = input.budget ?? { remaining: 32 };
+  if (--budget.remaining < 0)
+    throw new Error('Source dependencies exceed the 32-package resolution limit');
   const seen = input.seen ?? [];
   const key = `${input.packagePath}@${input.ref}`;
   if (seen.includes(key)) {
@@ -444,29 +453,38 @@ async function resolvePackageGraph(input: {
     ) {
       throw new Error(`Hosted source export unavailable for ${input.packagePath}@${ref}.`);
     }
-    const manifest = readPackageManifest(packageRoot);
+    const compiledAgent =
+      input.packagePath.startsWith('agents/') && existsSync(path.join(packageRoot, 'agent.ts'))
+        ? await compileLocalAgent(packageRoot, input.config)
+        : undefined;
+    const manifest = compiledAgent
+      ? compiledAgent.definition.manifest
+      : await readPackageManifest(packageRoot);
     const dependencies =
       'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
+    const resolvedDependencies = [];
+    for (const [dependencyName, version] of dependencies)
+      resolvedDependencies.push(
+        await resolvePackageGraph({
+          config: input.config,
+          gitRoot: input.gitRoot,
+          repository: input.repository,
+          packagePath: workspaceDependencyNameToPackagePath(
+            dependencyName as WorkspaceDependencyName
+          ),
+          ref: SourceVersionRefSchema.parse(version),
+          seen: [...seen, key],
+          budget,
+        })
+      );
     return {
       packagePath: input.packagePath,
+      ...(compiledAgent ? { compiledAgent } : {}),
       requestedRef: input.ref,
       resolvedRef: resolved.resolvedRef,
       ...(resolved.resolvedTag ? { resolvedTag: resolved.resolvedTag } : {}),
       commit: resolved.commit,
-      dependencies: await Promise.all(
-        dependencies.map(([dependencyName, version]) =>
-          resolvePackageGraph({
-            config: input.config,
-            gitRoot: input.gitRoot,
-            repository: input.repository,
-            packagePath: workspaceDependencyNameToPackagePath(
-              dependencyName as WorkspaceDependencyName
-            ),
-            ref: SourceVersionRefSchema.parse(version),
-            seen: [...seen, key],
-          })
-        )
-      ),
+      dependencies: resolvedDependencies,
     };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -504,6 +522,26 @@ async function materializeLockPackage(input: {
       packagePath: input.lockPackage.packagePath,
       outDir: input.outDir,
     });
+  }
+  if (input.lockPackage.compiledAgent) {
+    if (
+      !input.lockPackage.packagePath.startsWith('agents/') ||
+      !existsSync(path.join(input.outDir, 'agent.ts'))
+    )
+      throw new Error('Compiled definition does not match installed agent package');
+    const { definition } = input.lockPackage.compiledAgent;
+    for (const key of ['inputSchema', 'outputSchema'] as const) {
+      const filename = key === 'inputSchema' ? 'input-schema.json' : 'output-schema.json';
+      if (
+        existsSync(path.join(input.outDir, filename)) ||
+        existsSync(path.join(input.outDir, 'eigenpal.yaml'))
+      )
+        throw new Error('Installed agent mixes TypeScript and legacy definitions');
+      if (definition[key] !== undefined)
+        writeFileSync(path.join(input.outDir, filename), JSON.stringify(definition[key], null, 2), {
+          flag: 'wx',
+        });
+    }
   }
   const occupied = new Set<string>();
   for (const dependency of input.lockPackage.dependencies) {
@@ -781,7 +819,7 @@ async function release(
   };
   const config = resolveConfig(opts);
   checkRepoVersion(resolvedContext.gitRoot, true);
-  const validation = validatePackage(resolvedContext.packageRoot);
+  const validation = await validatePackage(resolvedContext.packageRoot, config);
   if (!validation.valid)
     throw new Error(`Package validation failed: ${validation.errors.join('; ')}`);
   const releaseMessage = opts.message?.trim() || `Release ${resolvedContext.packagePath}`;
@@ -968,7 +1006,7 @@ async function install(
           'Run eigenpal agents install --frozen-lockfile inside a source package or pass a package ref.'
         );
       }
-      const manifest = readPackageManifest(context.packageRoot);
+      const manifest = await readPackageManifest(context.packageRoot, config);
       const dependencies =
         'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
       const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });
@@ -1059,7 +1097,7 @@ async function install(
   if (!context.gitRoot) {
     throw new Error('Run eigenpal agents install inside an organization source repository.');
   }
-  const manifest = readPackageManifest(context.packageRoot);
+  const manifest = await readPackageManifest(context.packageRoot, config);
   const dependencies =
     'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
   const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });

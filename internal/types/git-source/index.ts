@@ -122,3 +122,10 @@ export {
   type SecretName,
   type SourceSecretsFile,
 } from './secrets';
+
+export {
+  CompiledAgentDataSchema,
+  CompiledAgentSnapshotSchema,
+  type CompiledAgentData,
+  type CompiledAgentSnapshot,
+} from './agent-definition';

@@ -52,6 +52,23 @@ export function validateWorkspaceSchema(content: string, _filename: string): Val
   return { valid: errors.length === 0, errors };
 }
 
+/** Historical agents may explicitly declare the unconstrained JSON Schema {}. */
+export function validateAgentSchema(content: string, filename: string): ValidationResult {
+  try {
+    const schema: unknown = JSON.parse(content);
+    if (
+      schema !== null &&
+      typeof schema === 'object' &&
+      !Array.isArray(schema) &&
+      Object.keys(schema).length === 0
+    )
+      return { valid: true, errors: [] };
+  } catch {
+    /* The shared validator returns the ordinary parse diagnostic. */
+  }
+  return validateWorkspaceSchema(content, filename);
+}
+
 function checkEigenpalTypeExtension(
   node: unknown,
   path: string,

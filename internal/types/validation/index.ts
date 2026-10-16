@@ -20,4 +20,4 @@ export {
   type WorkflowInputPropertyLike,
 } from './input';
 export { validateOutput, type ValidationResult } from './output';
-export { isSchemaFile, validateWorkspaceSchema } from './workspace-schema';
+export { isSchemaFile, validateAgentSchema, validateWorkspaceSchema } from './workspace-schema';

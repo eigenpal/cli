@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { CompiledAgentSnapshotSchema, type CompiledAgentSnapshot } from './agent-definition';
 import {
   DottedPackageNameSchema,
   SOURCE_COMMIT_SHA_PATTERN,
@@ -16,6 +17,8 @@ export const SourceLockPackageSchema: z.ZodType<SourceLockPackage> = z.lazy(() =
     resolvedTag: z.string().min(1).optional(),
     commit: z.string().regex(SOURCE_COMMIT_SHA_PATTERN),
     dependencies: z.array(SourceLockPackageSchema),
+    compiledAgent: CompiledAgentSnapshotSchema.optional(),
+    agentRuntimeConfig: z.record(z.string(), z.unknown()).optional(),
   })
 );
 
@@ -26,6 +29,8 @@ export type SourceLockPackage = {
   resolvedTag?: string;
   commit: string;
   dependencies: SourceLockPackage[];
+  compiledAgent?: CompiledAgentSnapshot;
+  agentRuntimeConfig?: Record<string, unknown>;
 };
 
 export const SourceLockfileSchema = z.object({

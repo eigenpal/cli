@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.20.49
+
+### Patch Changes
+
+- 430b899: Agent and dataset validation accept explicitly unconstrained schemas while continuing to reject unsupported schema roots.
+
+## 0.20.49
+
+### Patch Changes
+
+- d5c03aa: Create, validate and release agents with typed TypeScript configuration and schemas. Existing agents remain supported, and dataset validation checks the agent's declared schemas.
+
 ## 0.20.47
 
 ### Patch Changes

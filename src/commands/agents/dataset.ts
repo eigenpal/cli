@@ -2,6 +2,7 @@ import { type Command } from 'commander';
 import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import { requireTypedConfirmation } from '../../lib/non-interactive';
 import {
@@ -183,12 +184,10 @@ async function pullDataset(agentId: string, opts: BaseOpts & { out?: string }) {
   success(`Pulled dataset to ${ui.bold(out.endsWith('.zip') ? out : `${out}.zip`)}`);
 }
 
-async function validateDatasetCommand(
-  dir = DATASET_DIR,
-  opts: { json?: boolean; agentDir?: string }
-) {
+async function validateDatasetCommand(dir = DATASET_DIR, opts: BaseOpts & { agentDir?: string }) {
   const result = await validateDatasetDir(path.resolve(dir), {
     agentDir: path.resolve(opts.agentDir ?? '.'),
+    config: resolveConfig(opts),
   });
   if (opts.json) return printJson(result);
   if (result.valid) return success('Dataset is valid');

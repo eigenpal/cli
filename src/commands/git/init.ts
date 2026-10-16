@@ -3,6 +3,8 @@ import { InvalidArgumentError, Option, type Command } from 'commander';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
+import zodPackage from 'zod/package.json' with { type: 'json' };
+import { CLI_VERSION } from '../../lib/telemetry';
 
 import { action } from '../../lib/format-error';
 import { success } from '../../lib/ui';
@@ -41,10 +43,16 @@ function writePackageScaffold(
   const [root, resourceKind] = packagePath.split('/');
   mkdirSync(packageRoot, { recursive: true });
   const title = name.trim();
-  writeFileSync(
-    path.join(packageRoot, 'eigenpal.yaml'),
-    YAML.stringify({ schemaVersion: 1, name: title || path.basename(packagePath) })
-  );
+  if (root === 'agents')
+    writeFileSync(
+      path.join(packageRoot, 'agent.ts'),
+      `import {createAgent} from '@eigenpal/automations';\nexport default createAgent(${JSON.stringify({ name: title || path.basename(packagePath) }, null, 2)});\n`
+    );
+  else
+    writeFileSync(
+      path.join(packageRoot, 'eigenpal.yaml'),
+      YAML.stringify({ schemaVersion: 1, name: title || path.basename(packagePath) })
+    );
   if (root === 'agents') writeFileSync(path.join(packageRoot, 'AGENT.md'), `# ${title}\n\n`);
   if (root === 'evaluators') {
     writeFileSync(
@@ -60,7 +68,7 @@ function writePackageScaffold(
   }
 }
 
-function initPackage(name: string, opts: { template: string; dir?: string }): void {
+async function initPackage(name: string, opts: { template: string; dir?: string }): Promise<void> {
   const startDir = path.resolve(opts.dir ?? process.cwd());
   const gitRoot = resolveGitRoot(startDir) ?? startDir;
   mkdirSync(gitRoot, { recursive: true });
@@ -73,7 +81,7 @@ function initPackage(name: string, opts: { template: string; dir?: string }): vo
   }
   const gitignorePath = path.join(gitRoot, '.gitignore');
   const gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  const additions = ['.eigenpal/', 'eigenpal_modules/'].filter(
+  const additions = ['.eigenpal/', 'eigenpal_modules/', 'node_modules/'].filter(
     (entry) => !gitignore.includes(entry)
   );
   if (additions.length > 0)
@@ -85,6 +93,29 @@ function initPackage(name: string, opts: { template: string; dir?: string }): vo
   const packageRoot = path.join(gitRoot, packagePath);
   if (existsSync(packageRoot)) throw new Error(`Package already exists: ${packagePath}`);
   writePackageScaffold(packageRoot, packagePath, name);
+  if (opts.template === 'agent') {
+    const toolchain = { sdkVersion: CLI_VERSION, zodVersion: zodPackage.version };
+    const file = path.join(gitRoot, 'package.json');
+    const current = existsSync(file)
+      ? JSON.parse(readFileSync(file, 'utf8'))
+      : { private: true, type: 'module' };
+    const additions: Record<string, string> = {};
+    for (const [name, version] of Object.entries({
+      '@eigenpal/automations': toolchain.sdkVersion,
+      zod: toolchain.zodVersion,
+    }))
+      if (!current.dependencies?.[name] && !current.devDependencies?.[name])
+        additions[name] = version;
+    if (Object.keys(additions).length > 0)
+      writeFileSync(
+        file,
+        JSON.stringify(
+          { ...current, devDependencies: { ...current.devDependencies, ...additions } },
+          null,
+          2
+        ) + '\n'
+      );
+  }
   success(`Created ${packagePath}.`);
 }
 

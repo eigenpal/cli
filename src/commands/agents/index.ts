@@ -1,6 +1,7 @@
 import { type Command } from 'commander';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import {
   isInteractiveStderr,
@@ -148,7 +149,7 @@ async function listAgents(opts: BaseOpts & PaginationOpts & { search?: string })
   );
 }
 
-async function validateAgentCommand(dir = '.', opts: { json?: boolean }) {
+async function validateAgentCommand(dir = '.', opts: { json?: boolean; baseUrl?: string }) {
   const root = path.resolve(dir);
   const legacy = await validateAgentProject(root);
   const result: {
@@ -158,8 +159,8 @@ async function validateAgentCommand(dir = '.', opts: { json?: boolean }) {
     packagePath?: string;
   } = { ...legacy };
 
-  if (existsSync(path.join(root, PACKAGE_MANIFEST))) {
-    const source = validateSourcePackage(root);
+  if (existsSync(path.join(root, 'agent.ts')) || existsSync(path.join(root, PACKAGE_MANIFEST))) {
+    const source = await validateSourcePackage(root, resolveConfig(opts));
     result.valid = legacy.valid && source.valid;
     result.packagePath = source.packagePath;
     for (const issue of source.errors) {
