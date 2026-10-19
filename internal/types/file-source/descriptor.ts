@@ -31,6 +31,8 @@ export interface FileSourceConfigField {
   description?: string;
   /** Optional placeholder / example value for the form. */
   placeholder?: string;
+  /** Preserve line breaks for PEM certificates and keys. */
+  multiline?: boolean;
   /** Optional default applied when the field is omitted. */
   default?: string | number | boolean;
   /** Rarely-changed tuning field — rendered under an "Advanced" section in the UI. */
@@ -141,6 +143,107 @@ export const GPFS_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
       advanced: true,
     },
     ...transferLimitFields('registry'),
+  ],
+};
+
+/** VUB Document Archive SOAP getContent connector. */
+export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_NAME = 'vub-document-archive';
+
+export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
+  name: VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_NAME,
+  label: 'VUB Document Archive',
+  description: 'Fetch documents from the VUB Document Archive by object store and document ID.',
+  referenceFormat: 'objectStore/documentId',
+  referenceParts: { container: 'objectStore', id: 'documentId' },
+  check: (config) => {
+    const errors: string[] = [];
+    try {
+      const url = new URL(String(config.endpointUrl));
+      if (url.protocol !== 'https:' || url.username || url.password || url.hash) {
+        errors.push('Use an HTTPS endpoint URL without embedded credentials or a fragment');
+      }
+    } catch {
+      errors.push('Enter a valid HTTPS endpoint URL');
+    }
+    const username = isSet(config, 'username');
+    const password = isSet(config, 'password');
+    const certificate = isSet(config, 'clientCertificate');
+    const privateKey = isSet(config, 'clientPrivateKey');
+    if (username !== password) errors.push('Set both the username and password');
+    if (String(config.username ?? '').includes(':')) {
+      errors.push('Basic authentication username cannot contain a colon');
+    }
+    if (
+      !Number.isInteger(config.timeoutMs) ||
+      Number(config.timeoutMs) < 1 ||
+      Number(config.timeoutMs) > 2_147_483_647
+    ) {
+      errors.push('Timeout must be a whole number between 1 and 2147483647 milliseconds');
+    }
+    if (certificate !== privateKey) errors.push('Set both the client certificate and private key');
+    if (!username && !password && !certificate && !privateKey) {
+      errors.push('Set a username and password, or a client certificate and private key');
+    }
+    if (
+      !Number.isInteger(config.maxFileBytes) ||
+      Number(config.maxFileBytes) < 1 ||
+      Number(config.maxFileBytes) > 100 * 1024 * 1024
+    ) {
+      errors.push('Max file size must be a whole number between 1 byte and 100 MiB');
+    }
+    return errors;
+  },
+  configFields: [
+    {
+      key: 'endpointUrl',
+      label: 'Endpoint URL',
+      type: 'string',
+      required: true,
+      placeholder: 'https://tace-t.vub.sk/ace/gateway?env=t',
+      description: 'The HTTPS gateway for the Document Archive getContent operation.',
+    },
+    allowedContainersField('object stores'),
+    {
+      key: 'username',
+      label: 'Username',
+      type: 'string',
+      required: false,
+      description:
+        'Technical user for HTTP Basic authentication. Leave blank when using only a client certificate.',
+    },
+    { key: 'password', label: 'Password', type: 'secret', required: false },
+    {
+      key: 'clientCertificate',
+      label: 'Client certificate (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      description:
+        'For certificate authentication, paste the full PEM certificate chain and set its private key below.',
+    },
+    {
+      key: 'clientPrivateKey',
+      label: 'Client private key (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      description:
+        'Paste the matching unencrypted PEM private key. Stored encrypted and never shown again.',
+    },
+    {
+      key: 'caCertificate',
+      label: 'Trusted CA certificate (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      advanced: true,
+      description: 'Only if the gateway uses a private CA. TLS verification remains enabled.',
+    },
+    ...transferLimitFields('Document Archive').map((field) =>
+      field.key === 'maxFileBytes'
+        ? { ...field, description: 'Reject decoded documents larger than this. At most 100 MiB.' }
+        : field
+    ),
   ],
 };
 
@@ -361,6 +464,7 @@ export const BUILTIN_FILE_SOURCE_DESCRIPTORS: readonly FileSourceDescriptor[] = 
   GPFS_FILE_SOURCE_DESCRIPTOR,
   S3_FILE_SOURCE_DESCRIPTOR,
   AZURE_BLOB_FILE_SOURCE_DESCRIPTOR,
+  VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR,
 ];
 
 /** Look up a built-in descriptor by resolver name. */
