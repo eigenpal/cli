@@ -250,7 +250,7 @@ export const AiExtractConfigSchema = z.object({
     })
     .describe('JSON Schema defining the structure to extract'),
   prompt: z.string().optional().describe('Custom prompt template for extraction'),
-  provider: z.string().optional().describe('Provider ID (e.g., "openai-gpt4o")'),
+  provider: z.string().optional().describe('Provider ID (e.g., "openai/gpt-6-luna")'),
   model: z.string().optional().describe('Model override'),
   reasoningEffort: OptionalReasoningEffortSchema,
   // temperature is intentionally NOT user-controllable — Eigenpal is a
@@ -530,7 +530,7 @@ export const AiSplitConfigSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted.'
+      'Provider ID from eigenpal.config.yaml (e.g. "openai/gpt-6-luna"). Falls back to the tenant default LLM provider when omitted.'
     ),
   reasoningEffort: OptionalReasoningEffortSchema,
   windowTokenBudget: z
@@ -796,7 +796,7 @@ export const AiClassifyConfigSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted.'
+      'Provider ID from eigenpal.config.yaml (e.g. "openai/gpt-6-luna"). Falls back to the tenant default LLM provider when omitted.'
     ),
   model: z.string().optional().describe('Model override (advanced)'),
   reasoningEffort: OptionalReasoningEffortSchema,

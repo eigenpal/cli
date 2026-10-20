@@ -38,7 +38,7 @@ export const ClassifyConfigSchema = z.object({
     .describe(
       'Optional classification instructions appended to the system prompt. Use to clarify edge cases or emphasize evidence the model should weigh.'
     ),
-  provider: z.string().optional().describe('Provider ID (e.g., "openai-gpt4o-mini")'),
+  provider: z.string().optional().describe('Provider ID (e.g., "openai/gpt-6-luna")'),
   model: z.string().optional().describe('Model override'),
   reasoningEffort: ReasoningEffortSchema.optional().describe(
     'Reasoning effort for the classification model. Omit to use the model default.'

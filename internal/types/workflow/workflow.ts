@@ -259,7 +259,7 @@ export const WorkflowInputDefSchema = z
       .min(1)
       .optional()
       .describe(
-        'Registered external file resolver for single-tenant file-reference inputs, for example gpfs; valid on type file or an array of file (one reference per file).'
+        'Named external file source connection for single-tenant file-reference inputs, for example documents-s3; valid on type file or an array of file (one reference per file).'
       ),
     /**
      * Optional author hint for the resolved file's type when `source` is set.

@@ -1,5 +1,17 @@
 # @eigenpal/cli
 
+## 0.20.63
+
+### Patch Changes
+
+- 7d9ae17: Use customer-neutral file-source examples in the bundled workflow reference.
+
+## 0.20.63
+
+### Patch Changes
+
+- 105f356: Workflow examples use current model IDs, and evaluation guidance covers reasoning settings and checks when changing models.
+
 ## 0.20.53
 
 ### Patch Changes
@@ -353,7 +365,7 @@ push`) before running `--example`.
 
 ### Patch Changes
 
-- ca9ae4f: Workflow inputs can declare an external file `source` (single-tenant on-prem). A `type: file` input with `source: <name>` (e.g. `gpfs`) is provided as a plain string id at run time; the worker resolves it to a file artifact via the configured source before the workflow executes.
+- ca9ae4f: Workflow inputs can declare an external file `source` (single-tenant on-prem). A `type: file` input with `source: <name>` (e.g. `documents-s3`) is provided as a plain string id at run time; the worker resolves it to a file artifact via the configured source before the workflow executes.
 
 ## 0.9.0
 

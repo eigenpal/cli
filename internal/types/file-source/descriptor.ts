@@ -181,7 +181,19 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
       errors.push('Timeout must be a whole number between 1 and 2147483647 milliseconds');
     }
     if (certificate !== privateKey) errors.push('Set both the client certificate and private key');
-    if (!username && !password && !certificate && !privateKey) {
+    if (
+      config.useDeploymentCertificate === true &&
+      (username || password || certificate || privateKey || isSet(config, 'caCertificate'))
+    ) {
+      errors.push('Remove connection credentials before using the deployment certificate');
+    }
+    if (
+      config.useDeploymentCertificate !== true &&
+      !username &&
+      !password &&
+      !certificate &&
+      !privateKey
+    ) {
       errors.push('Set a username and password, or a client certificate and private key');
     }
     if (
@@ -203,6 +215,15 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
       description: 'The HTTPS gateway for the Document Archive getContent operation.',
     },
     allowedContainersField('object stores'),
+    {
+      key: 'useDeploymentCertificate',
+      label: 'Use deployment certificate',
+      type: 'boolean',
+      required: false,
+      default: false,
+      description:
+        'Use the client certificate mounted by your administrator. No private key needs to be pasted here.',
+    },
     {
       key: 'username',
       label: 'Username',

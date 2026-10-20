@@ -131,9 +131,10 @@ eigenpal workflow step-type list --search <partial-match>
 
 ### Eval flakiness with `llm-judge`
 
-LLM-judge scores have variance. Stabilize: pin a specific model id
-(`gpt-4o-2024-08-06`), set `temperature: 0`, narrow the prompt to one
-dimension per judge, run multiple experiments and average.
+LLM-judge scores have variance. Stabilize: select a current model
+(`openai/gpt-6.1-sol`), keep its reasoning effort fixed, narrow the prompt to
+one dimension per judge, run multiple experiments and average. Only set
+temperature when the model supports it; reasoning models may reject it.
 
 ### Workflow `Validation failed` on push
 

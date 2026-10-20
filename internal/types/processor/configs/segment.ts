@@ -79,7 +79,7 @@ export const SegmentConfigSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted.'
+      'Provider ID from eigenpal.config.yaml (e.g. "openai/gpt-6-luna"). Falls back to the tenant default LLM provider when omitted.'
     ),
   reasoningEffort: ReasoningEffortSchema.optional().describe(
     'Reasoning effort for the segmentation model. Omit to use the model default.'

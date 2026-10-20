@@ -59,7 +59,7 @@ export const ExtractConfigSchema = z.object({
   provider: z
     .string()
     .optional()
-    .describe('Provider ID to use (e.g., "openai-gpt4o", "anthropic-claude")'),
+    .describe('Provider ID to use (e.g., "openai/gpt-6-luna", "anthropic/claude-sonnet-5-5")'),
   model: z.string().optional().describe('Model to use (overrides provider default)'),
   reasoningEffort: ReasoningEffortSchema.optional().describe(
     'Reasoning effort for the extraction model. Omit to use the model default.'

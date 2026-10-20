@@ -186,7 +186,7 @@ export type ExtractSidecarBundle = {
  * @example
  * ```typescript
  * // Within a processor
- * const result = await ctx.tracing?.withSpan('openai/gpt-4', {
+ * const result = await ctx.tracing?.withSpan('openai/gpt-6-luna', {
  *   kind: SpanKind.CLIENT,
  *   attributes: { 'gen_ai.system': 'openai' }
  * }, async (span) => {

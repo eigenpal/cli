@@ -12,7 +12,7 @@
 export const GenAI = {
   /** The provider of the LLM (e.g., 'openai', 'anthropic') */
   SYSTEM: 'gen_ai.system',
-  /** The model name (e.g., 'gpt-4', 'claude-3-opus') */
+  /** The model name (e.g., 'gpt-6-luna', 'claude-sonnet-5-5') */
   REQUEST_MODEL: 'gen_ai.request.model',
   /** The response model name */
   RESPONSE_MODEL: 'gen_ai.response.model',

@@ -145,7 +145,7 @@ paths; you do not need a separate evaluator for failure cases.
 - name: covenants-recall
   type: llm-judge
   config:
-    model: gpt-4o # OPTIONAL — falls back to the workspace default LLM provider
+    model: gpt-6-luna # Optional, falls back to the workspace default LLM provider
     mode: continuous # continuous | discrete (default: continuous)
     passThreshold: 0.85
     docLabel: extraction # what the judge calls the workflow output (default: "output")
@@ -297,7 +297,8 @@ process — `--out` writes the file directly from the server's storage.
 
 LLM-judge scores have variance. To reduce flake:
 
-- Pin a specific model id (`gpt-4o-2024-08-06` rather than `gpt-4o`).
+- Select a current model (`openai/gpt-6.1-sol`) and keep its reasoning effort fixed.
+  Re-run representative evaluations when changing models or when the provider updates it.
 - Keep `promptExtension` narrow — score one dimension per evaluator. Use
   multiple judges instead of one omnibus prompt.
 - Prefer `mode: discrete` with a small label set when the judgement is

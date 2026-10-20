@@ -2808,7 +2808,7 @@ Extract structured data from text using AI with a JSON schema
 | `input` | string | yes |  | Text content or template expression |
 | `schema` | object | yes |  | JSON Schema defining the structure to extract |
 | `prompt` | string | no |  | Custom prompt template for extraction |
-| `provider` | string | no |  | Provider ID (e.g., "openai-gpt4o") |
+| `provider` | string | no |  | Provider ID (e.g., "openai/gpt-6-luna") |
 | `model` | string | no |  | Model override |
 | `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text and logs a warning when exceeded. Omit for no limit. |
@@ -2868,7 +2868,7 @@ Config schema:
       "type": "string"
     },
     "provider": {
-      "description": "Provider ID (e.g., \"openai-gpt4o\")",
+      "description": "Provider ID (e.g., \"openai/gpt-6-luna\")",
       "type": "string"
     },
     "model": {
@@ -2999,7 +2999,7 @@ Split a parsed document into named sections using an LLM. Consumes ai.parse outp
 | `input` | string | yes |  | Template expression resolving to ai.parse output, e.g. "{{ steps.parse.output }}" |
 | `sections` | array<object> | yes |  | Named sections to find in the document |
 | `rules` | string | no |  | Optional natural-language rules appended to the system prompt. E.g. "End-of-section markers like *Koniec prílohy 2* close the current section." |
-| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt5.4-mini"). Falls back to the tenant default LLM provider when omitted. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai/gpt-6-luna"). Falls back to the tenant default LLM provider when omitted. |
 | `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
 | `windowTokenBudget` | integer | no |  | Override the estimated per-window token ceiling. Oversized pages are subdivided with overlap while retaining their original page index. Defaults to env SPLIT_WINDOW_TOKEN_BUDGET or 20000. Inputs requiring more than 64 LLM windows are rejected before calls begin. |
 
@@ -3064,7 +3064,7 @@ Config schema:
       "type": "string"
     },
     "provider": {
-      "description": "Provider ID from eigenpal.config.yaml (e.g. \"openai-gpt5.4-mini\"). Falls back to the tenant default LLM provider when omitted.",
+      "description": "Provider ID from eigenpal.config.yaml (e.g. \"openai/gpt-6-luna\"). Falls back to the tenant default LLM provider when omitted.",
       "type": "string"
     },
     "reasoningEffort": {
@@ -3834,7 +3834,7 @@ Classify a document or text into one of a fixed label set using an LLM. Output e
 | `input` | string | yes |  | Template expression for the text to classify. Typically the output of ai.parse, e.g. "{{ steps.parse.output.text }}". |
 | `labels` | array<object> | yes |  | Allowed labels. The LLM is constrained to pick exactly one of these names. |
 | `prompt` | string | no |  | Custom classification instructions appended to the system prompt. Use to clarify edge cases or emphasize evidence the model should weigh. |
-| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai-gpt4o-mini"). Falls back to the tenant default LLM provider when omitted. |
+| `provider` | string | no |  | Provider ID from eigenpal.config.yaml (e.g. "openai/gpt-6-luna"). Falls back to the tenant default LLM provider when omitted. |
 | `model` | string | no |  | Model override (advanced) |
 | `reasoningEffort` | `"none"` \| `"minimal"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | no |  | Reasoning effort for models that support it. Omit to use the selected model's default. |
 | `maxInputTokens` | integer | no |  | Max input tokens. Truncates input text when exceeded. Omit for no limit. |
@@ -3888,7 +3888,7 @@ Config schema:
       "type": "string"
     },
     "provider": {
-      "description": "Provider ID from eigenpal.config.yaml (e.g. \"openai-gpt4o-mini\"). Falls back to the tenant default LLM provider when omitted.",
+      "description": "Provider ID from eigenpal.config.yaml (e.g. \"openai/gpt-6-luna\"). Falls back to the tenant default LLM provider when omitted.",
       "type": "string"
     },
     "model": {
