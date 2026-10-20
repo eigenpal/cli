@@ -30,6 +30,8 @@ export function isPermanentFileSourceError(error: unknown): boolean {
 export interface FileSourceResolveResult {
   /** Raw file bytes. */
   body: Buffer;
+  /** Additional workflow fields, validated against descriptor.resolvedFields. */
+  fields?: Record<string, unknown>;
   /** Response Content-Type, if the source reported one. */
   contentType?: string;
   /** Filename reported by the source, if any. */
@@ -44,6 +46,8 @@ export interface FileSourceResolveContext {
   runId: string;
   /** The workflow input field name this id was supplied for. */
   fieldName: string;
+  /** Per-document option, never a connection credential or setting. */
+  includeMetadata?: boolean;
   /**
    * The worker's lease/stop abort signal. Resolvers should abort in-flight I/O
    * when this fires (combined with their own timeout) so a lost lease or a

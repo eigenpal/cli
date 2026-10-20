@@ -479,6 +479,7 @@ function fileReferenceObjectSchemas(): Array<Record<string, unknown>> {
         properties: {
           [parts.container]: { type: 'string', minLength: 1 },
           [parts.id]: { type: 'string', minLength: 1 },
+          ...(descriptor.supportsMetadata ? { includeMetadata: { type: 'boolean' } } : {}),
         },
         required: [parts.container, parts.id],
         additionalProperties: false,

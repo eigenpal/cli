@@ -1,3 +1,4 @@
+import { DOCUMENT_ARCHIVE_METADATA_SCHEMA } from './document-archive-metadata';
 import { FileReferenceError } from './reference';
 
 /**
@@ -58,6 +59,10 @@ export interface FileSourceDescriptor {
    * instead of a string, e.g. `{ stackId, fileId }` for `stackId/fileId`.
    */
   referenceParts?: { container: string; id: string };
+  /** Supports the per-document includeMetadata boolean. */
+  supportsMetadata?: boolean;
+  /** Named fields added to the resolved workflow file, each with its JSON Schema. */
+  resolvedFields?: Record<string, Record<string, unknown>>;
   /** Configurable fields. */
   configFields: FileSourceConfigField[];
   /**
@@ -155,6 +160,8 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
   description: 'Fetch documents from the VUB Document Archive by object store and document ID.',
   referenceFormat: 'objectStore/documentId',
   referenceParts: { container: 'objectStore', id: 'documentId' },
+  supportsMetadata: true,
+  resolvedFields: { metadata: DOCUMENT_ARCHIVE_METADATA_SCHEMA },
   check: (config) => {
     const errors: string[] = [];
     try {
@@ -494,16 +501,23 @@ export function getBuiltinFileSourceDescriptor(name: string): FileSourceDescript
 }
 
 /**
- * True when `value` is a reference passed as an object: exactly the two part
+ * True when `value` is a reference passed as an object: the two part
  * names of one built-in type (`{ stackId, fileId }`, `{ bucket, key }`,
- * `{ container, blobName }`). Any other object is not a reference.
+ * `{ container, blobName }`), plus includeMetadata when that source supports it.
+ * Any other object is not a reference.
  */
-export function isFileReferenceObject(value: unknown): value is Record<string, string> {
+export function isFileReferenceObject(value: unknown): value is Record<string, string | boolean> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const keys = Object.keys(value).sort();
   return BUILTIN_FILE_SOURCE_DESCRIPTORS.some((descriptor) => {
     const parts = descriptor.referenceParts;
-    return parts !== undefined && keys.join() === [parts.container, parts.id].sort().join();
+    if (!parts) return false;
+    const expected = [parts.container, parts.id];
+    if (descriptor.supportsMetadata && keys.includes('includeMetadata')) {
+      if (typeof (value as Record<string, unknown>).includeMetadata !== 'boolean') return false;
+      expected.push('includeMetadata');
+    }
+    return keys.join() === expected.sort().join();
   });
 }
 
@@ -519,7 +533,11 @@ export function fileReferenceString(value: unknown, type: string): string {
   const expected = parts
     ? `"${descriptor.referenceFormat}" or { "${parts.container}": ..., "${parts.id}": ... }`
     : 'a string';
-  if (!parts || !isFileReferenceObject(value)) {
+  if (
+    !parts ||
+    !isFileReferenceObject(value) ||
+    ('includeMetadata' in value && !descriptor?.supportsMetadata)
+  ) {
     throw new FileReferenceError(
       `A ${descriptor?.label ?? type} file reference must be ${expected}`
     );

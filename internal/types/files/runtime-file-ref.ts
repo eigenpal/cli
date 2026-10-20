@@ -76,7 +76,10 @@ export const ResolvedProcessorFileSchema = z
       .optional()
       .describe('Byte size when a file-producing step recorded it'),
   })
-  .strict();
+  // Source-defined fields cross this internal boundary only after validation
+  // against their resolver descriptor; the non-enumerable trust brand still
+  // controls whether a processor may read the file.
+  .catchall(z.json());
 
 export type DbFileRef = z.infer<typeof DbFileRefSchema>;
 export type LegacyFileIdInput = z.infer<typeof LegacyFileIdInputSchema>;
