@@ -10,6 +10,8 @@ import type { FileSourceConfig, FileSourceDescriptor } from './descriptor';
  */
 export class FileSourceError extends Error {
   readonly permanent: boolean;
+  /** Bounded, credential-redacted source error suitable for run details. */
+  sourceMessage?: string;
   constructor(message: string, options?: { permanent?: boolean }) {
     super(message);
     this.name = 'FileSourceError';
