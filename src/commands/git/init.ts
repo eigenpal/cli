@@ -27,11 +27,14 @@ function packagePathForTemplate(template: string, name: string): SourcePackagePa
     skill: 'resources/skills',
     rule: 'resources/rules',
     knowledge: 'resources/knowledge',
+    template: 'resources/templates',
     evaluator: 'evaluators',
   };
   const root = rootByTemplate[template];
   if (!root)
-    throw new Error('Template must be agent, workflow, skill, rule, knowledge, or evaluator.');
+    throw new Error(
+      'Template must be agent, workflow, skill, rule, knowledge, template, or evaluator.'
+    );
   return SourcePackagePathSchema.parse(`${root}/${slug}`);
 }
 
@@ -48,7 +51,30 @@ function writePackageScaffold(
       path.join(packageRoot, 'agent.ts'),
       `import {createAgent} from '@eigenpal/automations';\nexport default createAgent(${JSON.stringify({ name: title || path.basename(packagePath) }, null, 2)});\n`
     );
-  else
+  else if (root === 'resources') {
+    const factory = {
+      skills: 'createSkill',
+      rules: 'createRule',
+      knowledge: 'createKnowledge',
+      templates: 'createTemplate',
+    }[resourceKind]!;
+    const contentFile =
+      resourceKind === 'skills'
+        ? 'SKILL.md'
+        : resourceKind === 'rules'
+          ? 'RULE.md'
+          : resourceKind === 'templates'
+            ? 'template.md'
+            : 'README.md';
+    writeFileSync(
+      path.join(packageRoot, contentFile),
+      `# ${title}\n\nDescribe this resource here.\n`
+    );
+    writeFileSync(
+      path.join(packageRoot, 'resource.ts'),
+      `import {${factory}} from '@eigenpal/automations';\nexport default ${factory}({ name: ${JSON.stringify(title || path.basename(packagePath))} });\n`
+    );
+  } else
     writeFileSync(
       path.join(packageRoot, 'eigenpal.yaml'),
       YAML.stringify({ schemaVersion: 1, name: title || path.basename(packagePath) })
@@ -59,12 +85,6 @@ function writePackageScaffold(
       path.join(packageRoot, 'evaluator.yaml'),
       YAML.stringify({ schemaVersion: 1, type: 'exact-diff', config: {} })
     );
-  }
-  if (root === 'resources' && resourceKind === 'skills') {
-    writeFileSync(path.join(packageRoot, 'SKILL.md'), `# ${title}\n\n`);
-  }
-  if (root === 'resources' && (resourceKind === 'rules' || resourceKind === 'knowledge')) {
-    writeFileSync(path.join(packageRoot, 'README.md'), `# ${title}\n\n`);
   }
 }
 
@@ -93,7 +113,30 @@ async function initPackage(name: string, opts: { template: string; dir?: string 
   const packageRoot = path.join(gitRoot, packagePath);
   if (existsSync(packageRoot)) throw new Error(`Package already exists: ${packagePath}`);
   writePackageScaffold(packageRoot, packagePath, name);
-  if (opts.template === 'agent') {
+  if (opts.template === 'agent' || packagePath.startsWith('resources/')) {
+    const tsconfig = path.join(gitRoot, 'tsconfig.json');
+    if (!existsSync(tsconfig))
+      writeFileSync(
+        tsconfig,
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: 'ES2022',
+              module: 'NodeNext',
+              moduleResolution: 'NodeNext',
+              strict: true,
+              noEmit: true,
+              allowImportingTsExtensions: true,
+              skipLibCheck: true,
+              types: [],
+            },
+            include: ['agents/**/*.ts', 'resources/**/*.ts'],
+            exclude: ['node_modules', 'eigenpal_modules'],
+          },
+          null,
+          2
+        ) + '\n'
+      );
     const toolchain = { sdkVersion: CLI_VERSION, zodVersion: zodPackage.version };
     const file = path.join(gitRoot, 'package.json');
     const current = existsSync(file)
@@ -103,14 +146,22 @@ async function initPackage(name: string, opts: { template: string; dir?: string 
     for (const [name, version] of Object.entries({
       '@eigenpal/automations': toolchain.sdkVersion,
       zod: toolchain.zodVersion,
+      typescript: '^6.0.3',
     }))
       if (!current.dependencies?.[name] && !current.devDependencies?.[name])
         additions[name] = version;
-    if (Object.keys(additions).length > 0)
+    if (Object.keys(additions).length > 0 || !current.scripts?.typecheck)
       writeFileSync(
         file,
         JSON.stringify(
-          { ...current, devDependencies: { ...current.devDependencies, ...additions } },
+          {
+            ...current,
+            scripts: {
+              ...current.scripts,
+              typecheck: current.scripts?.typecheck ?? 'tsc --noEmit',
+            },
+            devDependencies: { ...current.devDependencies, ...additions },
+          },
           null,
           2
         ) + '\n'
@@ -120,9 +171,11 @@ async function initPackage(name: string, opts: { template: string; dir?: string 
 }
 
 function parseTemplate(value: string): string {
-  if (!['agent', 'workflow', 'skill', 'rule', 'knowledge', 'evaluator'].includes(value)) {
+  if (
+    !['agent', 'workflow', 'skill', 'rule', 'knowledge', 'template', 'evaluator'].includes(value)
+  ) {
     throw new InvalidArgumentError(
-      'template must be agent, workflow, skill, rule, knowledge, or evaluator'
+      'template must be agent, workflow, skill, rule, knowledge, template, or evaluator'
     );
   }
   return value;

@@ -27,7 +27,6 @@ export async function validateAgentProject(
     }
   }
   if (!existsSync(path.join(root, 'agent.ts'))) errors.push('Missing agent.ts');
-  if (!existsSync(path.join(root, 'AGENT.md'))) warnings.push('Missing AGENT.md');
   if (!existsSync(path.join(root, DATASET_DIR))) warnings.push(`Missing ${DATASET_DIR}/`);
   return { valid: errors.length === 0, errors, warnings };
 }

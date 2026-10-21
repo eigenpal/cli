@@ -323,7 +323,7 @@ eigenpal agents sync agents.<slug>
 ```
 
 Define agents with `createAgent` from `@eigenpal/automations` in `agent.ts`.
-Set `inputSchema`, `outputSchema`, model pins, triggers, and dependencies there.
+Set `inputSchema`, `outputSchema`, model pins, triggers, and imported resources there.
 Schemas accept Zod or raw JSON Schema. Keep instructions in `AGENT.md`.
 Compilation happens in the platform sandbox; never import organization source
 into a local host process. Frozen resumes reuse the run's compiled snapshot.
@@ -390,16 +390,16 @@ agents/<slug>/templates/<template-slug>/
 
 ```text
 resources/templates/<template-slug>/
-  eigenpal.yaml   # required package manifest
+  resource.ts     # default export createTemplate, with text content and asset imports
   template.docx   # or template.xlsx
   TEMPLATE.md     # optional metadata
 ```
 
 At runtime the agent fills templates with the baked-in **fill-template**
 platform skill (`vars`, then `fill`) — not `transform.template`. Local
-templates resolve by slug under `agent/templates/<slug>/`. Shared dependencies
-install under `agent/eigenpal_modules/resources/templates/<slug>/`; pass that
-file path to fill-template when the template is not copied locally.
+templates resolve by slug under `agent/templates/<slug>/`. Imported shared assets are installed under `agent/.eigenpal-resources/<alias>/`;
+pass the actual asset path to fill-template. Portable template text also works
+in ordinary agents without a sandbox.
 
 ```bash
 # Add or update a local template, then validate and save.
@@ -412,22 +412,21 @@ eigenpal agents sync agents.<slug>
 
 # Shared template: validate, save, and release the package.
 cp ./report.xlsx resources/templates/monthly-report/template.xlsx
-$EDITOR resources/templates/monthly-report/eigenpal.yaml
+$EDITOR resources/templates/monthly-report/resource.ts
 eigenpal agents validate resources/templates/monthly-report
 eigenpal agents save -m "Add monthly report template"
 eigenpal agents release patch resources/templates/monthly-report
 
-# Consuming agent: pin an exact dependency version, then release and sync.
-$EDITOR agents/<slug>/agent.ts   # dependencies: { "workspace:resources.templates.monthly-report": "1.0.0" }
+# Consuming agent: import the template into resources, then release and sync.
+$EDITOR agents/<slug>/agent.ts   # import report from ../../resources/templates/monthly-report/resource.js; resources: { report }
 eigenpal agents validate agents/<slug>
 eigenpal agents save -m "Use monthly report template"
 eigenpal agents release patch agents/<slug>
 eigenpal agents sync agents.<slug>
 ```
 
-Updating a shared template does not auto-sync dependent agents. Release the
-template package, bump each consumer's exact-version dependency, then release
-and sync those agents. Workspace `tmpl_...` templates are a different system —
+Updating a shared template does not change already released agents. Release and
+sync each consuming agent to capture the updated resource at its new source commit. Workspace `tmpl_...` templates are a different system —
 use `eigenpal workflow templates`, not `agents save`.
 
 ## Shared Resource Updates
@@ -436,24 +435,24 @@ Do not move every dependent agent automatically. Find dependents, ask which ones
 to update, then release and sync only those agents.
 
 ```bash
-$EDITOR resources/skills/<slug>/SKILL.md resources/skills/<slug>/run.py
+$EDITOR resources/skills/<slug>/resource.ts resources/skills/<slug>/SKILL.md resources/skills/<slug>/run.py
 eigenpal agents validate resources/skills/<slug>
 
 rg '<slug>|resources/skills/<slug>|resources/knowledge/<slug>' agents/ resources/
-eigenpal agents deps --dir agents/<dependent-slug>
+# Inspect the typed resource imports in each agent.ts.
 
 eigenpal agents save -m "Improve shared <slug>"
 eigenpal agents release patch resources/skills/<slug>
 
 $EDITOR agents/<dependent-slug>/agent.ts
 eigenpal agents validate agents/<dependent-slug>
-eigenpal agents save -m "Bump <slug> dependency"
+eigenpal agents save -m "Update <slug> resource"
 eigenpal agents release patch agents/<dependent-slug>
 eigenpal agents sync agents.<dependent-slug>
 ```
 
 After rollout, run one affected agent and inspect `eigenpal.lock` from run
-artifacts to confirm the dependency version.
+artifacts to confirm the captured resource content.
 
 ## Agent Datasets
 

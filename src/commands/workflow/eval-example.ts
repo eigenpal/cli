@@ -6,7 +6,7 @@
  * A dataset example is server-side data: running `--example <name>` resolves
  * the pushed example, starts it via
  * `POST /api/v1/automations/{id}/examples/{exampleId}/run` (which tags the run
- * as an eval run so the worker runs `evalConfigYaml` evaluators), then waits
+ * as an eval run so the worker runs its configured evaluation plan), then waits
  * for the evaluator results to land.
  *
  * When the workflow has no evaluators configured, there is nothing to score, so
@@ -114,6 +114,7 @@ interface EvalResultRow {
 }
 
 interface RunView {
+  source?: { git?: { commitSha?: string | null } };
   finished?: boolean;
   execution?: { status?: string };
   status?: string;
@@ -143,11 +144,20 @@ function runOutput(run: RunView): unknown {
   return run.output !== undefined ? run.output : run.result?.output;
 }
 
-/** Whether the workflow has any evaluator configured. */
-export async function fetchHasEvaluators(client: ApiClient, workflowId: string): Promise<boolean> {
-  const cfg = (await client.get(`/v1/automations/${workflowId}/evaluators`)) as {
+/** Whether the requested agent source or workflow has configured evaluation. */
+export async function fetchHasEvaluators(
+  client: ApiClient,
+  workflowId: string,
+  sourceRef?: string
+): Promise<boolean> {
+  const query = sourceRef ? `?sourceRef=${encodeURIComponent(sourceRef)}` : '';
+  const cfg = (await client.get(`/v1/automations/${workflowId}/evaluators${query}`)) as {
+    automationType?: 'workflow' | 'agent';
     config?: { evaluators?: unknown[] };
+    evaluation?: { evaluators: Record<string, unknown> } | null;
   };
+  if (cfg.automationType === 'agent')
+    return Boolean(cfg.evaluation && Object.keys(cfg.evaluation.evaluators).length);
   return Array.isArray(cfg.config?.evaluators) && cfg.config.evaluators.length > 0;
 }
 
@@ -219,13 +229,19 @@ export async function pollEvalRollup(
   }
 }
 
-/** Fetch the per-evaluator result rows for one run from its experiment batch. */
+/** Agents can run a single example without an experiment batch. */
 async function fetchEvalRows(
   client: ApiClient,
   workflowId: string,
-  batchId: string,
+  batchId: string | null | undefined,
   runId: string
 ): Promise<EvalResultRow[]> {
+  if (!batchId) {
+    const detail = (await client.get(`/v1/runs/${encodeURIComponent(runId)}/scores`)) as {
+      scores: EvalResultRow[];
+    };
+    return detail.scores;
+  }
   const detail = (await client.get(`/v1/automations/${workflowId}/experiments/${batchId}`)) as {
     resultsByRun?: Record<string, EvalResultRow[]>;
   };
@@ -257,7 +273,7 @@ export async function runWorkflowExamplesWithEval(
   options: { quiet?: boolean; intervalMs?: number; maxWaitMs?: number } = {}
 ): Promise<EvalRunSummary> {
   const hasEvaluators = await fetchHasEvaluators(client, workflowId);
-  const mode: GradeMode = hasEvaluators ? 'evaluators' : 'diff';
+  let mode: GradeMode = hasEvaluators ? 'evaluators' : 'diff';
 
   if (!options.quiet) {
     info(
@@ -310,7 +326,11 @@ export async function runWorkflowExamplesWithEval(
         mode: 'none',
       };
 
-      if (runOk && hasEvaluators && started.batchId) {
+      const commit = run.source?.git?.commitSha;
+      const runHasEvaluators =
+        runOk && commit ? await fetchHasEvaluators(client, workflowId, commit) : hasEvaluators;
+      if (runOk && runHasEvaluators) {
+        mode = 'evaluators';
         const rollup = await pollEvalRollup(client, runId);
         if (rollup) {
           const rows = await fetchEvalRows(client, workflowId, started.batchId, runId);
@@ -325,12 +345,21 @@ export async function runWorkflowExamplesWithEval(
             error: r.error ?? null,
           }));
         } else {
-          // No rollup landed (e.g. the config dispatched no scoring evaluator).
-          // Fall back to a structural diff so the example still gets a verdict.
-          if (!options.quiet) {
-            warn(`  ${name}: no evaluator score after ${EVAL_GRACE_MS / 1000}s; grading by diff.`);
-          }
-          gradeByDiff(result, example.expected, runOutput(run));
+          // A configured decision cannot be replaced with a different grading policy.
+          result.mode = 'evaluators';
+          result.score = null;
+          result.passed = false;
+          result.evaluators = [
+            {
+              name: 'evaluation',
+              score: null,
+              passed: false,
+              weight: null,
+              error: 'Evaluation did not finish within the grace period',
+            },
+          ];
+          if (!options.quiet)
+            warn(`  ${name}: evaluator decision did not arrive; marking evaluation failed.`);
         }
       } else if (runOk) {
         gradeByDiff(result, example.expected, runOutput(run));

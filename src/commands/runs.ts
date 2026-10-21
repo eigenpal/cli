@@ -348,7 +348,11 @@ export async function runExample(
     const status = (payload as { execution?: { status?: string } }).execution?.status;
     let wait: EvalRollupWait = { kind: 'no-evaluators' };
     if (status === 'completed') {
-      wait = await waitForExampleEvalRollup(client, agentId, runId);
+      const source = objectOrNull(objectOrNull(payload)?.source);
+      const sourceGit = objectOrNull(source?.git);
+      const pinnedRef =
+        typeof sourceGit?.commitSha === 'string' ? sourceGit.commitSha : opts.sourceRef;
+      wait = await waitForExampleEvalRollup(client, agentId, runId, pinnedRef);
       if (wait.kind === 'landed') {
         // Re-fetch so the payload (and `--json` output) carries the eval block
         // written by the post-execution evaluators.
@@ -378,7 +382,9 @@ export async function runExample(
         );
         process.exitCode = 2;
       } else if (wait.kind === 'no-evaluators') {
-        warn('--fail-on-mismatch cannot gate this run: no evaluators are configured.');
+        const message = 'No evaluators configured; --fail-on-mismatch cannot gate this run.';
+        if (opts.json) process.stderr.write(`${message}\n`);
+        else warn(message);
       }
     }
     return;
@@ -409,11 +415,12 @@ type EvalRollupWait =
 async function waitForExampleEvalRollup(
   client: ApiClient,
   agentId: string,
-  runId: string
+  runId: string,
+  sourceRef?: string
 ): Promise<EvalRollupWait> {
   let hasEvaluators = true;
   try {
-    hasEvaluators = await fetchHasEvaluators(client, agentAutomationId(agentId));
+    hasEvaluators = await fetchHasEvaluators(client, agentAutomationId(agentId), sourceRef);
   } catch {
     // Cannot tell — poll anyway so a written verdict is never missed.
   }

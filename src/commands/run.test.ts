@@ -529,6 +529,7 @@ describe('run --example agent eval gating', () => {
   function agentExampleHandler(options: {
     eval?: { example: string; score: number | null; passed: boolean | null };
     evaluatorsConfigured: boolean;
+    typed?: boolean;
   }) {
     return (request: Request): Response => {
       const url = new URL(request.url);
@@ -542,11 +543,23 @@ describe('run --example agent eval gating', () => {
         request.method === 'GET' &&
         url.pathname === '/v1/automations/agents.support/evaluators'
       ) {
-        return json({
-          config: {
-            evaluators: options.evaluatorsConfigured ? [{ name: 'exact', type: 'exact-diff' }] : [],
-          },
-        });
+        return json(
+          options.typed
+            ? {
+                automationType: 'agent',
+                source: { path: 'agents/support/agent.ts', ref: 'latest', commit: 'a'.repeat(40) },
+                evaluation: options.evaluatorsConfigured
+                  ? { evaluators: { quality: { kind: 'custom' } }, pass: { kind: 'callback' } }
+                  : null,
+              }
+            : {
+                config: {
+                  evaluators: options.evaluatorsConfigured
+                    ? [{ name: 'exact', type: 'exact-diff' }]
+                    : [],
+                },
+              }
+        );
       }
       if (request.method === 'GET' && url.pathname === '/v1/runs/run_1') {
         return json({
@@ -640,6 +653,36 @@ describe('run --example agent eval gating', () => {
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('No evaluators configured');
     });
+  });
+
+  test('typed agent callback verdict gates the actual CLI without a numeric aggregate', async () => {
+    for (const passed of [true, false]) {
+      await withRunServer(
+        agentExampleHandler({
+          typed: true,
+          evaluatorsConfigured: true,
+          eval: { example: 'ex-1', score: null, passed },
+        }),
+        async (baseUrl) => {
+          const result = await runCli(
+            [
+              'run',
+              'agents.support',
+              '--example',
+              'ex-1',
+              '--wait',
+              '--fail-on-mismatch',
+              '--json',
+              '--base-url',
+              baseUrl,
+            ],
+            { baseUrl }
+          );
+          expect(result.status).toBe(passed ? 0 : 1);
+          expect(JSON.parse(result.stdout).eval).toMatchObject({ score: null, passed });
+        }
+      );
+    }
   });
 
   test('exits 2 with --fail-on-mismatch when evaluators are configured but no rollup lands in the grace window', async () => {

@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.71
+
+### Patch Changes
+
+- 28d79f3: Evaluate individual agent examples with the same versioned evaluation rules and pass decision used by batch runs.
+
 ## 0.20.63
 
 ### Patch Changes

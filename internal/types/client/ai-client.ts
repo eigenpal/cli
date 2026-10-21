@@ -96,6 +96,10 @@ export interface ExtractResponse {
  * constant inside the client. Callers cannot override it.
  */
 export interface ExtractOptions {
+  /** Hard generation cap for bounded agent execution. */
+  maxOutputTokens?: number;
+  /** Bounded callers own retry/turn accounting. */
+  maxRetries?: number;
   /** JSON Schema describing the expected output structure */
   schema: Record<string, unknown>;
   /** Custom prompt to guide extraction */

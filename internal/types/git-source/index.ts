@@ -125,7 +125,28 @@ export {
 
 export {
   CompiledAgentDataSchema,
+  CompiledAgentEvaluationSchema,
   CompiledAgentSnapshotSchema,
   type CompiledAgentData,
+  type CompiledAgentEvaluation,
   type CompiledAgentSnapshot,
 } from './agent-definition';
+
+export { AgentResourceSchema, AgentResourcesSchema, renderAgentResources } from './resources';
+export type { AgentResource, AgentResources } from './resources';
+
+export {
+  DEFINITION_ASSET_EXTENSION,
+  DEFINITION_BINARY_EXTENSION,
+  definitionImportCandidates,
+  definitionImports,
+  isResourceAssetPath,
+  resourceDirectory,
+} from './definition-imports';
+
+export { resourceDefinitionSource } from './definition-imports';
+
+export { definitionAssetImports } from './definition-imports';
+
+export { sourceFileText } from './definition-imports';
+export type { CapturedSourceFile } from './definition-imports';

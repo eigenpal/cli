@@ -27,7 +27,7 @@ import YAML from 'yaml';
 import { getProcessEnv } from '../../env';
 import { resolveConfig, type CliConfig } from '../../lib/config';
 import { error, success, table, warn } from '../../lib/ui';
-import { compileLocalAgent } from './agent-definition';
+import { compileLocalAgent, compileLocalResource } from './agent-definition';
 import {
   configureSourceGitRepo,
   gitBootstrapAuthEnv,
@@ -127,7 +127,8 @@ function findNearestPackageRoot(startDir: string, gitRoot: string | null): strin
   while (true) {
     if (
       existsSync(path.join(current, 'eigenpal.yaml')) ||
-      existsSync(path.join(current, 'agent.ts'))
+      existsSync(path.join(current, 'agent.ts')) ||
+      existsSync(path.join(current, 'resource.ts'))
     )
       return current;
     if (gitRoot && current === gitRoot) return null;
@@ -180,7 +181,11 @@ export function packageManifestExists(gitRoot: string, packagePath: SourcePackag
     path.join(
       gitRoot,
       packagePath,
-      packagePath.startsWith('agents/') ? 'agent.ts' : 'eigenpal.yaml'
+      packagePath.startsWith('agents/')
+        ? 'agent.ts'
+        : packagePath.startsWith('resources/')
+          ? 'resource.ts'
+          : 'eigenpal.yaml'
     )
   );
 }
@@ -202,6 +207,14 @@ export async function readPackageManifest(
     return SourcePackageManifestSchema.parse(
       (await compileLocalAgent(packageRoot, config)).definition.manifest
     );
+  if (resolveGitSourceContext({ dir: packageRoot }).packagePath?.startsWith('resources/')) {
+    const resource = await compileLocalResource(packageRoot, config);
+    return SourcePackageManifestSchema.parse({
+      schemaVersion: 1,
+      name: resource.name,
+      ...(resource.description ? { description: resource.description } : {}),
+    });
+  }
   return SourcePackageManifestSchema.parse(readYamlFile(path.join(packageRoot, 'eigenpal.yaml')));
 }
 
@@ -295,7 +308,10 @@ export async function validatePackage(
   if (!context.packagePath)
     errors.push('Package must live under agents/, workflows/, resources/, or evaluators/.');
 
-  if (context.packagePath?.startsWith('agents/') && context.packageRoot) {
+  if (
+    (context.packagePath?.startsWith('agents/') || context.packagePath?.startsWith('resources/')) &&
+    context.packageRoot
+  ) {
     try {
       parsedManifest = await readPackageManifest(context.packageRoot, config);
     } catch (error) {

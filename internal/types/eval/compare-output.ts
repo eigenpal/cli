@@ -57,6 +57,8 @@ export interface ExactDiffPathRule {
 export type ExactDiffRules = Readonly<Record<string, ExactDiffPathRule>>;
 
 export interface OutputComparisonOptions {
+  /** Compare explicit null and empty string values instead of treating them as unlabelled. */
+  compareEmptyValues?: boolean;
   /** Dot-paths to arrays whose expected items may match actual items in any order. */
   unorderedPaths?: readonly string[];
   /**
@@ -101,6 +103,7 @@ export function normalizeExactDiffMatchBy(matchBy: string | readonly string[]): 
 }
 
 interface InternalComparisonOptions {
+  compareEmptyValues?: boolean;
   unorderedPaths: ReadonlySet<string>;
   numericTolerance?: number;
   allowExtraFields: boolean;
@@ -331,8 +334,8 @@ function isWildcard(value: unknown): boolean {
   return isPlainObject(value) && value.fileId === WILDCARD_ANY;
 }
 
-function isEmptyExpected(value: unknown): boolean {
-  return value === null || value === undefined || value === '';
+function isEmptyExpected(value: unknown, compareEmptyValues = false): boolean {
+  return value === undefined || (!compareEmptyValues && (value === null || value === ''));
 }
 
 function numbersMatch(actual: number, expected: number, tolerance?: number): boolean {
@@ -470,7 +473,7 @@ function partialMatch(
     options.unorderedBudget.remainingOperations--;
   }
 
-  if (isEmptyExpected(expected)) return true;
+  if (isEmptyExpected(expected, options.compareEmptyValues)) return true;
   if (isWildcard(expected)) return true;
 
   const rule = effectiveRule(path, options);
@@ -501,7 +504,7 @@ function partialMatch(
   if (isPlainObject(expected) && isPlainObject(actual)) {
     let allMatch = true;
     for (const [key, expectedVal] of Object.entries(expected)) {
-      if (isEmptyExpected(expectedVal)) continue;
+      if (isEmptyExpected(expectedVal, options.compareEmptyValues)) continue;
       const childPath = path ? `${path}.${key}` : key;
       if (!partialMatch(expectedVal, actual[key], childPath, mismatches, options)) {
         allMatch = false;
@@ -1193,6 +1196,7 @@ export function compareOutput(
     (rules != null &&
       Object.values(rules).some((rule) => (rule.order ?? 'ordered') === 'unordered'));
   const comparisonOptions: InternalComparisonOptions = {
+    compareEmptyValues: options.compareEmptyValues,
     unorderedPaths: new Set(options.unorderedPaths ?? []),
     numericTolerance: options.numericTolerance,
     allowExtraFields: options.allowExtraFields ?? true,
@@ -1256,7 +1260,7 @@ export function compareOutput(
   }
 
   for (const [field, expectedValue] of Object.entries(data)) {
-    if (isEmptyExpected(expectedValue)) continue;
+    if (isEmptyExpected(expectedValue, options.compareEmptyValues)) continue;
 
     if (fileFieldSet.has(field)) {
       if (golden.length > 0) {

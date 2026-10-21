@@ -27,7 +27,7 @@ import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import { buildCliTelemetryHeaders } from '../../lib/telemetry';
 import { addJsonFlag, dim, formatTimestamp, success, table, warn, withBaseUrl } from '../../lib/ui';
-import { compileLocalAgent } from './agent-definition';
+import { captureAgentSource, compileLocalAgent, compileLocalResource } from './agent-definition';
 import { registerSourceInitCommand } from './init';
 import { runGitPassthrough, type BaseOpts } from './passthrough';
 import { registerSourceSecretCommands } from './secrets';
@@ -433,8 +433,31 @@ async function resolvePackageGraph(input: {
   const resolved = await resolvePackageRef(input);
   const tempDir = await mkdtemp(path.join(tmpdir(), 'eigenpal-install-resolve-'));
   try {
-    const packageRoot = path.join(tempDir, 'package');
+    const typed = /^(agents|resources)\//.test(input.packagePath);
+    const packageRoot = path.join(tempDir, typed ? input.packagePath : 'package');
     const ref = resolved.commit;
+    if (typed) {
+      writeFileSync(
+        path.join(tempDir, 'eigenpal.yaml'),
+        'schemaVersion: 1\neigenpalVersion: 1.0.0\n'
+      );
+      if (input.gitRoot) {
+        if (gitOutput(['ls-tree', '--name-only', ref, '--', 'resources'], input.gitRoot))
+          archivePackage({
+            gitRoot: input.gitRoot,
+            ref,
+            packagePath: 'resources',
+            outDir: path.join(tempDir, 'resources'),
+          });
+      } else
+        await tryHostedArchive({
+          config: input.config,
+          repository: input.repository,
+          ref,
+          packagePath: 'resources',
+          outDir: path.join(tempDir, 'resources'),
+        });
+    }
     if (input.gitRoot) {
       archivePackage({
         gitRoot: input.gitRoot,
@@ -456,9 +479,18 @@ async function resolvePackageGraph(input: {
     const compiledAgent = input.packagePath.startsWith('agents/')
       ? await compileLocalAgent(packageRoot, input.config)
       : undefined;
+    const resource = input.packagePath.startsWith('resources/')
+      ? await compileLocalResource(packageRoot, input.config)
+      : undefined;
     const manifest = compiledAgent
       ? compiledAgent.definition.manifest
-      : await readPackageManifest(packageRoot);
+      : resource
+        ? {
+            schemaVersion: 1,
+            name: resource.name,
+            ...(resource.description ? { description: resource.description } : {}),
+          }
+        : await readPackageManifest(packageRoot, input.config);
     const dependencies =
       'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
     const resolvedDependencies = [];
@@ -930,6 +962,24 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
   await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
 }
 
+function localPackageInputHash(
+  context: { packagePath: SourcePackagePath; packageRoot: string },
+  dependencies: [string, string][] = []
+) {
+  const typed = /^(agents|resources)\//.test(context.packagePath);
+  return sourceLockfileInputHash({
+    packagePath: context.packagePath,
+    ...(typed
+      ? {
+          source: captureAgentSource(
+            context.packageRoot,
+            context.packagePath.startsWith('resources/') ? 'resource.ts' : 'agent.ts'
+          ),
+        }
+      : { dependencies }),
+  });
+}
+
 async function install(
   packageRef: string | undefined,
   opts: BaseOpts &
@@ -1007,10 +1057,19 @@ async function install(
           'Run eigenpal agents install --frozen-lockfile inside a source package or pass a package ref.'
         );
       }
-      const manifest = await readPackageManifest(context.packageRoot, config);
-      const dependencies =
-        'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
-      const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });
+      const dependencies: [string, string][] = /^(agents|resources)\//.test(context.packagePath)
+        ? []
+        : Object.entries(
+            (
+              (await readPackageManifest(context.packageRoot, config)) as {
+                dependencies?: Record<string, string>;
+              }
+            ).dependencies ?? {}
+          );
+      const inputHash = localPackageInputHash(
+        { packagePath: context.packagePath, packageRoot: context.packageRoot },
+        dependencies
+      );
       const existing = readLockfile(lockfilePath);
       if (existing.inputHash !== inputHash) {
         throw new Error(`Existing lockfile ${lockfilePath} does not match current package inputs.`);
@@ -1098,10 +1157,19 @@ async function install(
   if (!context.gitRoot) {
     throw new Error('Run eigenpal agents install inside an organization source repository.');
   }
-  const manifest = await readPackageManifest(context.packageRoot, config);
-  const dependencies =
-    'dependencies' in manifest ? Object.entries(manifest.dependencies ?? {}) : [];
-  const inputHash = sourceLockfileInputHash({ packagePath: context.packagePath, dependencies });
+  const dependencies: [string, string][] = /^(agents|resources)\//.test(context.packagePath)
+    ? []
+    : Object.entries(
+        (
+          (await readPackageManifest(context.packageRoot, config)) as {
+            dependencies?: Record<string, string>;
+          }
+        ).dependencies ?? {}
+      );
+  const inputHash = localPackageInputHash(
+    { packagePath: context.packagePath, packageRoot: context.packageRoot },
+    dependencies
+  );
   const intendedLockfile =
     opts.lockfile ?? path.join(context.packageRoot, '.eigenpal', INSTALL_LOCKFILE_NAME);
   if (existsSync(intendedLockfile)) {
@@ -1114,7 +1182,13 @@ async function install(
     await installFromLock(intendedLockfile, context.packageRoot, false);
     return;
   }
+  const compiledAgent = context.packagePath.startsWith('agents/')
+    ? await compileLocalAgent(context.packageRoot, config)
+    : undefined;
+  if (context.packagePath.startsWith('resources/'))
+    await compileLocalResource(context.packageRoot, config);
   const root: InstallLockPackage = {
+    ...(compiledAgent ? { compiledAgent } : {}),
     packagePath: context.packagePath,
     requestedRef: 'main',
     resolvedRef: 'main',

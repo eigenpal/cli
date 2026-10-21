@@ -693,3 +693,15 @@ export {
 export { modelSupportsVision } from './client/model-capabilities';
 
 export * from './parser/spreadsheet-evidence';
+
+export {
+  addAgentSourceSkills,
+  agentSourcePropertyExpression,
+  appendAgentSourceMethods,
+  enableAgentSourceFilesystem,
+  readAgentSourceTriggerFlags,
+  removeAgentSourceProperty,
+  setAgentSourceExpression,
+  updateAgentSourceProperty,
+  updateAgentSourceTriggers,
+} from './git-source/agent-source-edit';

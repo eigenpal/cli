@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { ApiClient } from '../../lib/client';
 import {
   type ExampleEvalResult,
+  fetchHasEvaluators,
   formatEvalSummary,
   formatExampleLines,
   runWorkflowExamplesWithEval,
@@ -260,4 +261,126 @@ describe('runWorkflowExamplesWithEval (orchestration)', () => {
     expect(summary.examples[0].runError).toContain('not found');
     expect(summary.examples[0].runError).toContain('dataset push');
   });
+});
+
+describe('typed agent evaluator discovery', () => {
+  it('recognizes compiled agent evaluators without mutable YAML', async () => {
+    const client = {
+      get: async () => ({
+        automationType: 'agent',
+        evaluation: { evaluators: { fields: { kind: 'exact-diff' } } },
+      }),
+    } as unknown as ApiClient;
+    expect(await fetchHasEvaluators(client, 'agent')).toBe(true);
+  });
+  it('does not revive old YAML when the agent has no source evaluators', async () => {
+    const client = {
+      get: async () => ({
+        automationType: 'agent',
+        evaluation: null,
+        config: { evaluators: [{}] },
+      }),
+    } as unknown as ApiClient;
+    expect(await fetchHasEvaluators(client, 'agent')).toBe(false);
+  });
+});
+
+describe('typed agent example decision', () => {
+  it('honors callback pass and run scores when the server has no experiment batch', async () => {
+    const gets: string[] = [];
+    const client = fakeClient({
+      get: (path) => {
+        gets.push(path);
+        if (path.endsWith('/evaluators'))
+          return {
+            automationType: 'agent',
+            evaluation: { evaluators: { quality: { kind: 'custom' } } },
+          };
+        if (path.includes('/examples'))
+          return {
+            data: [{ id: 'name:invoice', name: 'invoice', expected: { total: 120 } }],
+            total: 1,
+          };
+        if (path.endsWith('/scores'))
+          return {
+            scores: [{ evaluatorName: 'quality', score: 1, passed: null, weight: 0, error: null }],
+          };
+        if (path === '/v1/runs/agent_run')
+          return {
+            finished: true,
+            execution: { status: 'completed' },
+            eval: { score: null, passed: true },
+          };
+        if (path.startsWith('/v1/runs/agent_run?'))
+          return { execution: { status: 'completed' }, output: { total: 140 } };
+        throw new Error(`unexpectedGET ${path}`);
+      },
+      post: () => ({ id: 'agent_run', batchId: null }),
+    });
+    const summary = await runWorkflowExamplesWithEval(
+      client,
+      NO_DIR,
+      'invoice',
+      'agent_1',
+      ['invoice'],
+      { quiet: true }
+    );
+    expect(summary.examples[0]).toMatchObject({
+      mode: 'evaluators',
+      passed: true,
+      score: null,
+      evaluators: [{ name: 'quality', score: 1, passed: null }],
+    });
+    expect(summary.passedCases).toBe(1);
+    expect(gets).toContain('/v1/runs/agent_run/scores');
+    expect(gets.some((path) => path.includes('/experiments/'))).toBe(false);
+  });
+});
+
+it('grades the run commit even when the current release evaluator configuration differs', async () => {
+  const commit = 'a'.repeat(40);
+  const gets: string[] = [];
+  const client = fakeClient({
+    get: (path) => {
+      gets.push(path);
+      if (path.endsWith('/evaluators')) return { automationType: 'agent', evaluation: null };
+      if (path.includes('/evaluators?sourceRef='))
+        return {
+          automationType: 'agent',
+          evaluation: { evaluators: { quality: { kind: 'custom' } } },
+        };
+      if (path.includes('/examples'))
+        return {
+          data: [{ id: 'name:invoice', name: 'invoice', expected: { total: 120 } }],
+          total: 1,
+        };
+      if (path.endsWith('/scores'))
+        return { scores: [{ evaluatorName: 'quality', score: 1, passed: null }] };
+      if (path === '/v1/runs/pinned_run')
+        return {
+          finished: true,
+          execution: { status: 'completed' },
+          eval: { score: null, passed: true },
+        };
+      if (path.startsWith('/v1/runs/pinned_run?'))
+        return {
+          execution: { status: 'completed' },
+          source: { git: { commitSha: commit } },
+          output: { total: 140 },
+        };
+      throw new Error(`unexpectedGET ${path}`);
+    },
+    post: () => ({ id: 'pinned_run', batchId: null }),
+  });
+  const summary = await runWorkflowExamplesWithEval(
+    client,
+    NO_DIR,
+    'invoice',
+    'agent_1',
+    ['invoice'],
+    { quiet: true }
+  );
+  expect(summary.mode).toBe('evaluators');
+  expect(summary.examples[0]).toMatchObject({ mode: 'evaluators', passed: true, score: null });
+  expect(gets).toContain(`/v1/automations/agent_1/evaluators?sourceRef=${commit}`);
 });

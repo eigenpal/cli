@@ -227,16 +227,120 @@ export const RootSourceManifestSchema = z
   .strict();
 export type RootSourceManifest = z.infer<typeof RootSourceManifestSchema>;
 
+const agentFilesystemOptionsSchema = z
+  .strictObject({
+    cwd: z
+      .string()
+      .max(512)
+      .refine(
+        (value) => value === '.' || safePath(value),
+        'Use a repository-relative directory without traversal'
+      )
+      .nullable()
+      .optional(),
+    files: z
+      .record(z.string().refine(safePath, 'Use a safe relative file path'), z.string())
+      .optional(),
+    packages: z
+      .strictObject({
+        python: z
+          .record(
+            z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/),
+            z.string().regex(/^[0-9]+(?:\.[0-9]+){1,3}$/)
+          )
+          .optional(),
+        npm: z
+          .record(
+            z.string().regex(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/),
+            z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/)
+          )
+          .optional(),
+      })
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    const files = Object.entries(value.files ?? {});
+    if (
+      files.length > 100 ||
+      files.reduce((total, [path, text]) => total + utf8Length(path + text), 0) > 256 * 1024
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'Workspace files allow at most 100 files and 256 KiB total',
+      });
+    if (
+      Object.keys(value.packages?.python ?? {}).length +
+        Object.keys(value.packages?.npm ?? {}).length >
+      32
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'Workspace allows at most 32 additional packages',
+      });
+  });
+
+// No host globals: the public SDK also runs inside the isolated source compiler.
+function utf8Length(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const code = character.codePointAt(0)!;
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+function safePath(value: string): boolean {
+  return (
+    value.length <= 512 &&
+    /^[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*$/.test(value) &&
+    !value
+      .split('/')
+      .some((part) =>
+        ['.', '..', '.git', '.eigenpal', 'node_modules', 'eigenpal_modules'].includes(part)
+      )
+  );
+}
+
 export const AgentPackageManifestSchema = z
   .object({
     ...CommonPackageManifestFields,
     model: z.string().optional(),
+    instructions: z
+      .string()
+      .min(1)
+      .max(128 * 1024)
+      .optional(),
+    filesystem: z.boolean().optional(),
+    workspace: agentFilesystemOptionsSchema.optional(),
+    guards: z
+      .array(
+        z.discriminatedUnion('kind', [
+          z.strictObject({ kind: z.literal('turns'), value: z.number().int().positive().safe() }),
+          z.strictObject({ kind: z.literal('timeMs'), value: z.number().int().positive().safe() }),
+          z.strictObject({ kind: z.literal('credits'), value: z.number().positive().finite() }),
+        ])
+      )
+      .max(32)
+      .optional(),
     triggers: TriggerConfigSchema.optional(),
     dependencies: DependencyMapSchema.optional(),
     evaluators: EvaluatorCompositionSchema.optional(),
   })
   .strict()
   .superRefine((manifest, ctx) => {
+    if (manifest.workspace?.cwd === null && Object.keys(manifest.dependencies ?? {}).length)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['dependencies'],
+        message:
+          'Shared file dependencies require a repository working directory; use files with cwd: null',
+      });
+    if (manifest.workspace !== undefined && manifest.filesystem !== true)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['workspace'],
+        message: 'Workspace requires filesystem capability',
+      });
     for (const dependencyName of Object.keys(manifest.dependencies ?? {})) {
       const nameResult = WorkspaceDependencyNameSchema.safeParse(dependencyName);
       if (!nameResult.success) {
@@ -320,8 +424,6 @@ export type SourcePackageFileSetValidationInput = {
   files: readonly string[];
 };
 
-const SOURCE_TEMPLATE_FILE_PATTERN = /\.(?:docx|xlsx)$/i;
-
 export type LocalAgentResourcePathInput = {
   packagePath: SourcePackagePath;
   relativePath: string;
@@ -338,10 +440,6 @@ export function workspaceDependencyNameToPackagePath(
 
 function hasFile(files: readonly string[], file: string): boolean {
   return files.includes(file);
-}
-
-function hasMatchingFile(files: readonly string[], predicate: (file: string) => boolean): boolean {
-  return files.some((file) => !file.startsWith('../') && !file.startsWith('/') && predicate(file));
 }
 
 export function isLocalAgentResourcePath({
@@ -365,7 +463,7 @@ export function validateSourcePackageRequiredFiles({
   const [root, resourceKind] = parsedPath.split('/');
   const issues: SourcePackageRequiredFileIssue[] = [];
 
-  if (root === 'agents' && !hasFile(files, 'AGENT.md')) {
+  if (root === 'agents' && !hasFile(files, 'agent.ts') && !hasFile(files, 'AGENT.md')) {
     issues.push({
       code: 'missing-required-file',
       path: 'AGENT.md',
@@ -381,45 +479,19 @@ export function validateSourcePackageRequiredFiles({
     });
   }
 
-  if (root !== 'resources') {
-    return issues;
-  }
-
-  if (resourceKind === 'skills') {
-    if (!hasFile(files, 'SKILL.md')) {
+  if (root === 'resources') {
+    if (!['skills', 'rules', 'knowledge', 'templates'].includes(resourceKind))
       issues.push({
         code: 'missing-required-file',
-        path: 'SKILL.md',
-        message: 'Shared skill packages must include SKILL.md',
+        path: 'resource.ts',
+        message: 'Unknown shared resource kind',
       });
-    }
-    return issues;
-  }
-
-  if (resourceKind === 'templates') {
-    if (!hasMatchingFile(files, (file) => SOURCE_TEMPLATE_FILE_PATTERN.test(file))) {
+    if (!hasFile(files, 'resource.ts'))
       issues.push({
-        code: 'missing-content-file',
-        message: 'Template packages must include at least one .docx or .xlsx file',
+        code: 'missing-required-file',
+        path: 'resource.ts',
+        message: 'Shared resources must export their TypeScript definition from resource.ts',
       });
-    }
-    return issues;
   }
-
-  if (resourceKind === 'rules' || resourceKind === 'knowledge') {
-    if (!hasMatchingFile(files, (file) => file.toLowerCase().endsWith('.md'))) {
-      issues.push({
-        code: 'missing-content-file',
-        message: `${resourceKind === 'rules' ? 'Rule' : 'Knowledge'} packages must include at least one markdown file`,
-      });
-    }
-    return issues;
-  }
-
-  issues.push({
-    code: 'unsupported-resource-kind',
-    message: `Unsupported resource package kind: ${resourceKind ?? '(missing)'}`,
-  });
-
   return issues;
 }
