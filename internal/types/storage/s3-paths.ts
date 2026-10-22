@@ -43,6 +43,16 @@ const PATH_LEAF = null;
 const PATH_REST = '*';
 
 export const S3_PATH_GRAMMAR = {
+  'summary-reports': {
+    $reportId: {
+      'runtime.json': PATH_LEAF,
+      'runtime-state.json': PATH_LEAF,
+      'conversation-state.json': PATH_LEAF,
+      'analysis-master.json': PATH_LEAF,
+      'compact-document.json': PATH_LEAF,
+      'report-revisions': { $revisionId: PATH_LEAF },
+    },
+  },
   'file-uploads': {
     $uploadId: { chunks: { $chunkIndex: PATH_LEAF } },
   },

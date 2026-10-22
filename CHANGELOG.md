@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.74
+
+### Patch Changes
+
+- 374df12: The bundled agent authoring reference now explains that credit checks use actual usage without reservations, including how an agent stops after reaching its model credit limit.
+
 ## 0.20.73
 
 ### Patch Changes
