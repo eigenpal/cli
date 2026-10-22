@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.73
+
+### Patch Changes
+
+- 095515e: Bundle the public agent authoring guides, including callback capabilities, shared resources, filesystem options and typed evaluations. Clarify the distinction between the authoring SDK and API clients.
+
 ## 0.20.71
 
 ### Patch Changes
