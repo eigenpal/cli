@@ -3,6 +3,16 @@ import { EXECUTION_STATUSES } from './execution-row';
 import { HumanReviewSourceKindSchema, type HumanReviewSourceKind } from './human-review';
 
 export const WEBHOOK_API_VERSION = '2026-07-01' as const;
+/**
+ * When a rotated signing secret stops signing deliveries. `now` is for a
+ * leaked secret; the others give receivers time to switch.
+ */
+export const WEBHOOK_PREVIOUS_SECRET_EXPIRY_MS = {
+  now: 0,
+  '1h': 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
+} as const;
+export type WebhookPreviousSecretExpiry = keyof typeof WEBHOOK_PREVIOUS_SECRET_EXPIRY_MS;
 export const WEBHOOK_NOTIFY_CHANNEL = 'eigenpal:webhooks' as const;
 export const WEBHOOK_MAX_PAYLOAD_BYTES = 1024 * 1024;
 export const WEBHOOK_MAX_HEADERS = 20;
@@ -277,9 +287,17 @@ export const UpdateWebhookEndpointSchema = z
   })
   .superRefine(validateWebhookHeaderCollection);
 
+export const RotateWebhookSigningSecretSchema = z
+  .object({
+    previousSecretExpiresIn: z
+      .enum(Object.keys(WEBHOOK_PREVIOUS_SECRET_EXPIRY_MS) as [WebhookPreviousSecretExpiry])
+      .default('24h'),
+  })
+  .strict();
+
 export const CreateWebhookEndpointResponseSchema = z.object({
   endpoint: WebhookEndpointSchema,
-  signingSecret: z.string().regex(/^whsec_[A-Za-z0-9_-]+$/),
+  signingSecret: z.string().regex(/^whsec_[A-Za-z0-9+/]+={0,2}$/),
 });
 
 export const WebhookDeliverySchema = z.object({
