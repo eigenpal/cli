@@ -19,5 +19,6 @@ export {
   type WorkflowInputDefLike,
   type WorkflowInputPropertyLike,
 } from './input';
+export { makeOptionalNullable } from './optional-nullable-schema';
 export { validateOutput, type ValidationResult } from './output';
 export { isSchemaFile, validateAgentSchema, validateWorkspaceSchema } from './workspace-schema';

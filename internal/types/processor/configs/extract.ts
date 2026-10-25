@@ -54,7 +54,9 @@ export const ExtractOutputSchema = z
 export const ExtractConfigSchema = z.object({
   schema: z
     .record(z.string(), z.unknown())
-    .describe('JSON Schema defining the structure to extract'),
+    .describe(
+      'JSON Schema defining the structure to extract. Fields not listed in `required` come back null when the document does not contain them; a missing required field fails the step.'
+    ),
   prompt: z.string().optional().describe('Custom prompt template for extraction'),
   provider: z
     .string()

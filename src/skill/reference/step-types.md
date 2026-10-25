@@ -2790,7 +2790,7 @@ Extract structured data from text using AI with a JSON schema
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `input` | string | yes |  | Text content or template expression |
-| `schema` | object | yes |  | JSON Schema defining the structure to extract |
+| `schema` | object | yes |  | JSON Schema defining the structure to extract. Fields not listed in `required` come back null when the document does not contain them; a missing required field fails the step. |
 | `prompt` | string | no |  | Custom prompt template for extraction |
 | `provider` | string | no |  | Provider ID (e.g., "openai/gpt-6-luna") |
 | `model` | string | no |  | Model override |
@@ -2845,7 +2845,7 @@ Config schema:
         "properties"
       ],
       "additionalProperties": false,
-      "description": "JSON Schema defining the structure to extract"
+      "description": "JSON Schema defining the structure to extract. Fields not listed in `required` come back null when the document does not contain them; a missing required field fails the step."
     },
     "prompt": {
       "description": "Custom prompt template for extraction",
@@ -4129,7 +4129,7 @@ Inspect rendered page images with a vision model and return structured JSON matc
 | `pageFrom` | integer \| string | no |  | First page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, starts from the first page. |
 | `pageTo` | integer \| string | no |  | Last page to inspect (0-based, inclusive). Optional. Accepts a template expression. When omitted, runs to the last page. When BOTH pageFrom and pageTo are omitted, the whole document is inspected in chunks of maxPages (divide-and-conquer, results merged). |
 | `pageIndices` | array<integer> \| string | no |  | Explicit list of 0-based page indices to inspect — supports NON-contiguous selections, e.g. [4, 11, 19], or a template resolving to a number[] such as "{{ steps.label_pages.output.byLabel.photo }}". Highest priority: when set, pageFrom/pageTo and pages are ignored. |
-| `schema` | object | yes |  | JSON Schema defining the structure the vision model should return. |
+| `schema` | object | yes |  | JSON Schema defining the structure the vision model should return. Fields not listed in `required` come back null when not found; a missing required field fails the step. |
 | `prompt` | string | no |  | Optional instruction refining the extraction. The schema drives it when omitted. |
 | `provider` | string | no |  | Provider ID (must support vision). |
 | `model` | string | no |  | Model override (must support vision). |
@@ -4277,7 +4277,7 @@ Config schema:
         "properties"
       ],
       "additionalProperties": false,
-      "description": "JSON Schema defining the structure the vision model should return."
+      "description": "JSON Schema defining the structure the vision model should return. Fields not listed in `required` come back null when not found; a missing required field fails the step."
     },
     "prompt": {
       "description": "Optional instruction refining the extraction. The schema drives it when omitted.",

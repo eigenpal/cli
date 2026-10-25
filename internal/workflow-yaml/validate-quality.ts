@@ -14,7 +14,7 @@
  * "field not found" warnings.
  */
 
-import { compileTypedScript, type WorkflowDefinition } from '@eigenpal/types';
+import { compileTypedScript, getStepSchema, type WorkflowDefinition } from '@eigenpal/types';
 
 export interface SchemaQualityWarning {
   /** Stable identifier so the CLI can filter / de-duplicate. */
@@ -23,7 +23,8 @@ export interface SchemaQualityWarning {
     | 'untyped-object'
     | 'untyped-array-items'
     | 'weak-script-return'
-    | 'unknown-step-reference';
+    | 'unknown-step-reference'
+    | 'ignored-config-key';
   /** Dotted path into the workflow, e.g. `steps.2.with.schema.properties.category`. */
   field: string;
   /** Human-readable explanation. */
@@ -86,7 +87,7 @@ const SEPARATOR_LIST_RE =
  * unbounded id).
  */
 const IDENTIFIER_NAME_RE =
-  /(number|num|id|identifier|reference|ref|sku|key|uuid|guid|iban|email|phone|url|uri|path|filename|name|date|address)$/i;
+  /(number|num|id|identifier|identificator|reference|ref|sku|key|uuid|guid|iban|vin|email|phone|url|uri|path|filename|name|date|year|address|brand|model|contract|symbol)$/i;
 
 /** Exact free-text field names the enum nudge should never fire on. */
 const FREEFORM_NAMES = new Set([
@@ -126,6 +127,9 @@ function descriptionLooksCategorical(description: string): boolean {
     .split(/\s*[|,/]\s*/)
     .map((t) => t.trim())
     .filter(Boolean);
+  // Two words joined by a comma are ordinary prose ("from the document, not
+  // the registry"); a comma-only value list needs at least three entries.
+  if (!/[|/]/.test(match[1]) && tokens.length < 3) return false;
   const idLike = tokens.filter((t) => ID_LIKE_TOKEN_RE.test(t)).length;
   // Majority id-shaped tokens ⇒ the list is illustrative ids, not an enum.
   return idLike * 2 < tokens.length;
@@ -320,11 +324,95 @@ function scanValue(
   }
 }
 
+/** Keys authors reach for that the step silently drops, with the real way to do it. */
+const IGNORED_KEY_HINTS: Record<string, string> = {
+  'transform.script:outputSchema':
+    "Remove it. The function's return type annotation is the step's output schema.",
+  'ai.extract:temperature': 'Remove it. Extraction always runs at temperature 0.',
+};
+
+/**
+ * Keys the worker reads straight from `with` that the config schema does not
+ * declare (packages/worker/src/engine/steps/ai.ts buildProcessorInput and
+ * transform.ts merge). Never report these as ignored.
+ */
+const RUNTIME_READ_KEYS: Partial<Record<string, readonly string[]>> = {
+  'ai.extract': ['content', 'text'],
+  'transform.merge': ['input', 'inputs'],
+};
+
+/**
+ * `with` keys the step's config schema does not know. Most step configs are
+ * non-strict, so these pass validation and are silently dropped at runtime,
+ * which hides typos and settings copied from other step types.
+ */
+function warnIgnoredConfigKeys(
+  step: WorkflowDefinition['steps'][number],
+  basePath: string,
+  out: SchemaQualityWarning[]
+): void {
+  if (step.type === 'control.block') return;
+  const def = getStepSchema(step.type);
+  const cfg = (step as { with?: unknown }).with;
+  if (!def?.configInWith || !cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return;
+  const parsed = def.configSchema.safeParse(cfg);
+  // Invalid configs are reported by parseWorkflow; strict schemas never get here.
+  if (!parsed.success || !parsed.data || typeof parsed.data !== 'object') return;
+  const shape = (def.configSchema as { shape?: Record<string, unknown> }).shape;
+  const supported = Object.keys(shape ?? (parsed.data as Record<string, unknown>));
+  const known = new Set([
+    ...supported,
+    ...Object.keys(parsed.data as Record<string, unknown>),
+    ...(RUNTIME_READ_KEYS[step.type] ?? []),
+  ]);
+  for (const key of Object.keys(cfg as Record<string, unknown>)) {
+    if (known.has(key)) continue;
+    const suggestion = closestKey(key, supported);
+    out.push({
+      code: 'ignored-config-key',
+      field: `${basePath}.with.${key}`,
+      message: `\`${key}\` is not a setting of ${step.type} and is ignored at runtime.${suggestion ? ` Did you mean \`${suggestion}\`?` : ''}`,
+      hint:
+        IGNORED_KEY_HINTS[`${step.type}:${key}`] ??
+        `Remove it or use a supported setting: ${[...supported].sort().join(', ')}.`,
+    });
+  }
+}
+
+/** Likely typo target: same name ignoring case, or within two edits. */
+function closestKey(key: string, candidates: string[]): string | undefined {
+  const lower = key.toLowerCase();
+  let best: { key: string; distance: number } | undefined;
+  for (const candidate of candidates) {
+    const distance = editDistance(lower, candidate.toLowerCase());
+    if (distance <= 2 && (!best || distance < best.distance)) best = { key: candidate, distance };
+  }
+  return best?.key;
+}
+
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 function walkStep(
   step: WorkflowDefinition['steps'][number],
   basePath: string,
   out: SchemaQualityWarning[]
 ): void {
+  warnIgnoredConfigKeys(step, basePath, out);
+
   // ai.extract — user-authored JSON Schema on with.schema
   if (step.type === 'ai.extract') {
     const schema = (step.with as { schema?: unknown } | undefined)?.schema;

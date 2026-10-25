@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.87
+
+### Patch Changes
+
+- 6f24a32: `eigenpal workflow validate` and `push` now warn about step settings that are silently ignored (for example `strategy` on a parse step or `outputSchema` on a script) and suggest the closest supported setting. The "add an enum" hint no longer fires on open-ended fields such as VINs, names, years and ids.
+
 ## 0.20.86
 
 ### Patch Changes

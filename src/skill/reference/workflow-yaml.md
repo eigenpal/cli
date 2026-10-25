@@ -297,11 +297,12 @@ that hurt downstream typing. Common ones:
 
 | Warning code                 | What it means                                                                                |
 | ---------------------------- | -------------------------------------------------------------------------------------------- |
-| `categorical-missing-enum`   | A field named like `category` / `status` / `kind` is a plain `string`. Consider declaring an `enum`. |
+| `categorical-missing-enum`   | A field named like `category` / `status` / `kind` is a plain `string`. Consider declaring an `enum`. Ignore it for open-ended values (names, ids, addresses). |
 | `weak-script-return`         | A `transform.script` returns `any` or `unknown`. Replace with a concrete shape or a literal union. |
 | `untyped-object`             | A `type: object` field has no `properties`. The LLM has no guidance on what to emit.         |
 | `untyped-array-items`        | A `type: array` field has no `items:` declared.                                              |
 | `unknown-step-reference`     | A Liquid expression references a step that is not in scope, often because it is inside a control container. |
+| `ignored-config-key`         | A `with:` key the step does not support. It is silently ignored at runtime; the warning suggests the closest supported setting. |
 
 Warnings do not block the push. They print to stderr as `! …` lines. Run
 `eigenpal workflow validate` locally to surface them before pushing.

@@ -248,7 +248,9 @@ export const AiExtractConfigSchema = z.object({
     .refine((schema) => Object.keys(schema.properties).length > 0, {
       message: 'Extraction schema must define at least one field',
     })
-    .describe('JSON Schema defining the structure to extract'),
+    .describe(
+      'JSON Schema defining the structure to extract. Fields not listed in `required` come back null when the document does not contain them; a missing required field fails the step.'
+    ),
   prompt: z.string().optional().describe('Custom prompt template for extraction'),
   provider: z.string().optional().describe('Provider ID (e.g., "openai/gpt-6-luna")'),
   model: z.string().optional().describe('Model override'),
@@ -351,7 +353,9 @@ export const AiVisionConfigSchema = z.object({
     .refine((schema) => Object.keys(schema.properties).length > 0, {
       message: 'Vision schema must define at least one field',
     })
-    .describe('JSON Schema defining the structure the vision model should return.'),
+    .describe(
+      'JSON Schema defining the structure the vision model should return. Fields not listed in `required` come back null when not found; a missing required field fails the step.'
+    ),
   prompt: z
     .string()
     .optional()
