@@ -198,19 +198,11 @@ Schema for `meta.json` → `review` (from `HumanReviewEvaluationFixtureSchema` i
                   ]
                 },
                 "expectedValue": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
                   ]
                 }
               },
@@ -230,19 +222,11 @@ Schema for `meta.json` → `review` (from `HumanReviewEvaluationFixtureSchema` i
                   "type": "string"
                 },
                 "additionalProperties": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
                   ]
                 }
               }
@@ -554,19 +538,11 @@ Allowed values: `"append"` \| `"replace"`
                       ]
                     },
                     "expectedValue": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "boolean"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
                       ]
                     }
                   },
@@ -586,19 +562,11 @@ Allowed values: `"append"` \| `"replace"`
                       "type": "string"
                     },
                     "additionalProperties": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "boolean"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
                       ]
                     }
                   }

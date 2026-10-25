@@ -874,19 +874,11 @@ Output schema:
                     },
                     "rawValue": {
                       "description": "Stored cached value; formulas are never evaluated",
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "boolean"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
                       ]
                     },
                     "displayedValue": {
@@ -2016,19 +2008,11 @@ Output schema:
                     },
                     "rawValue": {
                       "description": "Stored cached value; formulas are never evaluated",
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "boolean"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
                       ]
                     },
                     "displayedValue": {
@@ -3126,6 +3110,9 @@ Output schema:
                 "maximum": 9007199254740991
               }
             ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2,
             "description": "[startIndex, endIndex] inclusive, 0-based page indices"
           },
           "confidence": {
@@ -3147,13 +3134,9 @@ Output schema:
             "properties": {
               "start_heading_text": {
                 "description": "Verbatim heading text the LLM cited as the section start",
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "start_page": {
@@ -3299,6 +3282,9 @@ Output schema:
                 "maximum": 9007199254740991
               }
             ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2,
             "description": "[startIndex, endIndex] inclusive, 0-based page indices"
           },
           "confidence": {
@@ -3320,13 +3306,9 @@ Output schema:
             "properties": {
               "start_heading_text": {
                 "description": "Verbatim heading text the LLM cited as the section start",
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "start_page": {
@@ -3627,7 +3609,10 @@ Output schema:
                     "minimum": -9007199254740991,
                     "maximum": 9007199254740991
                   }
-                ]
+                ],
+                "additionalItems": false,
+                "minItems": 2,
+                "maxItems": 2
               },
               "reason": {
                 "type": "string",
@@ -3692,6 +3677,9 @@ Output schema:
                 "maximum": 9007199254740991
               }
             ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2,
             "description": "[startIndex, endIndex] inclusive, 0-based page indices"
           },
           "confidence": {
@@ -3713,13 +3701,9 @@ Output schema:
             "properties": {
               "start_heading_text": {
                 "description": "Verbatim heading/title text the LLM cited as the document start",
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "start_page": {
@@ -4235,6 +4219,9 @@ Config schema:
               "maximum": 9007199254740991
             }
           ],
+          "additionalItems": false,
+          "minItems": 2,
+          "maxItems": 2,
           "description": "Inclusive 0-based [start, end] page range, matching ai.split page_range."
         },
         {
@@ -4253,6 +4240,9 @@ Config schema:
                 "maximum": 9007199254740991
               }
             ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2,
             "description": "Inclusive 0-based [start, end] page range, matching ai.split page_range."
           }
         },
@@ -4652,7 +4642,10 @@ Output schema:
                   {
                     "type": "number"
                   }
-                ]
+                ],
+                "additionalItems": false,
+                "minItems": 4,
+                "maxItems": 4
               },
               {
                 "type": "null"
@@ -4663,13 +4656,9 @@ Output schema:
             "type": "number"
           },
           "caption": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "cropJpegBase64": {
@@ -5422,6 +5411,9 @@ Config schema:
                     "maximum": 1
                   }
                 ],
+                "additionalItems": false,
+                "minItems": 4,
+                "maxItems": 4,
                 "description": "Normalized axis-aligned bbox [x0, y0, x1, y1]"
               }
             },
@@ -5526,6 +5518,9 @@ Output schema:
                 "maximum": 1
               }
             ],
+            "additionalItems": false,
+            "minItems": 4,
+            "maxItems": 4,
             "description": "Normalized bbox that was cropped"
           },
           "width": {
@@ -5818,19 +5813,11 @@ Output schema:
           },
           "rawValue": {
             "description": "Stored cached value; formulas are never evaluated",
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
             ]
           },
           "displayedValue": {
@@ -7121,6 +7108,9 @@ Output schema:
                 "maximum": 9007199254740991
               }
             ],
+            "additionalItems": false,
+            "minItems": 2,
+            "maxItems": 2,
             "description": "[startIndex, endIndex] inclusive, 0-based page indices in the merged PDF"
           }
         },
@@ -7470,48 +7460,32 @@ Output schema:
       "description": "Page content converted to markdown"
     },
     "title": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Page title"
+      "description": "Page title",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "excerpt": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Page excerpt/description"
+      "description": "Page excerpt/description",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "byline": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Author information"
+      "description": "Author information",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "siteName": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Site name"
+      "description": "Site name",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "length": {
       "type": "number",
@@ -7708,15 +7682,11 @@ Output schema:
       "description": "Email server that sent (or would have sent) the message"
     },
     "messageId": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "Provider message id. Null when delivery was skipped (evaluation runs)."
+      "description": "Provider message id. Null when delivery was skipped (evaluation runs).",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "provider": {
       "anyOf": [
@@ -7906,18 +7876,12 @@ Config schema:
         "type": "object",
         "properties": {
           "when": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              }
-            ],
-            "description": "Value matched (string-compared) against the resolved `on` value."
+            "description": "Value matched (string-compared) against the resolved `on` value.",
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
           }
         },
         "required": [
@@ -7945,25 +7909,13 @@ Output schema:
   "type": "object",
   "properties": {
     "matched": {
-      "anyOf": [
-        {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "boolean"
-            }
-          ]
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "The `when` value that matched, or null when the default (or no) branch ran."
+      "description": "The `when` value that matched, or null when the default (or no) branch ran.",
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
     },
     "branch": {
       "type": "string",

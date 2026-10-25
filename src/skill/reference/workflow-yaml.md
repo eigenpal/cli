@@ -1831,16 +1831,10 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
                 "type": "object",
                 "properties": {
                   "when": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "boolean"
-                      }
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
                     ]
                   },
                   "steps": {

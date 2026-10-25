@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.86
+
+### Patch Changes
+
+- ab37b58: Refreshed the bundled skill reference so its schemas match the current validation rules.
+
 ## 0.20.74
 
 ### Patch Changes

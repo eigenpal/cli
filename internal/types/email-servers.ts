@@ -159,6 +159,7 @@ const UpdateMetadataOnlySchema = z
   .object({
     name: EmailServerNameSchema.optional(),
     enabled: z.boolean().optional(),
+    transport: z.undefined().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -204,8 +205,11 @@ const UpdateSmtpEmailServerRequestSchema = z
   .strict()
   .superRefine(refineSmtpNoneRejectsCredentials);
 
+// Dispatch on `transport` so a failed SMTP or Resend patch reports that
+// branch's own issue (e.g. credentials with security 'none') rather than a
+// generic invalid_union across every branch.
 export const UpdateEmailServerRequestSchema = z
-  .union([
+  .discriminatedUnion('transport', [
     UpdateResendEmailServerRequestSchema,
     UpdateSmtpEmailServerRequestSchema,
     UpdateMetadataOnlySchema,
@@ -314,10 +318,11 @@ export interface EmailServerSecretPlan {
   caPem: EmailServerSecretAction;
 }
 
-function hasTransport(
+/** True for a transport replacement; false for a name/enabled-only patch. */
+export function isEmailServerTransportPatch(
   patch: UpdateEmailServerRequest
 ): patch is Extract<UpdateEmailServerRequest, { transport: EmailServerTransport }> {
-  return 'transport' in patch;
+  return patch.transport !== undefined;
 }
 
 /** Stored SMTP destination the request schema cannot see. Never include secrets. */
@@ -354,7 +359,7 @@ export function planEmailServerSecretUpdate(input: {
   storedSmtp?: EmailServerStoredSmtpAuth;
   patch: UpdateEmailServerRequest;
 }): EmailServerSecretPlan {
-  if (!hasTransport(input.patch)) {
+  if (!isEmailServerTransportPatch(input.patch)) {
     return { resendApiKey: 'retain', smtpPassword: 'retain', caPem: 'retain' };
   }
 
@@ -429,7 +434,7 @@ export function getEmailServerUpdateError(
   patch: UpdateEmailServerRequest,
   storedSmtp?: EmailServerStoredSmtpAuth
 ): string | null {
-  if (hasTransport(patch) && patch.transport === 'smtp') {
+  if (isEmailServerTransportPatch(patch) && patch.transport === 'smtp') {
     const auth = planSmtpAuthActions(existingTransport, patch, storedSmtp);
     const hasUsername = actionLeavesPresent(auth.username, Boolean(storedSmtp?.username));
     const hasPassword = actionLeavesPresent(auth.password, storedSmtp?.passwordConfigured === true);
@@ -450,7 +455,7 @@ export function getEmailServerUpdateError(
     }
   }
 
-  if (!hasTransport(patch)) return null;
+  if (!isEmailServerTransportPatch(patch)) return null;
   if (patch.transport === existingTransport) return null;
 
   if (patch.transport === 'resend' && patch.apiKey === undefined) {
