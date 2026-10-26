@@ -169,26 +169,26 @@ export function convertTsTypeToJsonSchema(node: TSType, ctx: ConvertContext): Js
       const name = node.typeName.name;
 
       // Built-in generic shortcuts the user is likely to type.
-      if (name === 'Array' && node.typeParameters?.params.length === 1) {
+      if (name === 'Array' && node.typeArguments?.params.length === 1) {
         return {
           type: 'array',
-          items: convertTsTypeToJsonSchema(node.typeParameters.params[0], ctx),
+          items: convertTsTypeToJsonSchema(node.typeArguments.params[0], ctx),
         };
       }
-      if (name === 'ReadonlyArray' && node.typeParameters?.params.length === 1) {
+      if (name === 'ReadonlyArray' && node.typeArguments?.params.length === 1) {
         return {
           type: 'array',
-          items: convertTsTypeToJsonSchema(node.typeParameters.params[0], ctx),
+          items: convertTsTypeToJsonSchema(node.typeArguments.params[0], ctx),
         };
       }
       if (
         name === 'Record' &&
-        node.typeParameters?.params.length === 2 &&
-        node.typeParameters.params[0].type === 'TSStringKeyword'
+        node.typeArguments?.params.length === 2 &&
+        node.typeArguments.params[0].type === 'TSStringKeyword'
       ) {
         return {
           type: 'object',
-          additionalProperties: convertTsTypeToJsonSchema(node.typeParameters.params[1], ctx),
+          additionalProperties: convertTsTypeToJsonSchema(node.typeArguments.params[1], ctx),
         };
       }
       if (name === 'Promise') {

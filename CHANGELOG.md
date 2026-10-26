@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.20.91
+
+### Patch Changes
+
+- 9580ac0: Refresh CLI dependencies for continued compatibility and maintenance.
+- cdfc91d: Refresh CLI and SDK dependencies for continued compatibility and maintenance.
+
 ## 0.20.87
 
 ### Patch Changes

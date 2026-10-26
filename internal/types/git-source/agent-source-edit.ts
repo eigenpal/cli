@@ -43,6 +43,7 @@ function agentCall(source: string): {
     } else if (
       call.type === 'CallExpression' &&
       call.callee.type === 'MemberExpression' &&
+      call.callee.object.type !== 'Super' &&
       !call.callee.computed &&
       call.callee.property.type === 'Identifier' &&
       ['withFilesystem', 'defineEvaluator', 'defineEvalPass'].includes(call.callee.property.name)
