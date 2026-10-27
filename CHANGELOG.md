@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.20.94
+
+### Patch Changes
+
+- 1efa7bb: Document how to select GPT-6.1 Terra for structured extraction, including reasoning settings and token prices.
+
 ## 0.20.91
 
 ### Patch Changes
