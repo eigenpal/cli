@@ -5060,6 +5060,7 @@ Merge multiple named inputs into a single output
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `input` | record<string, unknown> | no |  | Named inputs to merge; each key becomes a key in the merged output |
 | `preservePortNames` | boolean | no | `true` |  |
 | `outputKey` | string | no |  |  |
 
@@ -5080,6 +5081,14 @@ Config schema:
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
+    "input": {
+      "description": "Named inputs to merge; each key becomes a key in the merged output",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
     "preservePortNames": {
       "default": true,
       "type": "boolean"

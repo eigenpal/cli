@@ -1017,6 +1017,10 @@ export const TransformSplitOutputSchema = z
  * Config goes in step.with
  */
 export const TransformMergeConfigSchema = z.object({
+  input: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Named inputs to merge; each key becomes a key in the merged output'),
   preservePortNames: z.boolean().default(true).optional(),
   outputKey: z.string().optional(),
 });
