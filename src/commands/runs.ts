@@ -1,4 +1,9 @@
-import { RUN_EXPAND_SECTIONS, runExpandErrorMessage, type RunExpandSection } from '@eigenpal/types';
+import {
+  RUN_EXPAND_SECTIONS,
+  runErrorMessage,
+  runExpandErrorMessage,
+  type RunExpandSection,
+} from '@eigenpal/types';
 import { type Command } from 'commander';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -669,7 +674,7 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
   const terminalOutput = run.output !== undefined ? run.output : result?.output;
   const terminalFiles =
     run.files !== undefined ? run.files : (result?.files ?? executionFiles?.output);
-  const terminalError = run.error !== undefined ? run.error : result?.error;
+  const terminalError = runErrorMessage(run.error !== undefined ? run.error : result?.error);
   const terminalSchemaValid =
     execution?.schemaValid !== undefined ? execution.schemaValid : result?.schemaValid;
 
@@ -807,7 +812,7 @@ function toExecutionSnapshot(run: Record<string, unknown>, fallbackId: string): 
       error: typeof step.error === 'string' ? step.error : null,
       outputPreview: previewOutput(step.outputData),
     })),
-    error: typeof run.error === 'string' ? run.error : null,
+    error: runErrorMessage(run.error),
   };
 }
 

@@ -2201,8 +2201,8 @@ export const ControlHumanReviewOutputSchema = z
  * the condition (LiquidJS) is evaluated against the current scope; truthy
  * → fail with the given code+message, falsy → skip and continue. The
  * executor catches the typed `WorkflowFailedError`, persists `{code, message}`
- * as JSON in the `executions.error` column, and the sync HTTP API surfaces
- * `code` as the response status.
+ * as JSON before failure classification. The Runs API exposes the code in
+ * `error.statusCode`, independently of the HTTP response status.
  */
 export const ControlFailConfigSchema = z.object({
   condition: z
@@ -2218,7 +2218,7 @@ export const ControlFailConfigSchema = z.object({
     .max(599)
     .default(422)
     .describe(
-      'HTTP-style status code returned to the caller (sync runs) and persisted on the execution. Default 422 (Unprocessable Entity).'
+      'Business rejection code exposed as error.statusCode on the run. Does not change the API HTTP response status. Default 422 (Unprocessable Entity).'
     ),
   message: z
     .string()

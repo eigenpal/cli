@@ -19,11 +19,12 @@
  * `eval.passed` becoming non-null (the rollup write), not on terminal status.
  */
 
+import { runErrorMessage, type RunError } from '@eigenpal/types';
 import { env } from '../../env';
 import type { ApiClient } from '../../lib/client';
 import {
-  type ExecutionArtifactPayload,
   writeExecutionArtifacts,
+  type ExecutionArtifactPayload,
 } from '../../lib/execution-artifacts';
 import { formatCliError } from '../../lib/format-error';
 import { gradeAgainstExpected } from '../../lib/grade-example';
@@ -118,7 +119,7 @@ interface RunView {
   finished?: boolean;
   execution?: { status?: string };
   status?: string;
-  error?: string | null;
+  error?: RunError | string | null;
   output?: unknown;
   result?: { output?: unknown; error?: string | null } | null;
   eval?: { score?: number | null; passed?: boolean | null } | null;
@@ -254,7 +255,7 @@ function toArtifactPayload(run: RunView, runId: string): ExecutionArtifactPayloa
     status: run.execution?.status ?? run.status ?? 'unknown',
     createdAt: run.timing?.createdAt ?? new Date().toISOString(),
     completedAt: run.timing?.completedAt ?? null,
-    error: run.error !== undefined ? run.error : (run.result?.error ?? null),
+    error: runErrorMessage(run.error !== undefined ? run.error : run.result?.error),
     output: runOutput(run),
     stepExecutions: [],
   };
@@ -322,7 +323,7 @@ export async function runWorkflowExamplesWithEval(
         exampleId: example.id,
         executionId: runId,
         run: runOk ? 'ok' : 'error',
-        runError: runOk ? undefined : (run.error ?? status ?? 'unknown'),
+        runError: runOk ? undefined : (runErrorMessage(run.error) ?? status ?? 'unknown'),
         mode: 'none',
       };
 

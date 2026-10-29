@@ -217,7 +217,7 @@ export const FailStepSchema = BaseStepSchema.extend({
   type: z.literal('control.fail'),
   /** Optional template expression that gates the fail. Empty = always fail. */
   condition: z.string().optional(),
-  /** HTTP-style status code returned to callers. Defaults to 422. */
+  /** Business rejection code exposed in run.error.statusCode. Defaults to 422. */
   statusCode: z.number().int().min(400).max(599).optional(),
   /** Human-readable failure message. Supports template expressions. */
   message: z.string().min(1),

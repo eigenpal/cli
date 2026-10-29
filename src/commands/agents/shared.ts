@@ -1,3 +1,4 @@
+import type { RunError } from '@eigenpal/types';
 import { isTerminalExecutionStatus } from '@eigenpal/types';
 import { InvalidArgumentError } from 'commander';
 import { existsSync, promises as fs } from 'node:fs';
@@ -89,7 +90,7 @@ export async function pollRun(
       return (await client.get(`${base}?expand=usage,execution`)) as {
         finished?: boolean;
         execution?: { status?: string };
-        error?: string | null;
+        error?: RunError | string | null;
       };
     }
     if (Date.now() - started > maxWait * 1000) {

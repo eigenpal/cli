@@ -8694,7 +8694,7 @@ Terminate the workflow with a typed status code + message. With an optional cond
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `condition` | string | no |  | Optional LiquidJS expression. When set, the step only fails if this evaluates truthy; when omitted, it always fails when reached (compose with control.if for legacy gating). |
-| `statusCode` | integer | no | `422` | HTTP-style status code returned to the caller (sync runs) and persisted on the execution. Default 422 (Unprocessable Entity). |
+| `statusCode` | integer | no | `422` | Business rejection code exposed as error.statusCode on the run. Does not change the API HTTP response status. Default 422 (Unprocessable Entity). |
 | `message` | string | yes |  | Human-readable failure message. Supports template expressions, e.g. "Document classified as {{ steps.classify.output.label }}". |
 
 **Output:** `unknown`
@@ -8716,7 +8716,7 @@ Config schema:
     },
     "statusCode": {
       "default": 422,
-      "description": "HTTP-style status code returned to the caller (sync runs) and persisted on the execution. Default 422 (Unprocessable Entity).",
+      "description": "Business rejection code exposed as error.statusCode on the run. Does not change the API HTTP response status. Default 422 (Unprocessable Entity).",
       "type": "integer",
       "minimum": 400,
       "maximum": 599

@@ -1,5 +1,14 @@
 # @eigenpal/cli
 
+## 0.20.99
+
+### Patch Changes
+
+- 996d1ef: Run responses expose structured errors with a machine-readable code, message,
+  retryability, and the configured business status code and step for workflow
+  rejections. Update consumers of the previous string error to read error.message.
+  HTTP success remains independent of the processing outcome.
+
 ## 0.20.94
 
 ### Patch Changes

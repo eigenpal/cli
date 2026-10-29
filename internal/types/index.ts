@@ -705,3 +705,15 @@ export {
   updateAgentSourceProperty,
   updateAgentSourceTriggers,
 } from './git-source/agent-source-edit';
+
+export {
+  RunErrorSchema,
+  publicRunError,
+  runErrorJsonSchema,
+  runErrorMessage,
+  type RunError,
+} from './run-error';
+
+export * from './workflow/failure-contract';
+
+export { STANDARD_RUN_FAILURE_EXAMPLES } from './run-failure-examples';

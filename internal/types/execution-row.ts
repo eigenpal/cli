@@ -99,6 +99,9 @@ export interface InternalExecutionFailure {
   category: ExecutionFailureCategory;
   provider?: string;
   retryable: boolean;
+  /** Business rejection code and step, independent of the API HTTP status. */
+  statusCode?: number;
+  step?: string;
   userMessage: string;
   operatorMessage: string;
   rawMessage?: string;
@@ -115,6 +118,8 @@ export type PublicExecutionFailure = Pick<
   | 'category'
   | 'provider'
   | 'retryable'
+  | 'statusCode'
+  | 'step'
   | 'userMessage'
   | 'occurredAt'
   | 'diagnostic'
@@ -159,6 +164,8 @@ export function publicExecutionFailure(
     provider,
     retryable,
     userMessage,
+    ...(failure.statusCode !== undefined ? { statusCode: failure.statusCode } : {}),
+    ...(failure.step ? { step: failure.step } : {}),
     occurredAt,
     ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
   };
