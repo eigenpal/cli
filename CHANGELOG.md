@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.21.0
+
+### Patch Changes
+
+- 2f63149: The CLI service account guide explains how to preserve key access during rotation and who can revoke admin service account keys.
+
 ## 0.20.99
 
 ### Patch Changes

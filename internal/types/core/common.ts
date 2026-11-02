@@ -15,6 +15,8 @@ export const ID_PREFIXES = {
   TEMPLATE: 'tmpl',
   TEMPLATE_REVISION: 'tmpr',
   USER: 'user',
+  /** User row of a non-human service account (never signs in). */
+  SERVICE_ACCOUNT: 'svc',
   TENANT: 'org',
   TENANT_INVITE: 'inv',
   /** Row in the durable per-user organization-creation ledger. */
