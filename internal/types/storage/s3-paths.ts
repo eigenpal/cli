@@ -124,6 +124,14 @@ export const S3_PATH_GRAMMAR = {
   // Canonical public runtime layout for workflows and agents.
   automations: {
     $automationId: {
+      // What a workflow release replaced in this installation, kept for rollback
+      // (see packages/app/src/lib/promotion/snapshots.ts).
+      'promotion-replaced': {
+        $applyId: {
+          'replaced.json': PATH_LEAF,
+          files: { $sha256: PATH_LEAF },
+        },
+      },
       dataset: {
         examples: {
           $exampleName: {
@@ -245,6 +253,8 @@ export const S3_PATH_GRAMMAR = {
   },
   // Tenant-scoped platform metadata (blob migration ledger, parse cache, etc.).
   _meta: {
+    // When this installation last checked the promotion repository (lib/promotion/pull-health.ts).
+    'promotion-pull.json': PATH_LEAF,
     'blob-migrations': {
       $migrationLedgerFile: PATH_LEAF,
     },
