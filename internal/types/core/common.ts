@@ -68,6 +68,8 @@ export const ID_PREFIXES = {
   FILE_SOURCE_CONFIG: 'fsc',
   // Storage-direct reusable file upload sessions (`fup_…`)
   FILE_UPLOAD: 'fup',
+  // Environment variables (`env_…`)
+  ENV_VAR: 'env',
   // Outbound email servers (`ems_…`)
   EMAIL_SERVER: 'ems',
   // Outbound webhooks

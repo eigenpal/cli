@@ -97,8 +97,8 @@ export const ExecutionContextSchema = z.object({
   item: z.unknown().optional(),
   /** For foreach: current index */
   index: z.number().optional(),
-  /** Environment variables */
-  env: z.record(z.string(), z.string()).optional(),
+  /** Environment variables the run resolved, typed (`{{ env.NAME }}`) */
+  env: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type ExecutionContext = z.infer<typeof ExecutionContextSchema>;
 
@@ -118,8 +118,8 @@ export const StepInputReferenceSchema = z.object({
   item: z.unknown().optional(),
   /** For foreach: current index */
   index: z.number().optional(),
-  /** Environment variables */
-  env: z.record(z.string(), z.string()).optional(),
+  /** Environment variables the run resolved, typed (`{{ env.NAME }}`) */
+  env: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type StepInputReference = z.infer<typeof StepInputReferenceSchema>;
 

@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.22.0
+
+### Patch Changes
+
+- 03fe2fb: Update the bundled deployment references for explicit model registries, required maintenance, scoped sandbox storage credentials and versioned release charts.
+- 00a681a: Add the on-prem installation and configuration guides to the bundled documentation, covering deployment settings, environment variables, agent sandboxes, SSO, workflow promotion and operations.
+
 ## 0.21.0
 
 ### Patch Changes

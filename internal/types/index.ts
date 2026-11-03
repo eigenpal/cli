@@ -636,6 +636,9 @@ export * from './api/display-path';
 
 export { isRunInSampleRank, runSampleRank, stringToUnitInterval } from './runs/sample-rank';
 
+// Environment variables (`{{ env.NAME }}`): schemas, reference scanner, secret masking
+export * from './env-vars';
+
 // Organization-managed outbound email servers
 export * from './email-servers';
 
