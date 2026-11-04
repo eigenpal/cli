@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.22.4
+
+### Patch Changes
+
+- 2e6cab7: Bundled self-hosting documentation now covers OCI chart mirroring and Argo CD multi-source installations with environment values stored in Git.
+
 ## 0.22.0
 
 ### Patch Changes
