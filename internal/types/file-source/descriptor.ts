@@ -647,6 +647,23 @@ export function validateFileSourceConfig(
 }
 
 /**
+ * Problems with a stored (encrypted) config, checked by the same rules as a
+ * save without decrypting anything: a stored secret only counts as set.
+ */
+export function storedFileSourceConfigErrors(
+  descriptor: FileSourceDescriptor,
+  stored: Record<string, unknown>
+): string[] {
+  const input: Record<string, unknown> = { ...stored };
+  for (const field of descriptor.configFields) {
+    if (field.type !== 'secret') continue;
+    const value = stored[field.key];
+    input[field.key] = value === undefined || value === null || value === '' ? undefined : 'set';
+  }
+  return validateFileSourceConfig(descriptor, input).errors.map((error) => error.message);
+}
+
+/**
  * Return a copy of a config with every `secret` field replaced by a boolean
  * "is set" indicator, for safe display in API responses (never echo secrets).
  */

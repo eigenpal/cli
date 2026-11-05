@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.22.6
+
+### Patch Changes
+
+- a12f7d4: Bundled self-hosting documentation describes the per-value Secret references and the optional External Secrets support of the Helm chart.
+
 ## 0.22.4
 
 ### Patch Changes
