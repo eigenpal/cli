@@ -770,3 +770,70 @@ function createBuilder<Node extends PathNode>(
 }
 
 export const rootS3Path = createBuilder(S3_PATH_GRAMMAR, []) as RootS3PathBuilder;
+
+/** Longest single segment a dataset example file path may carry (S3 caps whole keys at 1024 bytes). */
+const DATASET_FILE_SEGMENT_MAX_LENGTH = 255;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_RX = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Validate the relative path of a dataset example file (the part after
+ * `examples/<name>/input/` or `.../expected/`) and return it joined with `/`.
+ *
+ * These paths are user-named: `$file` refs in `input.json`/`expected.json`
+ * point at them and they round-trip through dataset ZIPs and Git promotion,
+ * so they keep the author's spelling (spaces, accents, parentheses) instead
+ * of the strict `SEGMENT_RX` charset the rest of the grammar uses. Dataset
+ * import has always stored them that way. Only what can escape the folder or
+ * corrupt a key is refused: empty, `.` and `..` segments, backslashes and
+ * control characters (NUL included).
+ */
+export function datasetExampleFilePath(path: string | readonly string[]): string {
+  const segments = typeof path === 'string' ? path.split('/') : [...path];
+  if (segments.length === 0) {
+    throw new Error('Invalid dataset file path: path is empty');
+  }
+  for (const segment of segments) {
+    if (
+      !segment ||
+      RELATIVE_SEGMENTS.has(segment) ||
+      segment.includes('/') ||
+      segment.includes('\\') ||
+      CONTROL_CHAR_RX.test(segment) ||
+      segment.length > DATASET_FILE_SEGMENT_MAX_LENGTH
+    ) {
+      throw new Error(`Invalid dataset file path segment: ${JSON.stringify(segment)}`);
+    }
+  }
+  return segments.join('/');
+}
+
+/**
+ * Full storage key of one dataset example file: the grammar-built example
+ * prefix plus a `datasetExampleFilePath`-checked relative path. Use this
+ * rather than appending a path to the example prefix by hand.
+ */
+export function datasetExampleFileS3Path(args: {
+  tenantId: string;
+  automationId: string;
+  exampleName: string;
+  role: 'input' | 'expected';
+  path: string | readonly string[];
+}): string {
+  return `${datasetExampleFolderS3Path(args)}${datasetExampleFilePath(args.path)}`;
+}
+
+/** Storage prefix (with trailing slash) of an example's `input/` or `expected/` folder. */
+export function datasetExampleFolderS3Path(args: {
+  tenantId: string;
+  automationId: string;
+  exampleName: string;
+  role: 'input' | 'expected';
+}): string {
+  const prefix = rootS3Path('automations/:automationId/dataset/examples/:exampleName', {
+    tenantId: args.tenantId,
+    automationId: args.automationId,
+    exampleName: args.exampleName,
+  });
+  return `${prefix}/${args.role}/`;
+}
