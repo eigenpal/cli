@@ -1,5 +1,15 @@
 # @eigenpal/cli
 
+## 0.23.4
+
+### Patch Changes
+
+- a679fff: The CLI now retries rate-limited requests a few times, waiting as long as the server asks, and reports a request that is still rate limited as a rate limit with how long to wait, instead of as a validation failure.
+- a679fff: `eigenpal workflow step-type get <type>` now accepts `--json`, like the other commands. Its output was already JSON.
+- a679fff: `eigenpal workflow push --json` now prints the same shape on create and update, `{ id, name, version, versionId, created }`, so `jq -r .id` always gives the workflow id. `eigenpal workflow list` shows each workflow's name and version again, and its `--json` rows include `name`, `description` and `version`. New `eigenpal workflow get <id-or-slug>` shows one workflow's name, version, folder and your access, with `--json` for the full record. `workflow push --bump` now reads the current version correctly.
+- 9cdd671: `eigenpal workflow experiment run --wait` now returns only after every run has finished and been graded, so its pass rate matches `workflow experiment results`. Previously it could return while the last runs were still being scored and report a pass rate that was too low.
+- 8456358: The bundled step reference in `eigenpal docs` now covers OCR word confidence in extraction grounding and the `lineageFrom` option on human review.
+
 ## 0.23.3
 
 ### Patch Changes

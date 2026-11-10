@@ -18,6 +18,7 @@ Manage workflows: push, pull, and evaluate.
   - [Step](#step)
 - [Details](#details)
   - [`eigenpal workflow list|ls [options]`](#eigenpal-workflow-listls-options)
+  - [`eigenpal workflow get [options] <workflow-id>`](#eigenpal-workflow-get-options-workflow-id)
   - [`eigenpal workflow pull [options] <workflow-id>`](#eigenpal-workflow-pull-options-workflow-id)
   - [`eigenpal workflow schema [options] <workflow-id>`](#eigenpal-workflow-schema-options-workflow-id)
   - [`eigenpal workflow push [options]`](#eigenpal-workflow-push-options)
@@ -78,6 +79,7 @@ Manage workflows: push, pull, and evaluate.
 ```
 workflow
 ├── list|ls
+├── get <workflow-id>
 ├── pull <workflow-id>
 ├── schema <workflow-id>
 ├── push
@@ -152,6 +154,7 @@ workflow
 | Command                                                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eigenpal workflow list\|ls [options]`                  | List workflows the caller can read.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `eigenpal workflow get [options] <workflow-id>`         | Show one workflow: name, current version, folder and your access level.                                                                                                                                                                                                                                                                                                                                                                   |
 | `eigenpal workflow pull [options] <workflow-id>`        | Download the YAML definition of the workflow at its current version.                                                                                                                                                                                                                                                                                                                                                                      |
 | `eigenpal workflow schema [options] <workflow-id>`      | Show the inferred output schema for a workflow (what it returns).                                                                                                                                                                                                                                                                                                                                                                         |
 | `eigenpal workflow push [options]`                      | Create or update a workflow from a YAML file.                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -265,6 +268,23 @@ List workflows the caller can read.
 | `--search <q>`     | no       |         | Filter by name                       |
 | `--limit <n>`      | no       | `50`    | Page size                            |
 | `--offset <n>`     | no       | `0`     | Page offset                          |
+| `--base-url <url>` | no       |         | Server base URL                      |
+| `--json`           | no       |         | Emit machine-readable JSON on stdout |
+
+### `eigenpal workflow get [options] <workflow-id>`
+
+Show one workflow: name, current version, folder and your access level.
+
+### Arguments
+
+| Name          | Required | Variadic | Description |
+| ------------- | -------- | -------- | ----------- |
+| `workflow-id` | yes      | no       |             |
+
+### Options
+
+| Flag               | Required | Default | Description                          |
+| ------------------ | -------- | ------- | ------------------------------------ |
 | `--base-url <url>` | no       |         | Server base URL                      |
 | `--json`           | no       |         | Emit machine-readable JSON on stdout |
 
@@ -1222,9 +1242,10 @@ Return the full schema and behavioral docs for one step type.
 
 ### Options
 
-| Flag           | Required | Default | Description   |
-| -------------- | -------- | ------- | ------------- |
-| `--out <path>` | no       |         | Write to file |
+| Flag           | Required | Default | Description                          |
+| -------------- | -------- | ------- | ------------------------------------ |
+| `--out <path>` | no       |         | Write to file                        |
+| `--json`       | no       |         | Emit machine-readable JSON on stdout |
 
 ### `eigenpal workflow evaluator-type list|ls [options]`
 

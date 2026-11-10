@@ -120,6 +120,10 @@ inherited settings. `{}` selects a path with inherited platform defaults.
   actual output. This is useful for volatile evidence, citations, and timestamps
   under an otherwise selected parent. It cannot share a rule with other
   settings. An ignore-only rules map means full output minus those paths.
+- Expected `null` and `""` are real expectations, not blanks: `null` passes
+  only when the output is `null` or leaves the field out, and `""` only when
+  the output is `""`. To skip a field, use `ignore: true` or the `__any__`
+  wildcard instead.
 
 Path syntax: `lineItems` targets the array; `lineItems[]` targets each element;
 `lineItems[].unitPrice` targets a field inside every element. Nested unordered

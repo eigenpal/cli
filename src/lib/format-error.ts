@@ -52,9 +52,23 @@ function isConnectionFailure(err: unknown): boolean {
  * appended so the user can see *which* URL we tried — the most common cause
  * is a typo or a stale env var.
  */
+/**
+ * A 429 is a rate limit, never a validation failure, even though the server
+ * wraps it in the same `{ issues }` envelope. The client has already retried
+ * by the time this renders, so say how long to wait when the server said.
+ */
+function formatRateLimited(err: ApiError): string {
+  const wait =
+    err.retryAfterSeconds !== undefined
+      ? `Wait ${err.retryAfterSeconds}s and try again.`
+      : 'Wait a moment and try again.';
+  return `Rate limit exceeded (HTTP 429). ${wait}`;
+}
+
 export function formatCliError(err: unknown, context?: { baseUrl?: string }): string {
   if (err instanceof HtmlResponseError) return err.message;
   if (err instanceof ApiError) {
+    if (err.status === 429) return formatRateLimited(err);
     if (err.status === 401) {
       // 401 always ends with a recovery action — no exceptions. Mirrors `gh`'s
       // convention. The user either has no token or a stale one; either way
@@ -100,6 +114,12 @@ export interface ApiErrorBody {
 export function printApiError(err: unknown, context?: { baseUrl?: string }): void {
   if (err instanceof HtmlResponseError) {
     error(err.message);
+    return;
+  }
+  if (err instanceof ApiError && err.status === 429) {
+    error(formatRateLimited(err));
+    const requestId = (err.body as ApiErrorBody | null | undefined)?.requestId;
+    if (requestId) process.stderr.write(`${ui.dim('request id:')} ${requestId}\n`);
     return;
   }
   if (err && typeof err === 'object' && 'body' in err) {

@@ -17,6 +17,7 @@
  */
 
 import { ApiError, type ApiClient } from './client';
+import { workflowRowName } from './workflow-rows';
 
 interface WorkflowSummary {
   id: string;
@@ -75,8 +76,8 @@ async function findSimilarSlug(client: ApiClient, slug: string): Promise<string 
       limit: '20',
     })) as WorkflowListEnvelope;
     const candidates = (res.data ?? [])
-      .map((w) => w.name)
-      .filter((n): n is string => typeof n === 'string' && n.length > 0);
+      .map((w) => workflowRowName(w))
+      .filter((n): n is string => n !== null);
     let best: { name: string; distance: number } | null = null;
     for (const candidate of candidates) {
       const distance = levenshtein(candidate, slug, 2);

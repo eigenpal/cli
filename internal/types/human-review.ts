@@ -398,6 +398,13 @@ export const HumanReviewStepConfigSchema = z
       'Optional JSON Schema for validating edits and exposing downstream autocomplete. When omitted with metadataFrom: ai.extract and a direct whole-output data expression, the extract step schema is reused.'
     ),
     metadataFrom: HumanReviewMetadataFromSchema.optional(),
+    lineageFrom: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/, 'lineageFrom must be a step name')
+      .optional()
+      .describe(
+        'Name of the ai.extract step whose source lineage draws field boxes in the review. Needed only when data passes through a step that changes field paths. Without it, boxes come from the step in a direct `{{ steps.<name>.output }}` data reference, or, when that step is a transform.script, from the one whole step output it received whose field paths it kept.'
+      ),
     fieldMetadata: z
       .record(HumanReviewJsonPointerSchema, HumanReviewFieldMetadataInputSchema)
       .default({})

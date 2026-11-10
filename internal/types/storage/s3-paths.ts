@@ -199,6 +199,9 @@ export const S3_PATH_GRAMMAR = {
             $stepArtifactId: {
               'lineage.json': PATH_LEAF,
               'parsed-document.json': PATH_LEAF,
+              // PDF an office input was converted to; parse word boxes are
+              // measured on this exact file so the layout preview lines up.
+              'rendered.pdf': PATH_LEAF,
             },
           },
         },
@@ -463,6 +466,26 @@ export function extractSidecarS3Suffixes(input: {
       params
     ),
   };
+}
+
+/**
+ * Run-scoped key of the PDF a parse step rendered an office input to (Word,
+ * PowerPoint, ...). Same step-artifact scope as the extract sidecars, so
+ * retries overwrite it and run prefix deletion removes it.
+ */
+export function renderedPdfS3Suffix(input: {
+  automationId: string;
+  runId: string;
+  stepExecutionId: string;
+}): string {
+  return buildS3PathSuffix(
+    'automations/:automationId/runs/:runId/step-artifacts/:stepArtifactId/rendered.pdf',
+    {
+      automationId: input.automationId,
+      runId: input.runId,
+      stepArtifactId: stepArtifactIdFromStepExecutionId(input.stepExecutionId),
+    }
+  );
 }
 
 const PARSE_CACHE_DIGEST_RX = /^[a-f0-9]{64}$/;

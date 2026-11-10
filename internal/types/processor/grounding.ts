@@ -24,8 +24,15 @@ export interface FieldGroundingCitation {
 export interface FieldGrounding {
   /** high = verbatim in source, medium = fuzzy, low = ungrounded. Always categorical for existing UIs. */
   confidence: GroundingConfidence;
-  /** Numeric 0–1 confidence when the producer supplied one. */
+  /** Numeric 0–1 confidence when the producer supplied one. Never above `recognitionScore`. */
   score?: number;
+  /**
+   * OCR recognition (0–1) of the words this value was read from, when the
+   * parsed document carried per-word confidence. It caps `score` and the
+   * `confidence` band (below 0.8 is low, below 0.9 at most medium). Absent for
+   * native text and OCR providers without word confidence.
+   */
+  recognitionScore?: number;
   /** True when the field tripped the review threshold (route to a human). */
   needsReview: boolean;
   /** Why it needs review (only set when needsReview). */

@@ -96,6 +96,25 @@ describe('printApiError', () => {
     expect(out).toContain('see workflow step-type get transform.script');
   });
 
+  test('renders a 429 as a rate limit with the wait, not as a validation failure', () => {
+    const captured = captureStderr(() => {
+      printApiError(
+        new ApiError(
+          429,
+          {
+            issues: [{ field: '<root>', message: 'rate limit exceeded', code: 'rate_limited' }],
+            requestId: 'req_1',
+          },
+          12
+        )
+      );
+    });
+    const out = stripAnsi(captured);
+    expect(out).toContain('Rate limit exceeded (HTTP 429). Wait 12s and try again.');
+    expect(out).toContain('req_1');
+    expect(out).not.toContain('Validation failed');
+  });
+
   test('renders legacy { error, details } envelope', () => {
     const captured = captureStderr(() => {
       printApiError({ body: { error: 'Invalid request', details: { foo: 'bar' } } });

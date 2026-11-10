@@ -42,7 +42,7 @@ export const ExtractInputSchema = z
 export const ExtractOutputSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.'
+    'Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, recognitionScore?, needsReview, reason?, quote?, citations?, source_span }`. When the parsed document carries per-word OCR confidence, `recognitionScore` is the recognition of the cited words and caps the field: `score` never exceeds it, below 0.8 the field is low, below 0.9 at most medium. The map also holds reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.'
   );
 
 /**

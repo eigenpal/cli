@@ -3,6 +3,8 @@
  * Shared by: eval API route (server-side comparison, streamed to CLI), row comparison UI, metrics.
  *
  * - Expected can be partial: only keys present in expected are checked; actual may have extra keys.
+ * - Expected `null` and `""` are labels, not blanks: `null` matches only an actual `null` or absent
+ *   key, and `""` only an actual `""`. Skip a field with an `ignore` rule or the `__any__` wildcard.
  * - Nested objects are compared recursively (not as strings).
  * - "__any__" is a wildcard: expected string "__any__" or object { fileId: "__any__" } matches any actual.
  */
@@ -57,8 +59,6 @@ export interface ExactDiffPathRule {
 export type ExactDiffRules = Readonly<Record<string, ExactDiffPathRule>>;
 
 export interface OutputComparisonOptions {
-  /** Compare explicit null and empty string values instead of treating them as unlabelled. */
-  compareEmptyValues?: boolean;
   /** Dot-paths to arrays whose expected items may match actual items in any order. */
   unorderedPaths?: readonly string[];
   /**
@@ -103,7 +103,6 @@ export function normalizeExactDiffMatchBy(matchBy: string | readonly string[]): 
 }
 
 interface InternalComparisonOptions {
-  compareEmptyValues?: boolean;
   unorderedPaths: ReadonlySet<string>;
   numericTolerance?: number;
   allowExtraFields: boolean;
@@ -334,8 +333,9 @@ function isWildcard(value: unknown): boolean {
   return isPlainObject(value) && value.fileId === WILDCARD_ANY;
 }
 
-function isEmptyExpected(value: unknown, compareEmptyValues = false): boolean {
-  return value === undefined || (!compareEmptyValues && (value === null || value === ''));
+/** Expected `null` means "this field stays empty": an absent actual key satisfies it too. */
+function nullExpectationMet(expected: unknown, actual: unknown): boolean {
+  return expected === null && (actual === null || actual === undefined);
 }
 
 function numbersMatch(actual: number, expected: number, tolerance?: number): boolean {
@@ -473,7 +473,7 @@ function partialMatch(
     options.unorderedBudget.remainingOperations--;
   }
 
-  if (isEmptyExpected(expected, options.compareEmptyValues)) return true;
+  if (expected === undefined || nullExpectationMet(expected, actual)) return true;
   if (isWildcard(expected)) return true;
 
   const rule = effectiveRule(path, options);
@@ -504,7 +504,7 @@ function partialMatch(
   if (isPlainObject(expected) && isPlainObject(actual)) {
     let allMatch = true;
     for (const [key, expectedVal] of Object.entries(expected)) {
-      if (isEmptyExpected(expectedVal, options.compareEmptyValues)) continue;
+      if (expectedVal === undefined) continue;
       const childPath = path ? `${path}.${key}` : key;
       if (!partialMatch(expectedVal, actual[key], childPath, mismatches, options)) {
         allMatch = false;
@@ -1196,7 +1196,6 @@ export function compareOutput(
     (rules != null &&
       Object.values(rules).some((rule) => (rule.order ?? 'ordered') === 'unordered'));
   const comparisonOptions: InternalComparisonOptions = {
-    compareEmptyValues: options.compareEmptyValues,
     unorderedPaths: new Set(options.unorderedPaths ?? []),
     numericTolerance: options.numericTolerance,
     allowExtraFields: options.allowExtraFields ?? true,
@@ -1260,10 +1259,12 @@ export function compareOutput(
   }
 
   for (const [field, expectedValue] of Object.entries(data)) {
-    if (isEmptyExpected(expectedValue, options.compareEmptyValues)) continue;
+    if (expectedValue === undefined) continue;
 
     if (fileFieldSet.has(field)) {
-      if (golden.length > 0) {
+      // File fields are matched by generated file name, so a blank expected
+      // value carries no file to look for.
+      if (golden.length > 0 || expectedValue === null || expectedValue === '') {
         continue;
       }
       if (!results.length) continue;
@@ -1325,11 +1326,11 @@ export function compareExpectedValues(
   let totalFields = 0;
 
   for (const [field, expectedValue] of Object.entries(expected)) {
-    if (isEmptyExpected(expectedValue)) continue;
+    if (expectedValue === undefined) continue;
     totalFields++;
 
     const actualValue = actual[field];
-    if (valuesMatch(actualValue, expectedValue)) {
+    if (nullExpectationMet(expectedValue, actualValue) || valuesMatch(actualValue, expectedValue)) {
       matchedFields++;
     } else {
       mismatches.push({ field, expected: expectedValue, actual: actualValue });

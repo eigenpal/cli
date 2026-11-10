@@ -211,4 +211,11 @@ export type ProcessorExecutionContext = z.infer<typeof ProcessorExecutionContext
    * user-visible JSON output; the engine persists both after output validation.
    */
   emitExtractSidecars?: (bundle: ExtractSidecarBundle) => void;
+  /**
+   * Runtime-only hand-off of the PDF an office input was converted to during
+   * parsing. The engine stores it after output validation and records its key
+   * as `document.renderedPdfRef`, so the layout preview shows the PDF the word
+   * boxes were measured on.
+   */
+  emitRenderedPdf?: (pdf: Uint8Array) => void;
 };

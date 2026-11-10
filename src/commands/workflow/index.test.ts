@@ -137,6 +137,281 @@ describe('workflow schema command', () => {
   });
 });
 
+// The workflow table has no name or version column: the server returns them
+// under `currentVersion` (GET /api/workflows, GET /api/workflows/:id).
+const SERVER_WORKFLOW_ROW = {
+  id: 'wf_inv1',
+  tenantId: 'org_1',
+  folderId: null,
+  restricted: false,
+  currentHistoryId: 'wh_inv1',
+  createdAt: '2026-11-01T10:00:00.000Z',
+  updatedAt: '2026-11-02T10:00:00.000Z',
+  myAccess: 'manager',
+  currentVersion: {
+    id: 'wh_inv1',
+    workflowId: 'wf_inv1',
+    version: '1.2.0',
+    isCurrent: true,
+    yamlContent: 'name: invoice-extract\n',
+    definition: {
+      name: 'invoice-extract',
+      description: 'Extract invoice totals',
+      steps: [{ name: 'a' }, { name: 'b' }],
+    },
+  },
+};
+
+const PUSH_YAML = `name: demo
+description: Push fixture.
+triggerMethods:
+  - type: api
+inputs:
+  - name: text
+    type: string
+    description: Free-form text to process
+steps:
+  - name: passthrough
+    type: transform.script
+    with:
+      inputs:
+        text: '{{ input.text }}'
+      function: |
+        function script(text: string): { length: number } {
+          return { length: text.length };
+        }
+output:
+  length: '{{ steps.passthrough.output.length }}'
+`;
+
+describe('workflow list', () => {
+  const handler = (request: Request) => {
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/api/workflows') {
+      return jsonResponse({ data: [SERVER_WORKFLOW_ROW], total: 1, limit: 50, offset: 0 });
+    }
+    return jsonResponse({ error: 'not found' }, { status: 404 });
+  };
+
+  test('table shows the name and version nested under currentVersion', async () => {
+    await withApiServer(handler, async (baseUrl) => {
+      const result = await runCli(['workflow', 'list'], baseUrl);
+      expect(result.status).toBe(0);
+      const row = result.stdout.split('\n').find((line) => line.includes('wf_inv1'));
+      expect(row).toContain('invoice-extract');
+      expect(row).toContain('1.2.0');
+    });
+  });
+
+  test('--json rows carry top-level name and version', async () => {
+    await withApiServer(handler, async (baseUrl) => {
+      const result = await runCli(['workflow', 'list', '--json'], baseUrl);
+      expect(result.status).toBe(0);
+      const body = JSON.parse(result.stdout);
+      expect(body.total).toBe(1);
+      expect(body.data[0]).toMatchObject({
+        id: 'wf_inv1',
+        name: 'invoice-extract',
+        version: '1.2.0',
+        description: 'Extract invoice totals',
+      });
+      // Additive: the full server row is still there.
+      expect(body.data[0].currentVersion.id).toBe('wh_inv1');
+    });
+  });
+
+  test('a 429 is retried, then reported as a rate limit, not a validation failure', async () => {
+    let calls = 0;
+    await withApiServer(
+      () => {
+        calls++;
+        return jsonResponse(
+          {
+            issues: [{ field: '<root>', message: 'rate limit exceeded', code: 'rate_limited' }],
+            requestId: 'req_1',
+          },
+          { status: 429, headers: { 'Retry-After': '0' } }
+        );
+      },
+      async (baseUrl) => {
+        const result = await runCli(['workflow', 'list', '--json'], baseUrl);
+        expect(result.status).toBe(1);
+        expect(calls).toBe(4);
+        expect(result.stderr).toContain('Rate limit exceeded');
+        expect(result.stderr).not.toContain('Validation failed');
+      }
+    );
+  });
+});
+
+describe('workflow get', () => {
+  const handler = (request: Request) => {
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/api/workflows/wf_inv1') {
+      return jsonResponse({
+        ...SERVER_WORKFLOW_ROW,
+        apiEnabled: true,
+        workflowVersion: '1.2.0',
+        folderPath: '/Finance',
+      });
+    }
+    return jsonResponse({ error: 'not found' }, { status: 404 });
+  };
+
+  test('prints a human summary of the workflow', async () => {
+    await withApiServer(handler, async (baseUrl) => {
+      const result = await runCli(['workflow', 'get', 'wf_inv1'], baseUrl);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('invoice-extract');
+      expect(result.stdout).toContain('wf_inv1');
+      expect(result.stdout).toMatch(/version\s+1\.2\.0/);
+      expect(result.stdout).toMatch(/folder\s+\/Finance/);
+      expect(result.stdout).toMatch(/steps\s+2/);
+    });
+  });
+
+  test('--json is the server record with name and version lifted', async () => {
+    await withApiServer(handler, async (baseUrl) => {
+      const result = await runCli(['workflow', 'get', 'wf_inv1', '--json'], baseUrl);
+      expect(result.status).toBe(0);
+      const body = JSON.parse(result.stdout);
+      expect(body).toMatchObject({
+        id: 'wf_inv1',
+        name: 'invoice-extract',
+        version: '1.2.0',
+        folderPath: '/Finance',
+      });
+      expect(body.currentVersion.yamlContent).toBe('name: invoice-extract\n');
+    });
+  });
+});
+
+describe('workflow push --json', () => {
+  test('create prints the workflow id at the top level', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eig-push-create-'));
+    try {
+      const yamlPath = join(dir, 'workflow.yaml');
+      writeFileSync(yamlPath, PUSH_YAML);
+      await withApiServer(
+        (request) => {
+          const url = new URL(request.url);
+          if (request.method === 'POST' && url.pathname === '/api/workflows/validate') {
+            return jsonResponse({ valid: true, issues: [] });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/workflows') {
+            // Real create response: the workflow id is nested.
+            return jsonResponse(
+              {
+                workflow: { id: 'wf_new', currentHistoryId: 'wh_new' },
+                version: {
+                  id: 'wh_new',
+                  workflowId: 'wf_new',
+                  version: '1.0.0',
+                  definition: { name: 'demo' },
+                },
+                history: { id: 'wh_new' },
+              },
+              { status: 201 }
+            );
+          }
+          return jsonResponse({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await runCli(['workflow', 'push', '--file', yamlPath, '--json'], baseUrl);
+          expect(result.status).toBe(0);
+          expect(JSON.parse(result.stdout)).toEqual({
+            id: 'wf_new',
+            name: 'demo',
+            version: '1.0.0',
+            versionId: 'wh_new',
+            created: true,
+          });
+        }
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('update has the same shape, and --bump reads the nested current version', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'eig-push-update-'));
+    let postedVersion: unknown;
+    try {
+      const yamlPath = join(dir, 'workflow.yaml');
+      writeFileSync(yamlPath, PUSH_YAML);
+      await withApiServer(
+        async (request) => {
+          const url = new URL(request.url);
+          if (request.method === 'GET' && url.pathname === '/api/workflows/wf_inv1') {
+            return jsonResponse(SERVER_WORKFLOW_ROW);
+          }
+          if (request.method === 'GET' && url.pathname === '/api/workflows/wf_inv1/versions') {
+            return jsonResponse({ data: [{ version: '1.2.0' }], total: 1 });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/workflows/validate') {
+            return jsonResponse({ valid: true, issues: [] });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/workflows/wf_inv1/versions') {
+            const body = (await request.json()) as { version?: string };
+            postedVersion = body.version;
+            // Real response: the new version row, whose `id` is the version id.
+            return jsonResponse(
+              {
+                id: 'wh_inv2',
+                workflowId: 'wf_inv1',
+                version: body.version,
+                isCurrent: true,
+                definition: { name: 'demo' },
+              },
+              { status: 201 }
+            );
+          }
+          return jsonResponse({ error: 'not found' }, { status: 404 });
+        },
+        async (baseUrl) => {
+          const result = await runCli(
+            [
+              'workflow',
+              'push',
+              '--file',
+              yamlPath,
+              '--workflow-id',
+              'wf_inv1',
+              '--bump',
+              'patch',
+              '--json',
+            ],
+            baseUrl
+          );
+          expect(result.status).toBe(0);
+          expect(postedVersion).toBe('1.2.1');
+          expect(JSON.parse(result.stdout)).toEqual({
+            id: 'wf_inv1',
+            name: 'demo',
+            version: '1.2.1',
+            versionId: 'wh_inv2',
+            created: false,
+          });
+        }
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('workflow step-type get', () => {
+  test('accepts --json and prints the schema as JSON', () => {
+    const result = spawnSync(
+      'bun',
+      [CLI, 'workflow', 'step-type', 'get', 'transform.script', '--json'],
+      { encoding: 'utf8' }
+    );
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).type).toBe('transform.script');
+  });
+});
+
 describe('datasetReviewRequestsPath', () => {
   test('returns the collection path', () => {
     expect(datasetReviewRequestsPath('wf_abc123')).toBe(

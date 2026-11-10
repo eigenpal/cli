@@ -114,10 +114,13 @@ describe('workflow push duplicate version', () => {
           );
           expect(result.status).toBe(0);
           // The whole point: stdout stays parseable JSON on a no-op.
-          expect(JSON.parse(result.stdout)).toEqual({
+          // Same shape as a real push, plus `unchanged`.
+          expect(JSON.parse(result.stdout)).toMatchObject({
+            id: 'wf_dup1',
+            version: '1.0.0',
+            created: false,
             unchanged: true,
             workflowId: 'wf_dup1',
-            version: '1.0.0',
           });
           // ... and nothing leaks to stderr, so `2>&1 | jq` parses too.
           expect(result.stderr).toBe('');

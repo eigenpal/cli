@@ -58,6 +58,11 @@ import {
   type PaginationOpts,
 } from '../../lib/ui';
 import {
+  withWorkflowRowFields,
+  workflowRowName,
+  workflowRowVersion,
+} from '../../lib/workflow-rows';
+import {
   registerDatasetReviewRequestCommands,
   type ResolveAutomationForReviewRequest,
 } from '../dataset-review-request';
@@ -138,6 +143,45 @@ interface WorkflowListRow {
   version?: string | null;
   updatedAt?: string | null;
   [k: string]: unknown;
+}
+
+/** `GET /api/workflows/:id`: the workflow row plus its current version. */
+interface WorkflowDetail {
+  id: string;
+  folderPath?: string | null;
+  apiEnabled?: boolean;
+  myAccess?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  currentVersion?: {
+    id?: string | null;
+    version?: string | null;
+    definition?: { name?: unknown; description?: unknown; steps?: unknown } | null;
+  } | null;
+  [k: string]: unknown;
+}
+
+/** Human view of `workflow get`: a title line, then aligned key/value rows on stdout. */
+function renderWorkflowDetail(
+  row: WorkflowDetail & { name: string | null; description: string | null; version: string | null }
+): void {
+  const steps = row.currentVersion?.definition?.steps;
+  const fields: Array<[string, string]> = [
+    ['version', row.version ?? '-'],
+    ['versionId', row.currentVersion?.id ?? '-'],
+    ['description', row.description ?? '-'],
+    ['folder', row.folderPath ?? '/'],
+    ['steps', Array.isArray(steps) ? String(steps.length) : '-'],
+    ['api', row.apiEnabled === undefined ? '-' : row.apiEnabled ? 'enabled' : 'disabled'],
+    ['access', row.myAccess ?? '-'],
+    ['updatedAt', formatTimestamp(row.updatedAt)],
+    ['createdAt', formatTimestamp(row.createdAt)],
+  ];
+  const width = Math.max(...fields.map(([key]) => key.length));
+  console.log(`${ui.bold(row.name ?? row.id)}  ${ui.dim(`(${row.id})`)}`);
+  for (const [key, value] of fields) {
+    console.log(`  ${ui.dim(key.padEnd(width))}  ${value}`);
+  }
 }
 
 interface DatasetExampleRow {
@@ -386,9 +430,17 @@ function registerWorkflowCoreCommands(parent: Command): void {
           offset: String(opts.offset),
         };
         if (opts.search) params.search = opts.search;
-        const raw = await client.get('/api/workflows', params);
+        const raw = (await client.get('/api/workflows', params)) as {
+          data?: Array<Record<string, unknown>>;
+        };
+        // The server nests name and version under `currentVersion`; lift
+        // them so the table and `--json` both carry them at the top level.
+        const listed = {
+          ...raw,
+          data: (raw?.data ?? []).map((row) => withWorkflowRowFields(row)),
+        };
         renderListResult<WorkflowListRow>(
-          raw,
+          listed,
           [
             { key: 'id', header: 'id' },
             { key: 'name', header: 'name', format: (v) => (typeof v === 'string' ? v : '-') },
@@ -399,6 +451,36 @@ function registerWorkflowCoreCommands(parent: Command): void {
         );
       }
     )
+  );
+
+  const getCmd = parent
+    .command('get <workflow-id>')
+    .description('Show one workflow: name, current version, folder and your access level.')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  $ eigenpal workflow get wf_abc123
+  $ eigenpal workflow get my-extraction --json | jq '{ id, name, version }'
+
+\`--json\` prints the full server record with \`name\`, \`description\` and
+\`version\` lifted to the top level; the current YAML is under
+\`currentVersion.yamlContent\`. Use \`workflow pull\` to write the YAML to a
+file and \`workflow versions list\` for the version history.
+`
+    );
+  addJsonFlag(withBaseUrl(getCmd)).action(
+    action(async (workflow: string, opts: WorkflowCommandConfig & { json?: boolean }) => {
+      const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
+      const row = withWorkflowRowFields(
+        (await client.get(`/api/workflows/${workflowId}`)) as WorkflowDetail
+      );
+      if (opts.json) {
+        printJson(row);
+        return;
+      }
+      renderWorkflowDetail(row);
+    })
   );
 
   const pullCmd = parent
@@ -484,15 +566,17 @@ Examples:
   $ eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123
   $ eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123 --bump patch
   $ eigenpal workflow push --file workflow.yaml --workflow-id wf_abc123 --set-version 2.0.0
-  $ eigenpal workflow push --file workflow.yaml --json | jq '.id'
+  $ WF=$(eigenpal workflow push --file workflow.yaml --json | jq -r '.id')
 
 Update path requires the YAML to carry a top-level \`version: X.Y.Z\`, OR for
 \`--bump\` / \`--set-version\` to be passed (they splice the resolved semver
 into the YAML before sending so the file-on-disk doesn't have to be edited
 per push). Passing both an explicit \`version:\` in the YAML and
 \`--bump\` / \`--set-version\` on the command line is rejected.
+\`--json\` prints \`{ id, name, version, versionId, created }\` on both create
+and update, so \`jq -r .id\` is always the workflow id.
 Re-pushing byte-identical YAML for an existing version with \`--json\` is a
-no-op reporting \`{ unchanged: true, workflowId, version }\` (exit 0);
+no-op reporting the same shape plus \`unchanged: true\` (exit 0);
 without \`--json\` — or with differing content — it stays a
 version-conflict error.
 \`--set-version\` is the long form because the global \`-v, --version\`
@@ -586,10 +670,7 @@ new uploads are deleted. The file on disk is not rewritten.
           if (opts.setVersion) {
             nextVersion = opts.setVersion;
           } else if (opts.bump) {
-            const wf = (await client.get(`/api/workflows/${workflowId}`)) as {
-              version?: string | null;
-            };
-            const current = wf?.version;
+            const current = workflowRowVersion(await client.get(`/api/workflows/${workflowId}`));
             if (!current) {
               throw new Error(
                 `Cannot --bump ${opts.bump} on ${workflowId}: server has no current version. Push an initial version (with \`--set-version 1.0.0\` or a YAML \`version:\` field) first.`
@@ -658,21 +739,24 @@ new uploads are deleted. The file on disk is not rewritten.
               ? spliceWorkflowVersion(yamlWithTemplates, nextVersion!)
               : yamlWithTemplates;
 
+            // Responds with the new version row: its `id` is the version id.
             const result = (await client.post(`/api/workflows/${workflowId}/versions`, {
               yaml: yamlToSend,
               version: nextVersion,
-            })) as {
-              id?: string;
-              version?: string;
-              warnings?: SchemaQualityWarning[];
-              [k: string]: unknown;
-            };
+            })) as PushedVersionView & { warnings?: SchemaQualityWarning[] };
             await finalizeCreatedWorkspaceTemplates(client, created);
+            const summary = workflowPushSummary({
+              workflowId,
+              created: false,
+              version: result,
+              localName: definition.name,
+              fallbackVersion: nextVersion ?? null,
+            });
             if (opts.json) {
-              printJson(withLocalTemplates(result, resolvedTemplates));
+              printJson(withPushExtras(summary, result.warnings, resolvedTemplates));
               return;
             }
-            success(`Pushed ${ui.bold(workflowId)} (v${result.version ?? nextVersion})`);
+            success(`Pushed ${ui.bold(workflowId)} (v${summary.version ?? '?'})`);
             printSchemaQualityWarnings(result.warnings);
           } else {
             const yamlToSend =
@@ -681,30 +765,29 @@ new uploads are deleted. The file on disk is not rewritten.
                 : yamlWithTemplates;
             const createVersion =
               opts.setVersion ?? extractWorkflowVersion(yamlToSend) ?? undefined;
+            // Responds with `{ workflow, version, history }`: the workflow
+            // id is nested, so it is lifted into the shared push summary.
             const result = (await client.post('/api/workflows', {
               yaml: yamlToSend,
               ...(createVersion ? { version: createVersion } : {}),
             })) as {
-              workflow?: { id?: string; currentVersion?: { version?: string } };
-              version?: { version?: string };
-              history?: { id?: string };
+              workflow?: { id?: string };
+              version?: PushedVersionView;
               warnings?: SchemaQualityWarning[];
-              id?: string;
-              currentVersion?: { version?: string };
-              [k: string]: unknown;
             };
             await finalizeCreatedWorkspaceTemplates(client, created);
+            const summary = workflowPushSummary({
+              workflowId: result.workflow?.id ?? null,
+              created: true,
+              version: result.version,
+              localName: definition.name,
+              fallbackVersion: createVersion ?? null,
+            });
             if (opts.json) {
-              printJson(withLocalTemplates(result, resolvedTemplates));
+              printJson(withPushExtras(summary, result.warnings, resolvedTemplates));
               return;
             }
-            const id = result.workflow?.id ?? result.id ?? '?';
-            const ver =
-              result.version?.version ??
-              result.workflow?.currentVersion?.version ??
-              result.currentVersion?.version ??
-              '?';
-            success(`Created ${ui.bold(id)} (v${ver})`);
+            success(`Created ${ui.bold(summary.id ?? '?')} (v${summary.version ?? '?'})`);
             printSchemaQualityWarnings(result.warnings);
           }
         } catch (err) {
@@ -821,6 +904,55 @@ function withLocalTemplates(
   return { ...result, localTemplates: resolved };
 }
 
+/** The version row the create and new-version endpoints return. */
+interface PushedVersionView {
+  id?: string | null;
+  version?: string | null;
+  definition?: { name?: unknown } | null;
+}
+
+/**
+ * `workflow push --json` output. Create, update and the unchanged no-op all
+ * share this shape, so `jq -r .id` is always the workflow id (the server's
+ * own `id` on a new version is the version id, reported as `versionId`).
+ */
+interface WorkflowPushSummary {
+  id: string | null;
+  name: string | null;
+  version: string | null;
+  versionId: string | null;
+  created: boolean;
+}
+
+function workflowPushSummary(args: {
+  workflowId: string | null;
+  created: boolean;
+  version: PushedVersionView | undefined;
+  localName: string | null | undefined;
+  fallbackVersion: string | null;
+}): WorkflowPushSummary {
+  const serverName = args.version?.definition?.name;
+  return {
+    id: args.workflowId,
+    name: typeof serverName === 'string' && serverName ? serverName : (args.localName ?? null),
+    version: args.version?.version ?? args.fallbackVersion,
+    versionId: args.version?.id ?? null,
+    created: args.created,
+  };
+}
+
+function withPushExtras(
+  summary: WorkflowPushSummary,
+  warnings: SchemaQualityWarning[] | undefined,
+  resolved: ResolvedLocalTemplate[]
+): Record<string, unknown> {
+  return {
+    ...summary,
+    ...(warnings && warnings.length > 0 ? { warnings } : {}),
+    ...(resolved.length > 0 ? { localTemplates: resolved } : {}),
+  };
+}
+
 function parseWorkflowOrThrow(yamlText: string) {
   try {
     return parseWorkflow(yamlText);
@@ -883,14 +1015,28 @@ async function preflightVersionConflict(
   // loud version-conflict error, same as before.
   if (opts?.json && opts.yamlToSend !== undefined) {
     const current = (await client.get(`/api/workflows/${workflowId}`)) as {
-      currentVersion?: { version?: string | null; yamlContent?: string | null } | null;
+      currentVersion?: {
+        id?: string | null;
+        version?: string | null;
+        yamlContent?: string | null;
+        definition?: { name?: unknown } | null;
+      } | null;
     };
     if (
       current?.currentVersion?.version === nextVersion &&
       normalizeYamlForCompare(current.currentVersion.yamlContent) ===
         normalizeYamlForCompare(opts.yamlToSend)
     ) {
-      printJson({ unchanged: true, workflowId, version: nextVersion });
+      // Same shape as a real push, plus `unchanged`. `workflowId` stays as
+      // the older spelling of `id`.
+      const summary = workflowPushSummary({
+        workflowId,
+        created: false,
+        version: current.currentVersion,
+        localName: workflowRowName(current),
+        fallbackVersion: nextVersion,
+      });
+      printJson({ ...summary, unchanged: true, workflowId });
       return true;
     }
   }
@@ -1899,7 +2045,7 @@ returns immediately with \`{ batchId, total }\`; poll
             `/v1/automations/${workflowId}/experiments/${experimentId}`
           )) as {
             status: string;
-            passRate?: number;
+            passRate?: number | null;
             failedCount?: number;
             completedCount?: number;
             runCount?: number;
@@ -1925,10 +2071,10 @@ returns immediately with \`{ batchId, total }\`; poll
                 `Experiment ${ui.bold(experimentId)} completed (${completed}/${runTotal}${score})`
               );
             }
-            // Only fail-exit when the server reported a numeric passRate. A
-            // workflow with no graded examples returns `passRate: undefined`,
-            // which is not the same as 0 — treat it as "nothing to grade,
-            // success" rather than "everyone failed".
+            // The server reports `completed` only once every run is finished
+            // and graded. Only fail-exit on a numeric passRate: a workflow with
+            // no evaluators returns `passRate: null`, which means "nothing to
+            // grade, success" rather than "everyone failed".
             if (
               (typeof status.passRate === 'number' && status.passRate < 1.0) ||
               (typeof status.failedCount === 'number' && status.failedCount > 0)
@@ -3026,29 +3172,31 @@ function registerStepTypeCommands(parent: Command): void {
     }
   );
 
-  stepType
+  const getCmd = stepType
     .command('get <type>')
     .description(descriptionFor('workflow_get_step_type'))
-    .option('--out <path>', 'Write to file', undefined)
-    .action(async (type: string, opts: { out?: string }) => {
-      const { getStepSchema } = await import('@eigenpal/types');
-      const { z } = await import('zod');
-      const def = getStepSchema(type as Parameters<typeof getStepSchema>[0]);
-      if (!def) {
-        error(`Step type not found: ${ui.bold(type)}`);
-        process.exit(1);
-      }
-      const toJson = (s: ZodType) => z.toJSONSchema(s, { target: 'draft-7' });
-      const result = {
-        type: def.type,
-        category: def.category,
-        name: def.name,
-        description: def.description,
-        configInWith: def.configInWith,
-        configSchema: toJson(def.configSchema),
-        outputSchema: toJson(def.outputSchema),
-      };
-      const text = JSON.stringify(result, null, 2);
-      await writeOrPrint(opts.out, text);
-    });
+    .option('--out <path>', 'Write to file', undefined);
+  // The output is always JSON; `--json` is accepted so scripts can pass it
+  // the same way they do to every other command.
+  addJsonFlag(getCmd).action(async (type: string, opts: { out?: string; json?: boolean }) => {
+    const { getStepSchema } = await import('@eigenpal/types');
+    const { z } = await import('zod');
+    const def = getStepSchema(type as Parameters<typeof getStepSchema>[0]);
+    if (!def) {
+      error(`Step type not found: ${ui.bold(type)}`);
+      process.exit(1);
+    }
+    const toJson = (s: ZodType) => z.toJSONSchema(s, { target: 'draft-7' });
+    const result = {
+      type: def.type,
+      category: def.category,
+      name: def.name,
+      description: def.description,
+      configInWith: def.configInWith,
+      configSchema: toJson(def.configSchema),
+      outputSchema: toJson(def.outputSchema),
+    };
+    const text = JSON.stringify(result, null, 2);
+    await writeOrPrint(opts.out, text);
+  });
 }

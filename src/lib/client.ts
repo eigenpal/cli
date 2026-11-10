@@ -2,11 +2,14 @@ import { resolveRequestUrl } from './api-paths';
 import type { CliConfig } from './config';
 import { isNodeReadableStream, type StreamableRequestInit } from './fetch-body';
 import { buildCliTelemetryHeaders } from './telemetry';
+import { dim } from './ui';
 
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    public readonly body: unknown
+    public readonly body: unknown,
+    /** Seconds from the `Retry-After` header, when the server sent one (429). */
+    public readonly retryAfterSeconds?: number
   ) {
     const msg =
       typeof body === 'object' && body !== null && 'error' in body
@@ -44,15 +47,76 @@ function assertNotHtml(res: Response, resolvedUrl: string): void {
   }
 }
 
+/**
+ * 429 retry policy. A rate-limited request was refused before the server did
+ * any work, so every replayable request (all but streamed uploads) is sent
+ * again: after `Retry-After` when the server names one, else after an
+ * exponential backoff. Bounded: a few attempts, and a `Retry-After` longer
+ * than `maxDelayMs` fails at once so the caller sees how long to wait.
+ */
+export interface RateLimitRetryOptions {
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const DEFAULT_RATE_LIMIT_RETRY: RateLimitRetryOptions = {
+  maxRetries: 3,
+  baseDelayMs: 1_000,
+  maxDelayMs: 30_000,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/** `Retry-After` as seconds (delta-seconds or an HTTP date), or undefined. */
+export function parseRetryAfterSeconds(
+  header: string | null,
+  now = Date.now()
+): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - now) / 1000));
+}
+
 export class ApiClient {
   private baseUrl: string;
   private apiKey: string;
   private tenantId?: string;
+  private retry: RateLimitRetryOptions;
 
-  constructor(config: CliConfig) {
+  constructor(
+    config: CliConfig,
+    options: { rateLimitRetry?: Partial<RateLimitRetryOptions> } = {}
+  ) {
     this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey;
     this.tenantId = config.tenantId;
+    this.retry = { ...DEFAULT_RATE_LIMIT_RETRY, ...options.rateLimitRetry };
+  }
+
+  /**
+   * `fetch` with the 429 retry policy. Pass `replayable: false` for bodies
+   * that can only be read once (Node streams); those return the 429 as is.
+   */
+  private async send(url: string, init: RequestInit, replayable = true): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch(url, init);
+      if (res.status !== 429 || !replayable || attempt >= this.retry.maxRetries) return res;
+      const retryAfter = parseRetryAfterSeconds(res.headers.get('retry-after'));
+      const delayMs =
+        retryAfter !== undefined
+          ? retryAfter * 1000
+          : Math.min(this.retry.baseDelayMs * 2 ** attempt, this.retry.maxDelayMs);
+      if (delayMs > this.retry.maxDelayMs) return res;
+      await res.body?.cancel().catch(() => undefined);
+      dim(
+        `Rate limited by the server, retrying in ${Math.ceil(delayMs / 1000)}s (${attempt + 1} of ${this.retry.maxRetries})`
+      );
+      await this.retry.sleep(delayMs);
+    }
   }
 
   private buildUrl(path: string): string {
@@ -88,7 +152,7 @@ export class ApiClient {
       } catch {
         body = `HTTP ${res.status}`;
       }
-      throw new ApiError(res.status, body);
+      throw new ApiError(res.status, body, parseRetryAfterSeconds(res.headers.get('retry-after')));
     }
 
     if (contentType.includes('json')) {
@@ -104,13 +168,13 @@ export class ApiClient {
       const qs = new URLSearchParams(params).toString();
       if (qs) url += `?${qs}`;
     }
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await this.send(url, { headers: this.headers() });
     return this.handleResponse(res, url);
   }
 
   async post(path: string, body?: unknown): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -120,7 +184,7 @@ export class ApiClient {
 
   async put(path: string, body?: unknown): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'PUT',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -138,13 +202,13 @@ export class ApiClient {
       body,
       ...(stream ? { duplex: 'half' as const } : {}),
     };
-    const res = await fetch(url, init);
+    const res = await this.send(url, init, !stream);
     return this.handleResponse(res, url);
   }
 
   async patch(path: string, body: unknown): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'PATCH',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
@@ -154,7 +218,7 @@ export class ApiClient {
 
   async postFormData(path: string, formData: FormData): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'POST',
       headers: this.headers(),
       body: formData,
@@ -164,7 +228,7 @@ export class ApiClient {
 
   async putFormData(path: string, formData: FormData): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'PUT',
       headers: this.headers(),
       body: formData,
@@ -174,7 +238,7 @@ export class ApiClient {
 
   async patchFormData(path: string, formData: FormData): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'PATCH',
       headers: this.headers(),
       body: formData,
@@ -184,7 +248,7 @@ export class ApiClient {
 
   async delete(path: string): Promise<unknown> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'DELETE',
       headers: this.headers(),
     });
@@ -193,12 +257,16 @@ export class ApiClient {
 
   async getStream(path: string): Promise<Response> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       headers: this.headers(),
     });
     assertNotHtml(res, url);
     if (!res.ok) {
-      throw new ApiError(res.status, `Failed to download: HTTP ${res.status}`);
+      throw new ApiError(
+        res.status,
+        `Failed to download: HTTP ${res.status}`,
+        parseRetryAfterSeconds(res.headers.get('retry-after'))
+      );
     }
     return res;
   }
@@ -209,7 +277,7 @@ export class ApiClient {
    */
   async postStream(path: string, body: unknown): Promise<Response> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -228,7 +296,7 @@ export class ApiClient {
    */
   async postFormDataStream(path: string, formData: FormData): Promise<Response> {
     const url = this.buildUrl(path);
-    const res = await fetch(url, {
+    const res = await this.send(url, {
       method: 'POST',
       headers: this.headers(),
       body: formData,

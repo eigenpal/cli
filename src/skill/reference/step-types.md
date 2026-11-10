@@ -792,6 +792,10 @@ Output schema:
         "storageRef": {
           "description": "Storage reference for the original file",
           "type": "string"
+        },
+        "renderedPdfRef": {
+          "description": "Storage key of the PDF an office input was rendered to. Page word boxes are measured on this PDF.",
+          "type": "string"
         }
       },
       "required": [
@@ -1927,6 +1931,10 @@ Output schema:
         "storageRef": {
           "description": "Storage reference for the original file",
           "type": "string"
+        },
+        "renderedPdfRef": {
+          "description": "Storage key of the PDF an office input was rendered to. Page word boxes are measured on this PDF.",
+          "type": "string"
         }
       },
       "required": [
@@ -2804,7 +2812,7 @@ Extract structured data from text using AI with a JSON schema
 
 **Output:** `record<string, unknown>`
 
-> Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.
+> Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding["line_items.0.amount"] = { confidence: high|medium|low, score?, recognitionScore?, needsReview, reason?, quote?, citations?, source_span }`. When the parsed document carries per-word OCR confidence, `recognitionScore` is the recognition of the cited words and caps the field: `score` never exceeds it, below 0.8 the field is low, below 0.9 at most medium. The map also holds reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON.
 
 ##### Complete machine-readable schemas
 
@@ -2963,7 +2971,7 @@ Output schema:
     "type": "string"
   },
   "additionalProperties": {},
-  "description": "Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding[\"line_items.0.amount\"] = { confidence: high|medium|low, score?, needsReview, reason?, quote?, citations?, source_span }`, plus reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON."
+  "description": "Extracted structured data matching the provided schema. Unless grounding is disabled (grounded: false), the output also carries a reserved `_grounding` map keyed by dotted field path: `_grounding[\"line_items.0.amount\"] = { confidence: high|medium|low, score?, recognitionScore?, needsReview, reason?, quote?, citations?, source_span }`. When the parsed document carries per-word OCR confidence, `recognitionScore` is the recognition of the cited words and caps the field: `score` never exceeds it, below 0.8 the field is low, below 0.9 at most medium. The map also holds reserved `_degraded: true` / `_reason` markers when grounding could not run the shared algorithm or the Eigenpal text pass. Lineage is never included in this JSON."
 }
 ```
 
@@ -8256,6 +8264,7 @@ Pause the run for selective field confirmation or correction, then continue with
 | `data` | string \| record<string, unknown> \| array<unknown> | yes |  | Structured data or a template expression resolving to an object or array |
 | `schema` | record<string, unknown> | no |  | Optional JSON Schema for validating edits and exposing downstream autocomplete. When omitted with metadataFrom: ai.extract and a direct whole-output data expression, the extract step schema is reused. |
 | `metadataFrom` | `"ai.extract"` | no |  | Producer adapter. `ai.extract` derives categorical field confidence from `_grounding`, copies valid numeric grounding scores into fieldMetadata.display.score, and strips that reserved key from review data. Grounding is not stripped unless this is set. |
+| `lineageFrom` | string | no |  | Name of the ai.extract step whose source lineage draws field boxes in the review. Needed only when data passes through a step that changes field paths. Without it, boxes come from the step in a direct `{{ steps.<name>.output }}` data reference, or, when that step is a transform.script, from the one whole step output it received whose field paths it kept. |
 | `fieldMetadata` | record<string, object> | no | `{}` | RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias. |
 | `selection` | object | yes |  | Field selection policy resolved once when the task is created |
 | `files` | object | no | `{"includeRunInputs":true,"attachments":[]}` | Run input files and optional current-run attachments for reviewers |
@@ -8308,6 +8317,11 @@ Config schema:
         "ai.extract"
       ],
       "description": "Producer adapter. `ai.extract` derives categorical field confidence from `_grounding`, copies valid numeric grounding scores into fieldMetadata.display.score, and strips that reserved key from review data. Grounding is not stripped unless this is set."
+    },
+    "lineageFrom": {
+      "description": "Name of the ai.extract step whose source lineage draws field boxes in the review. Needed only when data passes through a step that changes field paths. Without it, boxes come from the step in a direct `{{ steps.<name>.output }}` data reference, or, when that step is a transform.script, from the one whole step output it received whose field paths it kept.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
     },
     "fieldMetadata": {
       "description": "RFC 6901 pointer map of producer facts (labels, confidence, display). Selection policy belongs under selection.fields; fieldMetadata.review is a legacy alias.",

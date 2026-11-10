@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ApiClient, HtmlResponseError } from './client';
+import { ApiClient, ApiError, HtmlResponseError } from './client';
 
 const HTML_BODY =
   '<!DOCTYPE html><html><head><title>404</title></head><body><h1>This page could not be found</h1></body></html>';
@@ -154,5 +154,74 @@ describe('ApiClient client identity', () => {
     } finally {
       global.fetch = origFetch;
     }
+  });
+});
+
+describe('ApiClient 429 retry', () => {
+  const config = { baseUrl: 'http://localhost:9999', apiKey: 'k', dir: '.' };
+
+  function rateLimited(retryAfter?: string): Response {
+    return new Response(
+      JSON.stringify({
+        issues: [{ field: '<root>', message: 'rate limit exceeded', code: 'rate_limited' }],
+      }),
+      {
+        status: 429,
+        headers: {
+          'content-type': 'application/json',
+          ...(retryAfter !== undefined ? { 'retry-after': retryAfter } : {}),
+        },
+      }
+    );
+  }
+
+  async function withFetch<T>(responses: Response[], fn: () => Promise<T>): Promise<T> {
+    const origFetch = global.fetch;
+    let i = 0;
+    global.fetch = (async () => responses[i++]) as unknown as typeof fetch;
+    try {
+      return await fn();
+    } finally {
+      global.fetch = origFetch;
+    }
+  }
+
+  test('waits for Retry-After, then returns the successful response', async () => {
+    const waits: number[] = [];
+    const client = new ApiClient(config, {
+      rateLimitRetry: { sleep: async (ms) => void waits.push(ms) },
+    });
+    const result = await withFetch([rateLimited('2'), jsonResponse({ ok: true })], () =>
+      client.post('/v1/runs', { a: 1 })
+    );
+    expect(result).toEqual({ ok: true });
+    expect(waits).toEqual([2000]);
+  });
+
+  test('backs off exponentially without Retry-After and gives up after maxRetries', async () => {
+    const waits: number[] = [];
+    const client = new ApiClient(config, {
+      rateLimitRetry: { maxRetries: 3, baseDelayMs: 100, sleep: async (ms) => void waits.push(ms) },
+    });
+    const err = await withFetch(
+      [rateLimited(), rateLimited(), rateLimited(), rateLimited('7')],
+      () => client.get('/v1/runs').catch((e: unknown) => e)
+    );
+    expect(waits).toEqual([100, 200, 400]);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(429);
+    expect((err as ApiError).retryAfterSeconds).toBe(7);
+  });
+
+  test('a Retry-After longer than the cap fails at once instead of hanging', async () => {
+    const waits: number[] = [];
+    const client = new ApiClient(config, {
+      rateLimitRetry: { maxDelayMs: 30_000, sleep: async (ms) => void waits.push(ms) },
+    });
+    const err = await withFetch([rateLimited('600')], () =>
+      client.get('/v1/runs').catch((e: unknown) => e)
+    );
+    expect(waits).toEqual([]);
+    expect((err as ApiError).retryAfterSeconds).toBe(600);
   });
 });

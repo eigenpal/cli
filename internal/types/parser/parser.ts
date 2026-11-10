@@ -48,6 +48,30 @@ export const OFFICE_MIME_TYPES = [
 ] as const;
 
 /**
+ * Office formats the parser renders to PDF before reading (MIME -> file
+ * extension; the converter picks its import filter from the extension). Pages
+ * and word boxes come from that PDF, and the run keeps it for the layout
+ * preview. Spreadsheets and email are not paginated this way.
+ */
+export const PAGINATED_OFFICE_MIME_EXTENSIONS: Readonly<Record<string, string>> = {
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/msword': 'doc',
+  'application/vnd.oasis.opendocument.text': 'odt',
+  'application/rtf': 'rtf',
+  'text/rtf': 'rtf',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.presentationml.slideshow': 'ppsx',
+  'application/vnd.ms-powerpoint.presentation.macroenabled.12': 'pptm',
+  'application/vnd.ms-powerpoint': 'ppt',
+  'application/vnd.oasis.opendocument.presentation': 'odp',
+  'application/epub+zip': 'epub',
+};
+
+export function isPaginatedOfficeMimeType(mimeType: string | undefined | null): boolean {
+  return !!mimeType && Object.hasOwn(PAGINATED_OFFICE_MIME_EXTENSIONS, mimeType.toLowerCase());
+}
+
+/**
  * Supported MIME types grouped by parser category
  */
 export const ParserCategory = {
@@ -190,6 +214,12 @@ export const DocumentMetadataSchema = z.object({
   mimeType: z.string(),
   size: z.number().describe('File size in bytes'),
   storageRef: z.string().optional().describe('Storage reference for the original file'),
+  renderedPdfRef: z
+    .string()
+    .optional()
+    .describe(
+      'Storage key of the PDF an office input was rendered to. Page word boxes are measured on this PDF.'
+    ),
 });
 
 export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;

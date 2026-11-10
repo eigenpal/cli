@@ -93,9 +93,14 @@ describe('resolveWorkflowId', () => {
       if (url.includes('?name=')) {
         return jsonResponse({ data: [], total: 0 });
       }
-      // search hit — flat `name` is the field the v1 list emits.
+      // search hit: the list nests the slug under currentVersion.definition.
       return jsonResponse({
-        data: [{ id: 'wf_close', name: 'parse-invoices', version: '1.0.0' }],
+        data: [
+          {
+            id: 'wf_close',
+            currentVersion: { version: '1.0.0', definition: { name: 'parse-invoices' } },
+          },
+        ],
         total: 1,
       });
     });

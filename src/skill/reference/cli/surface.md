@@ -15,6 +15,7 @@ eigenpal
 │   └── status|whoami
 ├── workflow
 │   ├── list|ls
+│   ├── get <workflow-id>
 │   ├── pull <workflow-id>
 │   ├── schema <workflow-id>
 │   ├── push
