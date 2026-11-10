@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.23.6",
+  "version": "0.23.7",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -49,6 +49,7 @@
     "@babel/types": "8.0.6",
     "@clack/prompts": "^1.8.1",
     "@fumari/image-size": "0.1.1",
+    "@hey-api/client-fetch": "^0.13.1",
     "@kant2002/jszip": "2.7.1",
     "@noble/hashes": "^2.0.1",
     "@opentelemetry/api": "^1.9.0",

@@ -8,10 +8,10 @@ import { type Command } from 'commander';
 import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { ApiClient, ApiError } from '../../lib/client';
-import { action } from '../../lib/format-error';
+import { ApiClient, ApiError, buildClient } from '../../lib/client';
+import { action, UsageError } from '../../lib/format-error';
 import { warn, withBaseUrl } from '../../lib/ui';
-import { BaseOpts, buildClient } from './shared';
+import { BaseOpts } from './shared';
 import { parseAgentTarget } from './target';
 
 type SourceLockPackage = {
@@ -62,7 +62,7 @@ async function pullAgentEnv(
 ) {
   const format = opts.format ?? 'shell';
   if (format !== 'shell' && format !== 'dotenv') {
-    throw new Error('--format must be shell or dotenv');
+    throw new UsageError('--format must be shell or dotenv');
   }
   const client = buildClient(opts);
   const requests = target

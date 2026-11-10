@@ -5,7 +5,7 @@
  * implemented — a retry re-sends from chunk 0. The server accepts idempotent
  * overwrite of an already-staged index.
  */
-import { isTransientHttpStatus } from './upload-presigned-multipart';
+import { isAbortError, isTransientHttpStatus, sleep } from './upload-presigned-multipart';
 
 export const HTTP_CHUNKED_MAX_RETRIES = 4;
 export const HTTP_CHUNKED_RETRY_BASE_MS = 250;
@@ -67,18 +67,31 @@ export class ChunkUploadHttpError extends Error {
   }
 }
 
-function isRetryableChunkError(error: unknown): boolean {
+function isRetryableChunkError(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return false;
+  if (isAbortError(error)) return false;
   if (error instanceof ChunkUploadHttpError) return isTransientHttpStatus(error.status);
   return true;
+}
+
+function abortError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return typeof DOMException !== 'undefined'
+    ? new DOMException('Upload aborted', 'AbortError')
+    : Object.assign(new Error('Upload aborted'), { name: 'AbortError' });
 }
 
 export async function uploadHttpChunks(options: {
   chunkCount: number;
   chunkSizeBytes: number;
   totalSize: number;
+  signal?: AbortSignal;
+  onProgress?: (uploadedBytes: number, totalBytes: number) => void;
   putChunk: (args: { chunkIndex: number; start: number; length: number }) => Promise<void>;
 }): Promise<void> {
+  let uploadedBytes = 0;
   for (let chunkIndex = 0; chunkIndex < options.chunkCount; chunkIndex++) {
+    if (options.signal?.aborted) throw abortError(options.signal);
     const length = expectedHttpChunkByteLength(
       options.totalSize,
       options.chunkSizeBytes,
@@ -88,22 +101,21 @@ export async function uploadHttpChunks(options: {
     const start = chunkByteOffset(options.chunkSizeBytes, chunkIndex);
     let lastError: unknown;
     for (let attempt = 0; attempt <= HTTP_CHUNKED_MAX_RETRIES; attempt++) {
+      if (options.signal?.aborted) throw abortError(options.signal);
       try {
         await options.putChunk({ chunkIndex, start, length });
+        uploadedBytes += length;
+        options.onProgress?.(uploadedBytes, options.totalSize);
         lastError = undefined;
         break;
       } catch (error) {
         lastError = error;
-        if (!isRetryableChunkError(error) || attempt === HTTP_CHUNKED_MAX_RETRIES) {
+        if (!isRetryableChunkError(error, options.signal) || attempt === HTTP_CHUNKED_MAX_RETRIES) {
           throw error;
         }
-        await sleep(HTTP_CHUNKED_RETRY_BASE_MS * 2 ** attempt);
+        await sleep(HTTP_CHUNKED_RETRY_BASE_MS * 2 ** attempt, options.signal);
       }
     }
     if (lastError) throw lastError;
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -23,10 +23,10 @@ import path from 'node:path';
 import type { ZodType } from 'zod';
 
 import type { ApiClient } from '../../lib/client';
-import { ApiClient as Client } from '../../lib/client';
-import { requireApiKey, resolveConfig } from '../../lib/config';
+import { buildClient } from '../../lib/client';
+import { resolveConfig } from '../../lib/config';
 import { formatEigenpalDirIfAvailable } from '../../lib/format-eigenpal';
-import { action } from '../../lib/format-error';
+import { action, UsageError } from '../../lib/format-error';
 import { selectJsonValue } from '../../lib/json-select';
 import {
   cleanupCreatedWorkspaceTemplates,
@@ -49,6 +49,7 @@ import {
   error,
   formatTimestamp,
   intArg,
+  printJson,
   renderListResult,
   success,
   ui,
@@ -57,6 +58,7 @@ import {
   withPagination,
   type PaginationOpts,
 } from '../../lib/ui';
+import { pollUntil } from '../../lib/watch';
 import {
   withWorkflowRowFields,
   workflowRowName,
@@ -86,7 +88,6 @@ import {
 import { registerWorkflowFolderCommands } from './folders';
 import { fetchAutomation, parseAutomationDeleteResult } from './lifecycle-shared';
 import { registerParserMigrationCommand } from './migrate-parser';
-import { registerStepExecCommands } from './step-exec';
 import { registerTemplateCommands } from './templates';
 import {
   printIssues,
@@ -98,12 +99,6 @@ import {
 interface WorkflowCommandConfig {
   dir?: string;
   baseUrl?: string;
-}
-
-function buildClient(opts: WorkflowCommandConfig): ApiClient {
-  const config = resolveConfig(opts);
-  requireApiKey(config);
-  return new Client(config);
 }
 
 /**
@@ -130,10 +125,6 @@ async function buildClientForWorkflow(
 
 function descriptionFor(tool: WorkflowToolName): string {
   return WORKFLOW_TOOL_METADATA[tool].description;
-}
-
-function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
 }
 
 /** Loose row shapes — list endpoints aren't strongly typed in the CLI. */
@@ -395,14 +386,6 @@ YAML's \`name:\` field). Both:
   // Local-only artifact cleanup. Lives under workflow because artifacts are
   // written under ./dataset/examples/<example>/executions/.
   registerClearLocalCommand(workflow);
-
-  // Single-step execution. The previous local-runner implementation was
-  // removed (it diverged from production worker behavior and assumed shell
-  // env state real CLI users don't have). Currently a placeholder that
-  // exits 2 with a redirect to `run` / `workflow experiment run`. EIG-104
-  // tracks the server-side redesign that will restore single-step execution
-  // through a future server-routed endpoint.
-  registerStepExecCommands(workflow);
 }
 
 // ---------------------------------------------------------------------------
@@ -606,13 +589,15 @@ new uploads are deleted. The file on disk is not rewritten.
         }
       ) => {
         if (opts.bump && opts.setVersion) {
-          throw new Error('Pass either --bump or --set-version, not both.');
+          throw new UsageError('Pass either --bump or --set-version, not both.');
         }
         if (opts.bump && !isBumpLevel(opts.bump)) {
-          throw new Error(`--bump must be one of: patch, minor, major (got "${opts.bump}").`);
+          throw new UsageError(`--bump must be one of: patch, minor, major (got "${opts.bump}").`);
         }
         if (opts.setVersion && !SEMVER_RE.test(opts.setVersion)) {
-          throw new Error(`--set-version must be bare semver X.Y.Z (got "${opts.setVersion}").`);
+          throw new UsageError(
+            `--set-version must be bare semver X.Y.Z (got "${opts.setVersion}").`
+          );
         }
 
         // TTY-only convenience prompt for --file. Gating on stdout.isTTY (and
@@ -639,7 +624,7 @@ new uploads are deleted. The file on disk is not rewritten.
             }
             filePath = (answer as string) || 'workflow.yaml';
           } else {
-            throw new Error('Missing --file <yaml>.');
+            throw new UsageError('Missing --file <yaml>.');
           }
         }
 
@@ -1187,10 +1172,10 @@ export function resolveWorkflowVersionCreateRequest(opts: {
   const hasFile = Boolean(opts.file);
   const hasFrom = Boolean(opts.from);
   if (hasFile && hasFrom) {
-    throw new Error('Pass either --file or --from, not both.');
+    throw new UsageError('Pass either --file or --from, not both.');
   }
   if (!hasFile && !hasFrom) {
-    throw new Error('Pass --file <yaml> or --from <version-id> to create a tagged version.');
+    throw new UsageError('Pass --file <yaml> or --from <version-id> to create a tagged version.');
   }
   if (opts.setVersion && opts.yamlVersion) {
     throw new Error(
@@ -1413,7 +1398,7 @@ then close the request when review is finished.
         }
       ) => {
         if (opts.mode !== 'append' && opts.mode !== 'replace') {
-          throw new Error('--mode must be "append" or "replace"');
+          throw new UsageError('--mode must be "append" or "replace"');
         }
         // Fail fast in CI / agent terminals before any network I/O.
         if (opts.mode === 'replace') {
@@ -2171,14 +2156,13 @@ returns immediately with \`{ batchId, total }\`; poll
           // (enqueue/read-replica lag), so retry briefly before treating
           // emptiness as a bad batch id.
           let result: {
-            executions?: Array<{ status?: string }>;
             runs?: Array<{ status?: string }>;
             [k: string]: unknown;
           } = {};
           let execs: Array<{ status?: string }> = [];
           for (let attempt = 1; attempt <= 3; attempt++) {
             result = (await client.get(url)) as typeof result;
-            execs = result.executions ?? result.runs ?? [];
+            execs = result.runs ?? [];
             if (execs.length > 0) break;
             if (attempt < 3) await new Promise((r) => setTimeout(r, 2000));
           }
@@ -2363,7 +2347,7 @@ Behavior:
       ) => {
         const { client, workflowId } = await buildClientForWorkflow(workflow, opts);
         if (opts.json && opts.format !== 'json') {
-          throw new Error('--json cannot be combined with --format csv');
+          throw new UsageError('--json cannot be combined with --format csv');
         }
         const analyze =
           opts.summary ||
@@ -2377,7 +2361,7 @@ Behavior:
             );
           }
           if (opts.format !== 'json') {
-            throw new Error('Experiment analysis options require --format json');
+            throw new UsageError('Experiment analysis options require --format json');
           }
           const detailPayload = (await client.get(
             `/v1/automations/${workflowId}/experiments/${encodeURIComponent(batchId)}`
@@ -2456,7 +2440,7 @@ batches must belong to the same workflow within the caller's tenant.
         const sort = normalizeCompareSort(opts.sort);
         const threshold = opts.regressionThreshold;
         if (!Number.isFinite(threshold) || threshold < 0) {
-          throw new Error('--regression-threshold must be a non-negative number');
+          throw new UsageError('--regression-threshold must be a non-negative number');
         }
         const client = buildClient(opts);
         if (opts.outputs) {
@@ -2600,10 +2584,6 @@ Behavior:
             if (!dest) return;
             const params = new URLSearchParams({ format: opts.format });
             try {
-              // Intentional internal-only CLI surface (see `experiment results`
-              // above): no public eval-results export route exists yet.
-              // FOLLOW-UP: migrate to a public
-              // `GET /api/v1/automations/{id}/eval-results/export` once added.
               await downloadStreamToFile(
                 client,
                 `/v1/automations/${workflowId}/experiments/${batchId}/export?${params.toString()}`,
@@ -2780,61 +2760,68 @@ async function pollExperimentUntilTerminal({
     summary: ReturnType<typeof summarizeExperimentExecutions>
   ) => void;
 }): Promise<void> {
-  const deadline = Date.now() + maxWait * 1000;
   let lastSummary = '';
   let emptyPolls = 0;
 
-  while (true) {
-    const result = (await client.get(url)) as {
-      executions?: Array<{ status?: string }>;
-      runs?: Array<{ status?: string }>;
-      [k: string]: unknown;
-    };
-    const execs = result.executions ?? result.runs ?? [];
-    // A fresh batch can read empty for a poll or two (enqueue lag), but a
-    // batch that never grows executions is a bad batch id — abort instead of
-    // spinning until --max-wait.
-    if (execs.length === 0) {
-      emptyPolls += 1;
-      if (emptyPolls >= 3) {
-        if (process.stderr.isTTY) process.stderr.write('\n');
-        error(`Experiment still has no executions after ${emptyPolls} polls — check the batch id.`);
-        process.exit(1);
-      }
-    } else {
-      emptyPolls = 0;
-    }
-    const summary = summarizeExperimentExecutions(execs);
-    const line = renderTickLine(summary);
-    if (line !== lastSummary) {
-      if (process.stderr.isTTY) {
-        process.stderr.write(`\r\x1b[K${line}`);
+  const poll = await pollUntil({
+    fetch: async () => {
+      const result = (await client.get(url)) as {
+        runs?: Array<{ status?: string }>;
+        [k: string]: unknown;
+      };
+      const execs = result.runs ?? [];
+      return { result, summary: summarizeExperimentExecutions(execs), execs };
+    },
+    onTick: ({ execs, summary }) => {
+      // A fresh batch can read empty for a poll or two (enqueue lag), but a
+      // batch that never grows executions is a bad batch id — abort instead of
+      // spinning until --max-wait.
+      if (execs.length === 0) {
+        emptyPolls += 1;
+        if (emptyPolls >= 3) {
+          if (process.stderr.isTTY) process.stderr.write('\n');
+          error(
+            `Experiment still has no executions after ${emptyPolls} polls. Check the batch id.`
+          );
+          process.exit(1);
+        }
       } else {
-        process.stderr.write(`${line}\n`);
+        emptyPolls = 0;
       }
-      lastSummary = line;
-    }
-    if (summary.done) {
-      if (process.stderr.isTTY) process.stderr.write('\n');
-      const failed = summary.counts.failed ?? 0;
-      const cancelled = summary.counts.cancelled ?? 0;
-      const rejected = summary.counts.rejected ?? 0;
-      const badCount = failed + cancelled + rejected;
-      if (badCount > 0) renderExperimentFailures(execs, summary.total);
-      await onTerminal(result, summary);
-      if (badCount > 0) process.exit(1);
-      return;
-    }
-    if (Date.now() >= deadline) {
-      if (process.stderr.isTTY) process.stderr.write('\n');
-      error(
-        `Timed out after ${maxWait}s with ${summary.total - summary.terminal} non-terminal execution(s). Re-run to keep watching.`
-      );
-      onDeadline?.(result, summary);
-      process.exit(2);
-    }
-    await new Promise((r) => setTimeout(r, interval * 1000));
+      const line = renderTickLine(summary);
+      if (line !== lastSummary) {
+        if (process.stderr.isTTY) {
+          process.stderr.write(`\r\x1b[K${line}`);
+        } else {
+          process.stderr.write(`${line}\n`);
+        }
+        lastSummary = line;
+      }
+    },
+    isTerminal: ({ summary }) => summary.done,
+    intervalMs: interval * 1000,
+    maxWaitMs: maxWait * 1000,
+  });
+
+  const { result, execs, summary } = poll.value;
+  if (!poll.timedOut) {
+    if (process.stderr.isTTY) process.stderr.write('\n');
+    const badCount =
+      (summary.counts.failed ?? 0) +
+      (summary.counts.cancelled ?? 0) +
+      (summary.counts.rejected ?? 0);
+    if (badCount > 0) renderExperimentFailures(execs, summary.total);
+    await onTerminal(result, summary);
+    // Exit 1 when any execution failed, was cancelled or was rejected.
+    if (badCount > 0) process.exit(1);
+    return;
   }
+  if (process.stderr.isTTY) process.stderr.write('\n');
+  error(
+    `Timed out after ${maxWait}s with ${summary.total - summary.terminal} non-terminal execution(s). Re-run to keep watching.`
+  );
+  onDeadline?.(result, summary);
+  process.exit(2);
 }
 
 // ---------------------------------------------------------------------------

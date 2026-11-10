@@ -59,10 +59,6 @@ export function setQuiet(value: boolean): void {
   quietMode = value;
 }
 
-export function isQuiet(): boolean {
-  return quietMode;
-}
-
 // `--json` pipe-safety. Enabled centrally from the `preAction` hook in
 // `cli.ts` whenever the invoked command carries `--json`: stdout must stay
 // pure JSON even when the caller merges streams (`2>&1 | jq`). While active,
@@ -178,6 +174,11 @@ export function addJsonFlag<C extends Command>(cmd: C): C {
 /** Add the standard `--base-url <url>` option to a command. */
 export function withBaseUrl<C extends Command>(cmd: C): C {
   return cmd.option('--base-url <url>', 'Server base URL') as C;
+}
+
+/** Print a value as pretty JSON on stdout. */
+export function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2));
 }
 
 /**

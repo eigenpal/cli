@@ -311,9 +311,9 @@ LLM-judge scores have variance. To reduce flake:
 - For high-stakes thresholds, run the experiment ≥3 times and average.
 
 <!-- GENERATED:EVALUATOR_CATALOG START -->
-## Evaluator types — full reference
+## Evaluator types: full reference
 
-_Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-config.ts`. Do not hand-edit between the GENERATED fences — run `bun run --cwd packages/cli generate:skill`._
+_Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-config.ts`. Do not hand-edit between the GENERATED fences: run `bun run --cwd packages/cli generate:skill`._
 
 ### Top-level `evaluators.yaml`
 
@@ -330,10 +330,10 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | `description` | string | no |  | One-sentence explanation, in business language, of what this evaluator measures and why a stakeholder should care. Shown in the dashboard to non-technical reviewers (legal, ops, finance) who never see the YAML or judge prompt. Skip implementation detail (model names, thresholds, dot-paths); those live in `config`. |
 | `weight` | number | no | `1` | Relative importance in the weighted mean. The overall score is Σ(weightᵢ × scoreᵢ) / Σweight. Set to 0 to score-only without affecting overall. |
 
-- `type` — required discriminator: `exact-diff`, `llm-judge`, `custom-script`.
-- `config` — required object whose fields are defined by the selected evaluator type below.
+- `type`: required discriminator: `exact-diff`, `llm-judge`, `custom-script`.
+- `config`: required object whose fields are defined by the selected evaluator type below.
 
-### `exact-diff` — JSON deep-diff against expected output
+### `exact-diff`: JSON deep-diff against expected output
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -356,7 +356,7 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | `numericTolerance` | number | no |  | Maximum absolute difference for numeric leaves at or under this path. Omitted = inherit, then historical relative epsilon. Explicit `0` is exact. |
 
 
-### `llm-judge` — LLM-as-judge scoring
+### `llm-judge`: LLM-as-judge scoring
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -365,11 +365,11 @@ _Generated from `EvalConfigYamlSchema` in `@eigenpal/types/src/eval/evaluator-co
 | `mode` | `"continuous"` \| `"discrete"` | no | `"continuous"` | Continuous = the LLM returns a free-form score in [0, 1]. Discrete = the LLM picks one of your labels and the score is looked up from the table. |
 | `labels` | record<string, number> | no |  | Allowed labels and the score each maps to. Required in discrete mode. The judge MUST return one of these labels; each score must be in [0, 1]. |
 | `passThreshold` | number | no |  | Legacy per-evaluator pass threshold. Pass/fail now uses the single workflow-level pass threshold; this is read only to preserve the run gate of configs authored before the single-threshold model. |
-| `promptExtension` | string | yes |  | Required. Evaluation criteria appended to the judge prompt — describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria. |
+| `promptExtension` | string | yes |  | Required. Evaluation criteria appended to the judge prompt: describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria. |
 | `docLabel` | string | no | `"output"` | Name the judge uses to refer to the output in its prompt (e.g. 'invoice', 'extraction'). Default is 'output'. |
 
 
-### `custom-script` — JavaScript in the sandbox
+### `custom-script`: JavaScript in the sandbox
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -610,7 +610,7 @@ Generated from the same discriminated union used by evaluator validation; YAML k
                   "promptExtension": {
                     "type": "string",
                     "minLength": 10,
-                    "description": "Required. Evaluation criteria appended to the judge prompt — describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria."
+                    "description": "Required. Evaluation criteria appended to the judge prompt: describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria."
                   },
                   "docLabel": {
                     "default": "output",

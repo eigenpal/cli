@@ -1,3 +1,4 @@
+import { isRecord } from '../core/is-record';
 /**
  * Static detection of `env.NAME` references in a workflow definition.
  *
@@ -123,10 +124,6 @@ function collect(definition: unknown, namesIn: (text: string) => string[]): EnvR
   return [...found.entries()]
     .map(([name, steps]) => ({ name, steps }))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Just the names, sorted. */

@@ -5,8 +5,7 @@
 import type { EmailServer, TestEmailServerResponse } from '@eigenpal/types';
 import type { Command } from 'commander';
 import { apiPath } from '../lib/api-paths';
-import { ApiClient } from '../lib/client';
-import { requireApiKey, resolveConfig } from '../lib/config';
+import { buildClient } from '../lib/client';
 import {
   buildCreateRequest,
   buildUpdateRequest,
@@ -20,6 +19,7 @@ import {
   addJsonFlag,
   formatTimestamp,
   intArg,
+  printJson,
   renderListResult,
   success,
   ui,
@@ -56,16 +56,6 @@ const LIST_COLUMNS: TableColumn<EmailServerRow>[] = [
     format: (value) => formatTimestamp(value),
   },
 ];
-
-function buildClient(opts: EmailServersCommandConfig): ApiClient {
-  const config = resolveConfig(opts);
-  requireApiKey(config);
-  return new ApiClient(config);
-}
-
-function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
-}
 
 function sharedCreateOptions(cmd: Command): Command {
   return cmd

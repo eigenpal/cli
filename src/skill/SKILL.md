@@ -570,7 +570,6 @@ Workflow and eval references:
 
 - [`reference/workflow-yaml.md`](reference/workflow-yaml.md)
 - [`reference/step-types.md`](reference/step-types.md)
-- [`reference/step-exec.md`](reference/step-exec.md)
 - [`reference/dataset-format.md`](reference/dataset-format.md)
 - [`reference/evaluators.md`](reference/evaluators.md)
 - [`reference/debugging.md`](reference/debugging.md)

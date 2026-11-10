@@ -215,7 +215,7 @@ eigenpal runs cancel <exec-id> --json    # raw server payload
 
 The worker finishes the current step, then stops — the cancellation
 check happens between every step transition, including inside
-`control.foreach` / `control.parallel` / `control.block` bodies.
+`control.foreach` / `control.parallel` bodies.
 Behavior by current state:
 
 - `created` / `pending` — transitions straight to `cancelled`.

@@ -10,9 +10,8 @@
 import type { Command } from 'commander';
 import { promises as fs } from 'node:fs';
 import { apiPath } from '../lib/api-paths';
-import { ApiClient } from '../lib/client';
-import { requireApiKey, resolveConfig } from '../lib/config';
-import { action } from '../lib/format-error';
+import { buildClient } from '../lib/client';
+import { action, UsageError } from '../lib/format-error';
 import {
   buildReviewListParams,
   decisionRows,
@@ -26,7 +25,7 @@ import {
   type ReviewTaskDetail,
   type ReviewTaskRow,
 } from '../lib/reviews-cli';
-import { addJsonFlag, dim, intArg, success, table, ui, withBaseUrl } from '../lib/ui';
+import { addJsonFlag, dim, intArg, printJson, success, table, ui, withBaseUrl } from '../lib/ui';
 
 interface ReviewsCommandConfig {
   baseUrl?: string;
@@ -42,16 +41,6 @@ type ListOpts = ReviewsCommandConfig & {
 
 type TaskResponse = { task: ReviewTaskDetail };
 type ListResponse = { tasks: ReviewTaskRow[]; nextCursor: string | null };
-
-function buildClient(opts: ReviewsCommandConfig): ApiClient {
-  const config = resolveConfig(opts);
-  requireApiKey(config);
-  return new ApiClient(config);
-}
-
-function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
-}
 
 function taskPath(taskId: string, suffix = ''): string {
   return apiPath(`/human-reviews/${encodeURIComponent(taskId)}${suffix}`);
@@ -232,11 +221,11 @@ async function confirmReviewField(
   }
 ): Promise<void> {
   if (opts.value !== undefined && opts.valueJson !== undefined) {
-    throw new Error('Pass only one of --value or --value-json.');
+    throw new UsageError('Pass only one of --value or --value-json.');
   }
   const rawValue = opts.valueJson ?? opts.value;
   if (rawValue === undefined) {
-    throw new Error('Missing field value. Pass --value <scalar> or --value-json <json>.');
+    throw new UsageError('Missing field value. Pass --value <scalar> or --value-json <json>.');
   }
 
   const value: string | number | boolean | null =

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { ApiClient } from './client';
 import { formatFileIfAvailable } from './format';
@@ -175,29 +175,4 @@ export async function writeExecutionArtifacts(
   await formatFileIfAvailable(outputPath);
 
   return executionsDir;
-}
-
-/**
- * Find the artifact folder name (timestamp) that contains the given executionId.
- * Used so judge summary links can point to executions/<timestamp>/files/...
- */
-export function findArtifactFolderByExecutionId(
-  exampleDir: string,
-  executionId: string
-): string | null {
-  const executionsDir = join(exampleDir, 'executions');
-  if (!existsSync(executionsDir)) return null;
-  const entries = readdirSync(executionsDir, { withFileTypes: true });
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    const outputPath = join(executionsDir, e.name, 'output.json');
-    if (!existsSync(outputPath)) continue;
-    try {
-      const data = JSON.parse(readFileSync(outputPath, 'utf-8')) as { executionId?: string };
-      if (data.executionId === executionId) return e.name;
-    } catch {
-      // ignore invalid json
-    }
-  }
-  return null;
 }

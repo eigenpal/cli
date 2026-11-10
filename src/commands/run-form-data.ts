@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ApiClient } from '../lib/client';
+import { UsageError } from '../lib/format-error';
 import { guessMimeType } from '../lib/fs-helpers';
 import { indicesRequiringPreUpload } from '../lib/upload-limits';
 import { newIdempotencyKey, uploadReusableFile } from '../lib/upload-reusable-file';
@@ -65,7 +66,7 @@ export async function buildPreparedRunRequest(
   for (const spec of parseInputFileSpecs(input.inputFile ?? [])) {
     const info = await fs.stat(spec.filePath);
     if (!info.isFile()) {
-      throw new Error(`--input-file path is not a file: ${spec.filePath}`);
+      throw new UsageError(`--input-file path is not a file: ${spec.filePath}`);
     }
     localFiles.push({
       fieldName: spec.fieldName,
@@ -234,7 +235,7 @@ function parseInputFileSpecs(inputFile: string | string[]) {
     const fieldName = value.slice(0, separatorIndex).trim();
     const filePath = value.slice(separatorIndex + 1).trim();
     if (!fieldName || !filePath) {
-      throw new Error('--input-file must be <field=path> or a bare path');
+      throw new UsageError('--input-file must be <field=path> or a bare path');
     }
     assertValidFileFieldName(fieldName);
     return { fieldName, filePath };

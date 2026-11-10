@@ -205,8 +205,3 @@ export function getBanner(): string {
   lines.push(' '.repeat(taglinePad) + pc.dim(TAGLINE));
   return lines.join('\n');
 }
-
-/** Compact one-line variant for tight headers. */
-export function getCompactBanner(): string {
-  return `${pc.green('●')} ${pc.bold('EIGENPAL')} ${pc.dim('—')} ${pc.dim(TAGLINE)}`;
-}

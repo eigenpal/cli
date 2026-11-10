@@ -160,7 +160,7 @@ steps:
 
 `automatic` retries transient timeouts, rate limits, and selected retryable server failures. Delays use bounded exponential backoff, honor `Retry-After`, and stop after a five-minute elapsed budget.
 
-Durable leaf retries are supported for Website Reader and HTTP `GET`/`HEAD`. Unsafe HTTP methods, Invoke Workflow, AI steps (which may have separate provider request retries), and transforms or file outputs are not durably replayed. Control containers are not attempts themselves; eligible leaves inside sequential If, Switch, and For Each scopes may retry, while concurrent Parallel and Parallel Map branches do not. See each generated step entry for its capability.
+Durable leaf retries are supported for Website Reader, HTTP `GET`/`HEAD`, and Send Email (only when the provider did not accept the message). Unsafe HTTP methods, Invoke Workflow, AI steps (which may have separate provider request retries), and transforms or file outputs are not durably replayed. Control containers are not attempts themselves; eligible leaves inside sequential If, Switch, and For Each scopes may retry, while concurrent Parallel and Parallel Map branches do not. See each generated step entry for its capability.
 
 Legacy whole-run retry counts are accepted for compatibility but no longer restart failed runs. Move retry intent to the workflow retry default or an eligible step.
 <!-- GENERATED:RETRY_REFERENCE END -->
@@ -504,9 +504,9 @@ Both catalogs are generated from the canonical Zod schemas in
 supports.
 
 <!-- GENERATED:WORKFLOW_REFERENCE START -->
-## Top-level fields — full reference
+## Top-level fields: full reference
 
-_Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/workflow.ts`. Do not hand-edit between the GENERATED fences — run `bun run --cwd packages/cli generate:skill`._
+_Generated from `WorkflowDefinitionSchema` in `@eigenpal/types/src/workflow/workflow.ts`. Do not hand-edit between the GENERATED fences: run `bun run --cwd packages/cli generate:skill`._
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -1615,113 +1615,6 @@ This JSON Schema is generated from the same Zod schema used to parse workflow YA
             "type",
             "name",
             "message"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "control.block"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1
-            },
-            "description": {
-              "type": "string"
-            },
-            "if": {
-              "type": "string"
-            },
-            "timeout": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "retry": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "const": "inherit"
-                },
-                {
-                  "type": "string",
-                  "const": "automatic"
-                },
-                {
-                  "type": "string",
-                  "const": "never"
-                },
-                {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "mode": {
-                          "type": "string",
-                          "const": "automatic"
-                        },
-                        "maxAttempts": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 10
-                        }
-                      },
-                      "required": [
-                        "mode"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "mode": {
-                          "type": "string",
-                          "const": "never"
-                        }
-                      },
-                      "required": [
-                        "mode"
-                      ],
-                      "additionalProperties": false
-                    }
-                  ]
-                }
-              ]
-            },
-            "retries": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "retryDelay": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "with": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            },
-            "blockName": {
-              "type": "string",
-              "minLength": 1
-            },
-            "inputs": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
-          },
-          "required": [
-            "type",
-            "name",
-            "blockName"
           ],
           "additionalProperties": false
         },

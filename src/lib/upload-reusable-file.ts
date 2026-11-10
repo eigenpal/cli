@@ -1,26 +1,30 @@
+import {
+  annotateHttpChunkedCompleteFailure,
+  annotateMultipartCompleteFailure,
+  annotatePresignedPutCompleteFailure,
+  ChunkUploadHttpError,
+  destroyUnreadNodeReadable,
+  ensureNodeReadableFullySent,
+  filterStorageHeaders,
+  isNodeReadableStream,
+  PartUploadHttpError,
+  shouldAbortHttpChunkedUploadSession,
+  shouldAbortMultipartUploadSession,
+  shouldAbortPresignedPutUploadSession,
+  toPutBody,
+  uploadHttpChunks,
+  uploadPresignedMultipartParts,
+  type HttpChunkedSession,
+  type ListedUploadPart,
+  type StreamableRequestInit,
+} from '@eigenpal/sdk/upload';
 import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { apiPath } from './api-paths';
 import { ApiError, type ApiClient } from './client';
-import { isNodeReadableStream, toPutBody, type StreamableRequestInit } from './fetch-body';
 import { guessMimeType } from './fs-helpers';
-import {
-  annotateHttpChunkedCompleteFailure,
-  ChunkUploadHttpError,
-  shouldAbortHttpChunkedUploadSession,
-  uploadHttpChunks,
-  type HttpChunkedSession,
-} from './upload-app-chunked';
-import {
-  annotateMultipartCompleteFailure,
-  filterStorageHeaders,
-  PartUploadHttpError,
-  shouldAbortMultipartUploadSession,
-  uploadPresignedMultipartParts,
-  type ListedUploadPart,
-} from './upload-presigned-multipart';
 
 /** Tenant-scoped create-session idempotency key (matches SDK/Studio). */
 export function newIdempotencyKey(): string {
@@ -277,76 +281,6 @@ async function uploadPresignedMultipart(
     }
     throw annotateMultipartCompleteFailure(session.uploadId, error);
   }
-}
-
-type NodeReadableState = NodeJS.ReadableStream & {
-  readableEnded?: boolean;
-  destroyed?: boolean;
-  destroy?: (error?: Error) => void;
-};
-
-/** Drop a Node readable that never started sending (fetch failed before upload). */
-function destroyUnreadNodeReadable(stream: NodeJS.ReadableStream): void {
-  const readable = stream as NodeReadableState;
-  if (!readable.readableEnded && !readable.destroyed && typeof readable.destroy === 'function') {
-    readable.destroy();
-  }
-}
-
-/**
- * Block until every byte of a Node readable PUT body has been consumed.
- * Real fetch/undici should drain the stream before resolving; mocks that
- * return early leave bytes unread and must be drained here so callers do
- * not destroy the stream while a retry or background upload is still running.
- */
-async function ensureNodeReadableFullySent(
-  stream: NodeJS.ReadableStream,
-  expectedByteLength?: number
-): Promise<number> {
-  const readable = stream as NodeReadableState;
-  if (readable.readableEnded) {
-    return expectedByteLength ?? 0;
-  }
-  if (readable.destroyed) {
-    throw new Error('Upload stream was destroyed before the request body finished sending');
-  }
-
-  let bytes = 0;
-  for await (const chunk of stream as AsyncIterable<Buffer | Uint8Array | string>) {
-    bytes += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-  }
-  if (expectedByteLength !== undefined && bytes !== expectedByteLength) {
-    throw new Error(
-      `Upload sent ${bytes} byte(s) but ${expectedByteLength} were expected for this part`
-    );
-  }
-  return bytes;
-}
-
-/**
- * Abort leftover presigned-PUT state only while storage PUT is not yet authoritative.
- *
- * After a successful storage PUT, POST complete is idempotent. 409/429/timeout/lost
- * responses must not abort — that would delete a recoverable up-to-4-GiB object and
- * can race a complete that already succeeded server-side.
- */
-export function shouldAbortPresignedPutUploadSession(options: { putReady: boolean }): boolean {
-  return !options.putReady;
-}
-
-export function presignedPutCompleteRetryHint(uploadId: string): string {
-  return `Uploaded object remains stored for ${uploadId}; retry complete and do not abort the session.`;
-}
-
-export function annotatePresignedPutCompleteFailure(uploadId: string, error: unknown): unknown {
-  const hint = presignedPutCompleteRetryHint(uploadId);
-  if (error instanceof Error) {
-    if (!error.message.includes('retry complete')) {
-      error.message = `${error.message} ${hint}`;
-    }
-    return error;
-  }
-  return new Error(`${String(error)} ${hint}`);
 }
 
 async function putStorageObject(

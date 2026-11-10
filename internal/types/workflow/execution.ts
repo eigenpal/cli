@@ -1,36 +1,15 @@
 import { z } from 'zod';
-import { TimestampSchema } from '../core/common';
-import {
-  StepExecutionStatusSchema as ProcessorStepExecutionStatusSchema,
-  StepExecutionStatusValue as ProcessorStepExecutionStatusValue,
-  WorkflowExecutionStatusSchema as ProcessorWorkflowExecutionStatusSchema,
-  WorkflowExecutionStatusValue as ProcessorWorkflowExecutionStatusValue,
-  type StepExecutionStatus as ProcessorStepExecutionStatus,
-  type WorkflowExecutionStatus as ProcessorWorkflowExecutionStatus,
+import { StepExecutionStatusSchema } from '../processor/execution';
+
+// Status schemas live in processor/execution; re-exported here for the workflow barrel.
+export {
+  StepExecutionStatusSchema,
+  StepExecutionStatusValue,
+  WorkflowExecutionStatusSchema,
+  WorkflowExecutionStatusValue,
+  type StepExecutionStatus,
+  type WorkflowExecutionStatus,
 } from '../processor/execution';
-import {
-  ExecutionFailureSchema,
-  ResolvedRetryPolicySchema,
-  RetryDecisionSchema,
-  RetryPolicySourceSchema,
-} from './retry';
-import { WorkflowDefinitionSchema } from './workflow';
-
-/**
- * Workflow execution status - re-exported from processor for consistency
- * Values: pending, running, waiting, completed, failed, cancelled
- */
-export const WorkflowExecutionStatusSchema = ProcessorWorkflowExecutionStatusSchema;
-export type WorkflowExecutionStatus = ProcessorWorkflowExecutionStatus;
-export const WorkflowExecutionStatusValue = ProcessorWorkflowExecutionStatusValue;
-
-/**
- * Step execution status - re-exported from processor for consistency
- * Values: pending, running, success, failure, waiting, skipped
- */
-export const StepExecutionStatusSchema = ProcessorStepExecutionStatusSchema;
-export type StepExecutionStatus = ProcessorStepExecutionStatus;
-export const StepExecutionStatusValue = ProcessorStepExecutionStatusValue;
 
 /**
  * Scope entry type - tracks nested execution context
@@ -122,175 +101,6 @@ export const StepInputReferenceSchema = z.object({
   env: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type StepInputReference = z.infer<typeof StepInputReferenceSchema>;
-
-/**
- * Workflow execution record
- */
-export const WorkflowExecutionSchema = z.object({
-  /** Execution ID */
-  id: z.string(),
-  /** Tenant ID */
-  tenantId: z.string(),
-
-  /** OTEL trace context */
-  traceId: z.string().nullable(),
-  spanId: z.string().nullable(),
-
-  /** Reference to workflow definition */
-  definitionId: z.string(),
-  /** Frozen snapshot of definition at execution time */
-  definitionSnapshot: WorkflowDefinitionSchema,
-
-  /** Trigger type that started this execution */
-  triggerType: z.string(),
-  /** Input provided to the workflow */
-  triggerInput: z.record(z.string(), z.unknown()).nullable(),
-  /** Overrides from table row when execution is from a row: { steps: { [stepName]: outputObject } } */
-  overrides: z
-    .object({ steps: z.record(z.string(), z.record(z.string(), z.unknown())).optional() })
-    .nullable()
-    .optional(),
-
-  /** Current status */
-  status: WorkflowExecutionStatusSchema,
-
-  /** For pause/resume: current scope stack */
-  scopeStack: ScopeStackSchema,
-  /** For pause/resume: current step index within scope */
-  currentStepIndex: z.number(),
-  /** For pause/resume: accumulated step results */
-  stepResults: z.record(z.string(), StepResultSchema).optional(),
-
-  /** Final result (on completion) */
-  result: z.unknown().nullable(),
-  /** Error message (on failure) */
-  error: z.string().nullable(),
-
-  /** Queue management */
-  priority: z.number().default(50),
-  availableAt: TimestampSchema,
-  leaseId: z.string().nullable(),
-  leaseExpiresAt: TimestampSchema.nullable(),
-  workerId: z.string().nullable(),
-
-  /** Retry management */
-  maxRetries: z.number().default(0),
-
-  /** Retry chain tracking */
-  originalExecutionId: z.string().nullable().optional(),
-  previousExecutionId: z.string().nullable().optional(),
-  retryNumber: z.number().default(0),
-
-  /** Timestamps */
-  createdAt: TimestampSchema,
-  startedAt: TimestampSchema.nullable(),
-  completedAt: TimestampSchema.nullable(),
-
-  /** Audit */
-  createdBy: z.string().nullable(),
-});
-export type WorkflowExecution = z.infer<typeof WorkflowExecutionSchema>;
-
-/**
- * Step execution record
- */
-export const StepExecutionSchema = z.object({
-  /** Step execution ID: {executionId}:{stepName}:{scopeHash} */
-  id: z.string(),
-  /** Parent execution ID */
-  executionId: z.string(),
-  /** Tenant ID */
-  tenantId: z.string(),
-
-  /** OTEL span ID */
-  spanId: z.string().nullable(),
-
-  /** Step name from definition */
-  stepName: z.string(),
-  /** Step type */
-  stepType: z.string(),
-  /** For action steps: the action type */
-  stepAction: z.string().nullable(),
-
-  /** Scope context at execution time */
-  scopeStack: ScopeStackSchema,
-  /** Hash of scope stack for ID generation */
-  scopeHash: z.string(),
-
-  /** Order within this execution */
-  executionOrder: z.number(),
-
-  /** Retry tracking for step-level retries */
-  stepAttempt: z.number().default(0),
-  stepPath: z.string().nullable().optional(),
-  effectiveRetryPolicy: ResolvedRetryPolicySchema.nullable().optional(),
-  retryPolicySource: RetryPolicySourceSchema.nullable().optional(),
-  latestAttempt: z.number().default(0),
-  nextAttemptAt: TimestampSchema.nullable().optional(),
-
-  /** Input data */
-  inputData: z.unknown().nullable(),
-  /** Output data */
-  outputData: z.unknown().nullable(),
-
-  /** Status */
-  status: StepExecutionStatusSchema,
-  /** Error message */
-  error: z.string().nullable(),
-
-  /** 'skipped' = step skipped (full override), 'partial' = overrides merged onto output, null = normal */
-  overrideMode: z.enum(['skipped', 'partial']).nullable().optional(),
-
-  /** Timing */
-  durationMs: z.number().nullable(),
-  startedAt: TimestampSchema.nullable(),
-  completedAt: TimestampSchema.nullable(),
-});
-export type StepExecution = z.infer<typeof StepExecutionSchema>;
-
-export const StepExecutionAttemptSchema = z.object({
-  id: z.string(),
-  stepExecutionId: z.string(),
-  executionId: z.string(),
-  tenantId: z.string(),
-  attemptNumber: z.number().int().min(1),
-  status: z.enum(['running', 'success', 'failure', 'cancelled']),
-  resolvedConfig: z.unknown().nullable(),
-  failure: ExecutionFailureSchema.nullable(),
-  retryDecision: RetryDecisionSchema.nullable(),
-  replaySafe: z.boolean().nullable(),
-  startedAt: TimestampSchema,
-  completedAt: TimestampSchema.nullable(),
-  durationMs: z.number().nullable(),
-});
-export type StepExecutionAttempt = z.infer<typeof StepExecutionAttemptSchema>;
-
-/**
- * Connector definition
- */
-export const ConnectorSchema = z.object({
-  /** Connector ID */
-  id: z.string(),
-  /** Tenant ID */
-  tenantId: z.string(),
-  /** Connector name */
-  name: z.string(),
-  /** Connector type: http, slack, email, etc. */
-  type: z.string(),
-  /** Description */
-  description: z.string().optional(),
-  /** Connection configuration */
-  config: z.record(z.string(), z.unknown()),
-  /** Input schema for validation */
-  inputSchema: z.unknown().optional(),
-  /** Output schema */
-  outputSchema: z.unknown().optional(),
-  /** Timestamps */
-  createdAt: TimestampSchema,
-  updatedAt: TimestampSchema.optional(),
-  createdBy: z.string(),
-});
-export type Connector = z.infer<typeof ConnectorSchema>;
 
 /**
  * Workflow file output - represents a file generated during workflow execution

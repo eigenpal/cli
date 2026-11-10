@@ -1,15 +1,23 @@
+import {
+  expectedPartByteLength,
+  isNodeReadableStream,
+  partIsAuthoritativelyComplete,
+  shouldAbortMultipartUploadSession,
+  shouldAbortPresignedPutUploadSession,
+} from '@eigenpal/sdk/upload';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApiClient } from './client';
-import { asFetchMock, isNodeReadableStream } from './fetch-body';
-import {
-  expectedPartByteLength,
-  partIsAuthoritativelyComplete,
-  shouldAbortMultipartUploadSession,
-} from './upload-presigned-multipart';
-import { shouldAbortPresignedPutUploadSession, uploadReusableFile } from './upload-reusable-file';
+import { uploadReusableFile } from './upload-reusable-file';
+
+/** Minimal fetch mock shape for tests (DOM lib requires `preconnect`). */
+function asFetchMock(
+  impl: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>
+): typeof fetch {
+  return Object.assign(impl, { preconnect: () => undefined }) as typeof fetch;
+}
 
 const originalFetch = globalThis.fetch;
 const FIVE_GIB = 5 * 1024 * 1024 * 1024;

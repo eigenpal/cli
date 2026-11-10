@@ -361,10 +361,10 @@ export const LlmJudgeConfigSchema = z
       .trim()
       .min(
         LLM_JUDGE_PROMPT_MIN_LENGTH,
-        `judge prompt is required — describe what makes a good answer for this workflow (≥${LLM_JUDGE_PROMPT_MIN_LENGTH} chars). An empty prompt makes the model invent its own scoring criteria.`
+        `judge prompt is required: describe what makes a good answer for this workflow (≥${LLM_JUDGE_PROMPT_MIN_LENGTH} chars). An empty prompt makes the model invent its own scoring criteria.`
       )
       .describe(
-        'Required. Evaluation criteria appended to the judge prompt — describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria.'
+        'Required. Evaluation criteria appended to the judge prompt: describe what makes a good answer for this workflow (tone, completeness, edge cases). Cannot be empty: an empty prompt yields the model inventing its own criteria.'
       ),
     docLabel: z
       .string()

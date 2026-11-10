@@ -6,7 +6,6 @@ export const AGENT_REFERENCE_TOPICS = [
   'reference/dataset-format',
   'reference/debugging',
   'reference/evaluators',
-  'reference/step-exec',
   'reference/step-types',
   'reference/workflow-yaml',
 ] as const;

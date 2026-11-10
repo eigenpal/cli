@@ -3,9 +3,8 @@ import type { Command } from 'commander';
 import { existsSync, promises as fs } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
-import { ApiClient as Client } from '../../lib/client';
-import { requireApiKey, resolveConfig } from '../../lib/config';
-import { action } from '../../lib/format-error';
+import { buildClient } from '../../lib/client';
+import { action, UsageError } from '../../lib/format-error';
 import {
   compareTemplateDataKeys,
   inspectOfficeTemplateBytes,
@@ -25,6 +24,7 @@ import {
   addJsonFlag,
   dim,
   formatTimestamp,
+  printJson,
   success,
   table,
   ui,
@@ -36,16 +36,6 @@ import {
 
 interface TemplatesCommandConfig {
   baseUrl?: string;
-}
-
-function buildClient(opts: TemplatesCommandConfig): Client {
-  const config = resolveConfig(opts);
-  requireApiKey(config);
-  return new Client(config);
-}
-
-function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
 }
 
 export async function readJsonFixtureFile(fixturePath: string): Promise<Record<string, unknown>> {
@@ -63,10 +53,12 @@ export async function readJsonFixtureFile(fixturePath: string): Promise<Record<s
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`--data must be a JSON fixture file containing an object (${fixturePath})`);
+    throw new UsageError(
+      `--data must be a JSON fixture file containing an object (${fixturePath})`
+    );
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('--data must be a JSON object (template data keys)');
+    throw new UsageError('--data must be a JSON object (template data keys)');
   }
   return parsed as Record<string, unknown>;
 }
@@ -209,7 +201,7 @@ export function registerTemplateCommands(parent: Command): void {
         templateId: string,
         opts: TemplatesCommandConfig & { out?: string; revisionId?: string }
       ) => {
-        if (!opts.out) throw new Error('Missing --out <path>.');
+        if (!opts.out) throw new UsageError('Missing --out <path>.');
         const client = buildClient(opts);
         const downloaded = await downloadTemplateBytes(client, templateId, opts.revisionId);
         await fs.writeFile(opts.out, downloaded.bytes);

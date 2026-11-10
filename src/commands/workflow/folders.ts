@@ -1,11 +1,12 @@
 import { type Command } from 'commander';
+import { buildClient } from '../../lib/client';
 import { action } from '../../lib/format-error';
 import {
   isInteractiveStderr,
   requireTypedConfirmation,
   requireYesInNonInteractive,
 } from '../../lib/non-interactive';
-import { addJsonFlag, dim, success, table, ui, warn, withBaseUrl } from '../../lib/ui';
+import { addJsonFlag, dim, printJson, success, table, ui, warn, withBaseUrl } from '../../lib/ui';
 import {
   buildFolderTree,
   ensureFolderPath,
@@ -16,7 +17,7 @@ import {
   renderFolderTreeLines,
   resolveWorkflowFolderRef,
 } from '../../lib/workflow-folders';
-import { buildClient, printJson, type WorkflowCommandConfig } from './lifecycle-shared';
+import { type WorkflowCommandConfig } from './lifecycle-shared';
 
 export function registerWorkflowFolderCommands(parent: Command): void {
   const folders = parent

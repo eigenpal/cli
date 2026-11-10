@@ -25,6 +25,7 @@ export {
   TemplateRevisionIdSchema,
   TimestampSchema,
   generateId,
+  isRecord,
   toJsonSchema,
   type BaseEntity,
   type IdPrefix,
@@ -296,7 +297,6 @@ export {
   MergeConfigSchema,
   MergeInputSchema,
   MergeOutputSchema,
-  PROCESSOR_SCHEMAS,
   // PDF Embedder processor
   PdfEmbedderConfigSchema,
   PdfEmbedderInputSchema,
@@ -339,15 +339,8 @@ export {
   dottedPathToJsonPointer,
   encodeGroundingPathSegment,
   excelSheetNameIssue,
-  extractFieldMetadata,
   extractSourceTextFromResolvedConfig,
-  getAllProcessorJsonSchemas,
-  getConfigDefaults,
-  getConfigFieldMetadata,
-  getConfigSchema,
-  getProcessorSchemas,
   isFilePathDescriptor,
-  listProcessorIds,
   noopTracingContext,
   normalizeExtractInputToText,
   parseGroundingPathSegments,
@@ -355,7 +348,6 @@ export {
   resolveJsonToXlsxLimits,
   resolveXlsxToJsonLimits,
   stripGroundingMetadata,
-  validateConfig,
   validateJsonToXlsxWorkload,
   validateXlsxToJsonWorkload,
   valueAtDottedPath,
@@ -378,7 +370,6 @@ export {
   type ExtractSidecarBundle,
   type FieldGrounding,
   type FieldGroundingCitation,
-  type FieldMetadata,
   type FilePathDescriptor,
   type GroundingConfidence,
   type GroundingResult,
@@ -400,7 +391,6 @@ export {
   type ProcessorExecutionContext,
   type ProcessorLogger,
   type ProcessorPort,
-  type ProcessorSchemas,
   type SegmentConfig,
   type SegmentInput,
   type SegmentOutput,
@@ -542,10 +532,14 @@ export type {
   VisionOptions,
 } from './client';
 
+// Access grant levels (shared by db schema, resolver and API contracts)
+export { ACCESS_GRANT_LEVELS, type AccessGrantLevel } from './access-levels';
+
 // OTEL Semantic Conventions (browser-safe)
 export {
   Eigenpal,
   GenAI,
+  OTLP_PROTOCOLS,
   OpenInference,
   OpenInferenceSpanKinds,
   SpanKindMap,
@@ -554,6 +548,7 @@ export {
   mapLLMAttributes,
   mapOCRAttributes,
   type EigenpalSpanType,
+  type OtlpProtocol,
   type SpanKindString,
   type SpanTypeValue,
 } from './otel';

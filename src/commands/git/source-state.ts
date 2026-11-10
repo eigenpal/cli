@@ -26,6 +26,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { getProcessEnv } from '../../env';
 import { resolveConfig, type CliConfig } from '../../lib/config';
+import { UsageError } from '../../lib/format-error';
 import { error, success, table, warn } from '../../lib/ui';
 import { compileLocalAgent, compileLocalResource } from './agent-definition';
 import {
@@ -221,7 +222,7 @@ export async function readPackageManifest(
 export function requirePackageContext(opts: ContextOpts = {}): ResolvedPackageContext {
   const context = resolveGitSourceContext(opts);
   if (!context.gitRoot || !context.packageRoot || !context.packagePath) {
-    throw new Error('Run this command inside a source package, or pass --dir.');
+    throw new UsageError('Run this command inside a source package, or pass --dir.');
   }
   return {
     gitRoot: context.gitRoot,

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
+import { InvalidArgumentError } from 'commander';
 import { ApiError, HtmlResponseError } from './client';
-import { formatCliError, printApiError } from './format-error';
+import { exitCodeForError, formatCliError, printApiError, UsageError } from './format-error';
+import { requireYesInNonInteractive } from './non-interactive';
 
 describe('formatCliError', () => {
   test('passes HtmlResponseError messages through verbatim (already friendly)', () => {
@@ -160,3 +162,28 @@ function captureStderr(fn: () => void): string {
   }
   return captured;
 }
+
+describe('exitCodeForError', () => {
+  test('usage errors exit 2, runtime and server errors exit 1', () => {
+    expect(exitCodeForError(new UsageError('--mode must be "append" or "replace"'))).toBe(2);
+    expect(exitCodeForError(new InvalidArgumentError('not a number'))).toBe(2);
+    expect(exitCodeForError(new ApiError(500, { error: 'boom' }))).toBe(1);
+    expect(exitCodeForError(new Error('runtime failure'))).toBe(1);
+  });
+
+  test('a missing --yes in a non-interactive shell is a usage error', () => {
+    const stdinTty = process.stdin.isTTY;
+    process.stdin.isTTY = false as never;
+    try {
+      let thrown: unknown;
+      try {
+        requireYesInNonInteractive(false, 'Deleting the dataset');
+      } catch (err) {
+        thrown = err;
+      }
+      expect(exitCodeForError(thrown)).toBe(2);
+    } finally {
+      process.stdin.isTTY = stdinTty as never;
+    }
+  });
+});

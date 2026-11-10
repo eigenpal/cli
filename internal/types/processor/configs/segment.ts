@@ -40,7 +40,7 @@ export const SegmentInputSchema = z
   })
   .passthrough()
   .describe(
-    'Document-parser-shaped input. Pass {{ steps.parse.output }} directly — extra fields like text/metadata are ignored.'
+    'Document-parser-shaped input. Pass {{ steps.parse.output }} directly: extra fields like text/metadata are ignored.'
   );
 
 /**
@@ -63,7 +63,7 @@ export const SegmentConfigSchema = z.object({
           .string()
           .optional()
           .describe(
-            'What this document type looks like — headings, layout, vocabulary, and the visual cues that mark its FIRST page. Fed to the LLM as guidance for both boundary detection and typing.'
+            'What this document type looks like: headings, layout, vocabulary, and the visual cues that mark its FIRST page. Fed to the LLM as guidance for both boundary detection and typing.'
           ),
       })
     )
@@ -115,13 +115,11 @@ export const SegmentSummarySchema = z.object({
   unlabelled: z
     .number()
     .int()
-    .describe(
-      'Documents the segmenter could not label (type === "unknown") — escalate to a human.'
-    ),
+    .describe('Documents the segmenter could not label (type === "unknown"): escalate to a human.'),
   lowConfidence: z
     .number()
     .int()
-    .describe('Documents whose boundary/type confidence is "low" — also worth human review.'),
+    .describe('Documents whose boundary/type confidence is "low", also worth human review.'),
   byType: z
     .record(z.string(), z.number().int())
     .describe('Per-type document counts, keyed by type name (includes "unknown").'),
@@ -173,7 +171,7 @@ export const SegmentOutputSchema = z.object({
             .describe('Page where the start appears'),
         })
         .optional()
-        .describe('Structured start evidence — for downstream parsing without regex over `notes`.'),
+        .describe('Structured start evidence, for downstream parsing without regex over `notes`.'),
       text: z.string().describe('Joined per-page text for this document, ready for ai.extract'),
       pages: z
         .array(

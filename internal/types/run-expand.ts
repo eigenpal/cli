@@ -53,18 +53,18 @@ export const RUN_DETAIL_EXPAND_PRESET = RUN_EXPAND_SECTIONS.join(',');
  */
 export const LEGACY_RUN_EXPAND_MIGRATION: Readonly<Record<string, string>> = {
   output: '`output` is not expandable; completed detail responses include top-level `output`',
-  lineage: 'use `expand=execution` — batch, retry, and annotation live on `execution`',
+  lineage: 'use `expand=execution`: batch, retry, and annotation live on `execution`',
   cost: 'use `expand=usage`',
-  input: 'still `expand=input` — args now live at `input.args`',
-  metadata: 'use `expand=input` — metadata now lives at `input.metadata`',
+  input: 'still `expand=input`: args now live at `input.args`',
+  metadata: 'use `expand=input`: metadata now lives at `input.metadata`',
   observability: 'use `expand=debug`',
-  review: 'use `expand=execution` — reviews live at `execution.review`',
-  steps: 'use `expand=execution` — steps live at `execution.steps` (workflow runs)',
+  review: 'use `expand=execution`: reviews live at `execution.review`',
+  steps: 'use `expand=execution`: steps live at `execution.steps` (workflow runs)',
   definition:
-    'use `expand=execution` — definitionSnapshot lives at `execution.definitionSnapshot` (workflow runs)',
+    'use `expand=execution`: definitionSnapshot lives at `execution.definitionSnapshot` (workflow runs)',
   files:
     'downloadable output refs live at top-level `files` on completed detail responses; `expand=execution` adds `execution.files.output` metadata for agent runs',
-  expected: 'use `expand=execution` — expected output lives at `execution.expected`',
+  expected: 'use `expand=execution`: expected output lives at `execution.expected`',
   trace:
     'trace id: `expand=debug` (`debug.traceId`); trace files: `GET /api/v1/runs/{id}/artifacts`',
   issues: 'use `GET /api/v1/runs/{id}/artifacts` and look for `issues.md`',

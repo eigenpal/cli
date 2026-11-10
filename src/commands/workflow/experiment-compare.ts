@@ -637,15 +637,14 @@ export async function fetchExperimentOutputs(
       error?: unknown;
       output?: unknown;
       execution?: { status?: string | null; error?: unknown };
-      result?: { status?: string | null; error?: unknown; output?: unknown };
     };
     return {
       executionId: run.id,
       exampleId: run.exampleId ?? null,
       exampleName: run.exampleName ?? null,
-      status: payload.execution?.status ?? payload.status ?? payload.result?.status ?? null,
-      error: payload.error ?? payload.execution?.error ?? payload.result?.error ?? null,
-      output: payload.output !== undefined ? payload.output : payload.result?.output,
+      status: payload.execution?.status ?? payload.status ?? null,
+      error: payload.error ?? payload.execution?.error ?? null,
+      output: payload.output,
     };
   });
   return { automationId: ref.automationId, rows };

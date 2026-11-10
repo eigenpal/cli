@@ -7,8 +7,9 @@ import {
   type EmailServerTransport,
   type UpdateEmailServerRequest,
 } from '@eigenpal/types';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { UsageError } from './format-error';
 
 const SECRET_KEYS = new Set(['apiKey', 'password', 'caPem', 'ciphertext']);
 
@@ -56,7 +57,7 @@ export function assertExclusiveConfigSource(
 ): void {
   const configSources = countTruthy([opts.configJson, opts.configFile]);
   if (configSources > 1) {
-    throw new Error('Pass only one of --config-json or --config-file.');
+    throw new UsageError('Pass only one of --config-json or --config-file.');
   }
   if (configSources > 0 && explicitFieldCount > 0) {
     throw new Error(
@@ -76,10 +77,10 @@ export function readConfigObject(opts: ConfigSourceOpts): Record<string, unknown
     try {
       parsed = JSON.parse(opts.configJson);
     } catch {
-      throw new Error('--config-json must be valid JSON.');
+      throw new UsageError('--config-json must be valid JSON.');
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('--config-json must be a JSON object.');
+      throw new UsageError('--config-json must be a JSON object.');
     }
     return parsed as Record<string, unknown>;
   }
@@ -99,10 +100,10 @@ export function readConfigObject(opts: ConfigSourceOpts): Record<string, unknown
     try {
       parsed = JSON.parse(raw);
     } catch {
-      throw new Error('--config-file must contain a JSON object.');
+      throw new UsageError('--config-file must contain a JSON object.');
     }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('--config-file must contain a JSON object.');
+      throw new UsageError('--config-file must contain a JSON object.');
     }
     return parsed as Record<string, unknown>;
   }
@@ -162,7 +163,7 @@ export async function readSecretInput(
 
 function parseEnabled(opts: { enabled?: boolean; disabled?: boolean }): boolean | undefined {
   if (opts.enabled && opts.disabled) {
-    throw new Error('Pass only one of --enabled or --disabled.');
+    throw new UsageError('Pass only one of --enabled or --disabled.');
   }
   if (opts.disabled) return false;
   if (opts.enabled) return true;
@@ -338,7 +339,9 @@ export async function buildUpdateRequest(input: {
   if (caPem !== undefined) body.caPem = caPem;
 
   if (Object.keys(body).length === 0) {
-    throw new Error('No changes requested. Pass fields to update or --config-json/--config-file.');
+    throw new UsageError(
+      'No changes requested. Pass fields to update or --config-json/--config-file.'
+    );
   }
 
   assertCompleteSmtpUpdateTarget(body);
@@ -426,12 +429,4 @@ export function formatEmailServerHuman(server: EmailServer): string {
     `  updated     ${server.updatedAt instanceof Date ? server.updatedAt.toISOString() : server.updatedAt}`
   );
   return lines.join('\n');
-}
-
-export function assertLocalFile(path: string | undefined, label: string): void {
-  if (!path || path === '-') return;
-  const resolved = resolve(path);
-  if (!existsSync(resolved)) {
-    throw new Error(`${label} file not found: ${resolved}`);
-  }
 }

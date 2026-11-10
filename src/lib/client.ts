@@ -1,6 +1,6 @@
+import { isNodeReadableStream, type StreamableRequestInit } from '@eigenpal/sdk/upload';
 import { resolveRequestUrl } from './api-paths';
-import type { CliConfig } from './config';
-import { isNodeReadableStream, type StreamableRequestInit } from './fetch-body';
+import { requireApiKey, resolveConfig, type CliConfig } from './config';
 import { buildCliTelemetryHeaders } from './telemetry';
 import { dim } from './ui';
 
@@ -11,13 +11,31 @@ export class ApiError extends Error {
     /** Seconds from the `Retry-After` header, when the server sent one (429). */
     public readonly retryAfterSeconds?: number
   ) {
-    const msg =
-      typeof body === 'object' && body !== null && 'error' in body
-        ? (body as { error: string }).error
-        : `HTTP ${status}`;
-    super(msg);
+    super(apiErrorMessage(status, body));
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Message for a non-2xx response: the first issue of the modern
+ * `{ issues, requestId }` envelope, then the legacy `{ error }` field, then
+ * `HTTP <status>`. Appends the request id so a user can quote it to support.
+ */
+function apiErrorMessage(status: number, body: unknown): string {
+  if (typeof body !== 'object' || body === null) return `HTTP ${status}`;
+  const envelope = body as { issues?: unknown; error?: unknown; requestId?: unknown };
+  const firstIssue = Array.isArray(envelope.issues)
+    ? (envelope.issues[0] as { message?: unknown } | undefined)
+    : undefined;
+  const base =
+    typeof firstIssue?.message === 'string' && firstIssue.message.length > 0
+      ? firstIssue.message
+      : typeof envelope.error === 'string' && envelope.error.length > 0
+        ? envelope.error
+        : `HTTP ${status}`;
+  return typeof envelope.requestId === 'string' && envelope.requestId.length > 0
+    ? `${base} (request id: ${envelope.requestId})`
+    : base;
 }
 
 /**
@@ -304,4 +322,14 @@ export class ApiClient {
     assertNotHtml(res, url);
     return res;
   }
+}
+
+/**
+ * Resolve the config, require an API key (so a missing key fails locally), and build the
+ * client.
+ */
+export function buildClient(opts: { baseUrl?: string }): ApiClient {
+  const config = resolveConfig(opts);
+  requireApiKey(config);
+  return new ApiClient(config);
 }

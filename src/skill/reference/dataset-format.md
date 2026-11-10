@@ -394,16 +394,16 @@ agent automations.
 <!-- GENERATED:DATASET_REFERENCE START -->
 ## Schema reference
 
-_Generated from `@eigenpal/types/src/eval/dataset-archive.ts`, `expected-error.ts`, and `scoped-file-ref.ts`. Do not hand-edit between the GENERATED fences — run `bun run --cwd packages/cli generate:skill`._
+_Generated from `@eigenpal/types/src/eval/dataset-archive.ts`, `expected-error.ts`, and `scoped-file-ref.ts`. Do not hand-edit between the GENERATED fences: run `bun run --cwd packages/cli generate:skill`._
 
 ### Archive layout (canonical)
 
 ```text
-examples/<name>/input.json                REQUIRED — full run input object
-examples/<name>/input/<file>              OPTIONAL — referenced from input.json
-examples/<name>/expected.json             OPTIONAL — success output or `{ "$error": ... }`
-examples/<name>/expected/<file>           OPTIONAL — referenced from expected.json
-examples/<name>/meta.json                 OPTIONAL — see `DatasetMetaSchema` below
+examples/<name>/input.json                REQUIRED: full run input object
+examples/<name>/input/<file>              OPTIONAL: referenced from input.json
+examples/<name>/expected.json             OPTIONAL: success output or `{ "$error": ... }`
+examples/<name>/expected/<file>           OPTIONAL: referenced from expected.json
+examples/<name>/meta.json                 OPTIONAL: see `DatasetMetaSchema` below
 ```
 
 Importers reject any archive containing a top-level `manifest.json` (legacy layout). Example folder names must match:
@@ -419,11 +419,11 @@ Importers reject any archive containing a top-level `manifest.json` (legacy layo
 
 Input files live under `input/` and are referenced as `{ "$file": "input/<path>" }`. Expected files use the `expected/` prefix in `expected.json`.
 
-### `expected.json` — success-expected output
+### `expected.json`: success-expected output
 
 When grading success, `expected.json` is a JSON object mirroring the workflow `output:` shape. File values use `{ "$file": "expected/<path>" }`.
 
-### `expected.json` — failure-expected (`$error`)
+### `expected.json`: failure-expected (`$error`)
 
 Failure-expected examples store a single top-level `$error` object. At least one of `code`, `messageContains`, or `step` is required:
 
@@ -448,8 +448,8 @@ Failure-expected examples store a single top-level `$error` object. At least one
 
 Allowed values: `"append"` \| `"replace"`
 
-- `append` — add examples to the existing dataset.
-- `replace` — wipe existing examples and import the archive fresh.
+- `append`: add examples to the existing dataset.
+- `replace`: wipe existing examples and import the archive fresh.
 
 ### Validation rules enforced at import
 

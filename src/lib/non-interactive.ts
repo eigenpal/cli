@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline/promises';
+import { UsageError } from './format-error';
 import { ui } from './ui';
 
 /** stdin + stderr TTY — typed confirmations and some cancel gates write to stderr. */
@@ -18,7 +19,7 @@ export function nonInteractiveYesRequired(action: string): string {
 /** Fail fast when a command would otherwise hang waiting for confirmation. */
 export function requireYesInNonInteractive(yes: boolean | undefined, action: string): void {
   if (yes || isInteractiveStderr()) return;
-  throw new Error(nonInteractiveYesRequired(action));
+  throw new UsageError(nonInteractiveYesRequired(action));
 }
 
 /**
@@ -50,7 +51,7 @@ export async function requireTypedConfirmation(opts: {
 }): Promise<void> {
   if (opts.yes) return;
   if (!isInteractiveStderr()) {
-    throw new Error(nonInteractiveYesRequired(`Typed confirmation to ${opts.actionName}`));
+    throw new UsageError(nonInteractiveYesRequired(`Typed confirmation to ${opts.actionName}`));
   }
   const ok = await confirmTyped(opts.id, opts.actionName);
   if (!ok) {

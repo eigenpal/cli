@@ -30,6 +30,7 @@ import { formatCliError } from '../../lib/format-error';
 import { gradeAgainstExpected } from '../../lib/grade-example';
 import { resolveEvalBaseDir } from '../../lib/payload';
 import { dim, info, ui, warn } from '../../lib/ui';
+import { pollUntil } from '../../lib/watch';
 
 const RUN_POLL_INTERVAL_MS = 2000;
 /**
@@ -126,7 +127,7 @@ interface RunView {
   timing?: { createdAt?: string | null; completedAt?: string | null };
 }
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected', 'timeout']);
+const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'rejected']);
 
 function fmtScore(score: number | null | undefined): string {
   return typeof score === 'number' ? score.toFixed(2) : 'n/a';
@@ -188,19 +189,20 @@ async function pollRunTerminal(
   intervalMs: number,
   maxWaitMs: number
 ): Promise<RunView> {
-  const start = Date.now();
   const base = `/v1/runs/${encodeURIComponent(runId)}`;
-  for (;;) {
-    const run = (await client.get(base)) as RunView;
-    const status = run.execution?.status ?? run.status;
-    if (run.finished || (status && TERMINAL.has(status))) {
-      return (await client.get(`${base}?expand=execution`)) as RunView;
-    }
-    if (Date.now() - start > maxWaitMs) {
-      return { ...run, status: 'timeout', execution: { status: 'timeout' } };
-    }
-    await new Promise((r) => setTimeout(r, intervalMs));
+  const { timedOut } = await pollUntil<RunView>({
+    fetch: async () => (await client.get(base)) as RunView,
+    isTerminal: (run) => {
+      const status = run.execution?.status ?? run.status;
+      return Boolean(run.finished) || Boolean(status && TERMINAL.has(status));
+    },
+    intervalMs,
+    maxWaitMs,
+  });
+  if (timedOut) {
+    throw new Error(`Timed out after ${Math.round(maxWaitMs / 1000)}s waiting for run ${runId}`);
   }
+  return (await client.get(`${base}?expand=execution`)) as RunView;
 }
 
 /**

@@ -223,3 +223,36 @@ export async function watchExecution(opts: WatchOptions): Promise<WatchResult> {
 
 /** Test-only exports. */
 export const __testing = { snapshotsDiffer };
+
+export interface PollUntilOptions<T> {
+  /** Fetch the latest state. Errors propagate to the caller. */
+  fetch: () => Promise<T>;
+  /** Called with every fetched state, before the terminal check (rendering, counters). */
+  onTick?: (value: T) => void;
+  /** True once the observed thing has finished and polling should stop. */
+  isTerminal: (value: T) => boolean;
+  intervalMs: number;
+  maxWaitMs: number;
+}
+
+export interface PollUntilResult<T> {
+  /** The last fetched state. Terminal when `timedOut` is false. */
+  value: T;
+  timedOut: boolean;
+}
+
+/**
+ * Generic poll loop shared by the run and experiment waits. Stops on the first
+ * terminal state, or returns `timedOut: true` once `maxWaitMs` has elapsed.
+ * Callers own the exit-code rule (1 on failed, 2 on deadline).
+ */
+export async function pollUntil<T>(opts: PollUntilOptions<T>): Promise<PollUntilResult<T>> {
+  const start = Date.now();
+  while (true) {
+    const value = await opts.fetch();
+    opts.onTick?.(value);
+    if (opts.isTerminal(value)) return { value, timedOut: false };
+    if (Date.now() - start >= opts.maxWaitMs) return { value, timedOut: true };
+    await new Promise((resolve) => setTimeout(resolve, opts.intervalMs));
+  }
+}

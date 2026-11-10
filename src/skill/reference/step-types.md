@@ -473,11 +473,11 @@ compose with `control.if` for legacy gating.
 <!-- GENERATED:STEP_CATALOG START -->
 ## Full catalog
 
-_Generated from `STEP_SCHEMAS` in `@eigenpal/types/src/workflow/step-configs.ts`. Do not hand-edit between the GENERATED fences — run `bun run --cwd packages/cli generate:skill`._
+_Generated from `STEP_SCHEMAS` in `@eigenpal/types/src/workflow/step-configs.ts`. Do not hand-edit between the GENERATED fences: run `bun run --cwd packages/cli generate:skill`._
 
-### AI steps — model-backed processing
+### AI steps: model-backed processing
 
-#### `ai.parse-v2` — Parse Document
+#### `ai.parse-v2`: Parse Document
 
 Automatically read native, scanned, and mixed documents with capability-aware OCR/vision fallback and explicit completeness.
 
@@ -1724,7 +1724,7 @@ Output schema:
 ```
 
 
-#### `ai.parse` — Parse Document v1
+#### `ai.parse`: Parse Document v1
 
 Parse Document v1, the retired parser, kept only so existing workflows run unchanged. Do not add it to workflows: use ai.parse-v2 (Parse Document), which picks native text, OCR or vision per page.
 
@@ -2785,7 +2785,7 @@ Output schema:
 ```
 
 
-#### `ai.extract` — Extract Data
+#### `ai.extract`: Extract Data
 
 Extract structured data from text using AI with a JSON schema
 
@@ -2976,7 +2976,7 @@ Output schema:
 ```
 
 
-#### `ai.split` — Split Document
+#### `ai.split`: Split Document
 
 Split a parsed document into named sections using an LLM. Consumes ai.parse output; emits per-section page ranges and text ready for downstream ai.extract via control.parallel_map.
 
@@ -3446,7 +3446,7 @@ Output schema:
 ```
 
 
-#### `ai.segment` — Separate Documents
+#### `ai.segment`: Separate Documents
 
 Separate a concatenated batch (one big scan) into typed document instances using an LLM. Consumes ai.parse output and a type taxonomy; discovers an unknown number of documents in any order and emits per-document page ranges + text + type, ready for type-specific ai.extract via control.parallel_map. The inverse of ai.split.
 
@@ -3811,7 +3811,7 @@ Output schema:
 ```
 
 
-#### `ai.classify` — Classify
+#### `ai.classify`: Classify
 
 Classify a document or text into one of a fixed label set using an LLM. Output exposes the picked label (constrained to the configured names), a coarse confidence, and a short justification. Pair with control.fail to reject documents that match an undesired label.
 
@@ -3951,7 +3951,7 @@ Output schema:
 ```
 
 
-#### `ai.classify-pages` — Label Pages
+#### `ai.classify-pages`: Label Pages
 
 Assign zero or more labels to each page independently (multi-label) using an LLM. Consumes ai.parse output; emits per-page labels and a byLabel map (label -> page indices) that supports NON-contiguous selections. Feed byLabel.<label> straight into ai.vision `pageIndices` to inspect scattered pages of a type (e.g. every signature or property-photo page).
 
@@ -4121,7 +4121,7 @@ Output schema:
 ```
 
 
-#### `ai.vision` — Inspect Pages (Vision)
+#### `ai.vision`: Inspect Pages (Vision)
 
 Inspect rendered page images with a vision model and return structured JSON matching a schema. The visual counterpart to Extract Data: use it for conclusions that live in the pixels rather than the text (is the document signed? are the photos usable?). Renders PDF, image, or Office/Word inputs; route to specific pages with an ai.split page range to keep it cheap.
 
@@ -4355,7 +4355,7 @@ Output schema:
 ```
 
 
-#### `ai.search-files` — Search Files
+#### `ai.search-files`: Search Files
 
 Investigate a ZIP archive with a question and return an answer plus file citations. Read-only: the step opens files in the archive and never writes back. ZIP is the only accepted format in this version. Optionally scope the search to a folder prefix and cap how many files and investigation turns may run.
 
@@ -4505,7 +4505,7 @@ Output schema:
 ```
 
 
-#### `ai.figure-crops` — Figure Crops
+#### `ai.figure-crops`: Figure Crops
 
 Crop and caption figure elements from a parsed PDF. Renders the source document, crops each kind=figure bbox from ai.parse output, and describes the crop with a vision model. Output is captions plus normalized bboxes for evidence viewers.
 
@@ -4715,9 +4715,9 @@ Output schema:
 ```
 
 
-### Transform steps — deterministic data transforms
+### Transform steps: deterministic data transforms
 
-#### `transform.set` — Set Value
+#### `transform.set`: Set Value
 
 Set key-value pairs in the output object
 
@@ -4785,7 +4785,7 @@ Output schema:
 ```
 
 
-#### `transform.remove` — Remove Fields
+#### `transform.remove`: Remove Fields
 
 Remove specified fields from an object
 
@@ -4853,7 +4853,7 @@ Output schema:
 ```
 
 
-#### `transform.combine` — Combine Data
+#### `transform.combine`: Combine Data
 
 Merge multiple objects or concatenate arrays
 
@@ -4937,7 +4937,7 @@ Output schema:
 ```
 
 
-#### `transform.split` — Split Data
+#### `transform.split`: Split Data
 
 Split a string by delimiter or extract keys from an object
 
@@ -5056,7 +5056,7 @@ Output schema:
 ```
 
 
-#### `transform.merge` — Merge Inputs
+#### `transform.merge`: Merge Inputs
 
 Merge multiple named inputs into a single output
 
@@ -5141,7 +5141,7 @@ Output schema:
 ```
 
 
-#### `transform.template` — Fill Template
+#### `transform.template`: Fill Template
 
 Fill a DOCX or XLSX workspace template with data from previous steps. Reference a tmpl_... id, or a local ./templates/file.xlsx path (CLI push uploads it). Git agent templates use the fill-template skill instead and cannot be referenced here. File IDs (file_...) are not accepted. Placeholders are auto-detected. In the Office file use {placeholder} and {table:array.prop}; {{placeholder}} in an XLSX file is rejected ({{ }} is YAML Liquid only).
 
@@ -5241,7 +5241,7 @@ Output schema:
 ```
 
 
-#### `transform.pdf-embed` — Embed PDF Text
+#### `transform.pdf-embed`: Embed PDF Text
 
 Embed OCR text layer into scanned PDFs/images to make them searchable
 
@@ -5340,7 +5340,7 @@ Output schema:
 ```
 
 
-#### `transform.crop-regions` — Crop Regions
+#### `transform.crop-regions`: Crop Regions
 
 Render a PDF or image and crop normalized bounding boxes into JPEG run output artifacts. Pair with transform.script (bbox lists from ai.parse layout) and ai.extract or ai.vision for captions.
 
@@ -5602,7 +5602,7 @@ Output schema:
 ```
 
 
-#### `transform.xlsx-to-json` — Spreadsheet to JSON
+#### `transform.xlsx-to-json`: Spreadsheet to JSON
 
 Convert an XLS or XLSX spreadsheet to a JSON array of row objects. Supports headerless files, named or positional columns, displayed text, and a single rectangular range.
 
@@ -5997,7 +5997,7 @@ Output schema:
 ```
 
 
-#### `transform.json-to-xlsx` — JSON to XLSX
+#### `transform.json-to-xlsx`: JSON to XLSX
 
 Convert JSON rows into an XLSX spreadsheet. Pair with transform.xlsx-to-json. Formula-looking strings stay text; nested cell values are rejected.
 
@@ -6270,7 +6270,7 @@ Output schema:
 ```
 
 
-#### `transform.script` — Script
+#### `transform.script`: Script
 
 Execute a TypeScript function in a QuickJS sandbox. Input keys become function parameters in any order, and the required `: R` return-type annotation IS this step's output schema: `inputs: { items, taxRate }` accepts `function script(taxRate: …, items: …): R { … }`.
 
@@ -6347,7 +6347,7 @@ Output schema:
 ```
 
 
-#### `transform.text-chunker` — Text Chunker
+#### `transform.text-chunker`: Text Chunker
 
 Split long text into chunks with regex-anchored boundaries, overlap, and header preservation. Accepts raw text or a parsed-document object; chunks carry source page indexes when pages are provided.
 
@@ -6579,7 +6579,7 @@ Output schema:
 ```
 
 
-#### `transform.regex-extract` — Regex Extract
+#### `transform.regex-extract`: Regex Extract
 
 Pull named fields from text via regex patterns (deterministic counterpart to ai.extract). Accepts raw text or a parsed-document object; matches carry `_evidence.pageIndex` when pages are provided.
 
@@ -6780,7 +6780,7 @@ Output schema:
 ```
 
 
-#### `transform.archive-list` — List Archive
+#### `transform.archive-list`: List Archive
 
 List files inside a ZIP archive. Returns sorted normalized paths with compressed and uncompressed sizes. Optionally filter by folder prefix or substring, then page with offset and limit. ZIP is the only accepted format in this version. Pair with foreach or parallel_map and transform.archive-extract to open individual files.
 
@@ -6902,7 +6902,7 @@ Output schema:
 ```
 
 
-#### `transform.archive-extract` — Extract Archive File
+#### `transform.archive-extract`: Extract Archive File
 
 Extract exactly one file from a ZIP archive and store it as a run output file. Downstream steps can pass {{ steps.extract.output }} into Parse, Vision, or another archive step. Nested ZIPs are stored as ZIP files, not unpacked. Each extraction is capped at 64 MiB. ZIP is the only accepted format in this version.
 
@@ -6998,7 +6998,7 @@ Output schema:
 ```
 
 
-#### `transform.merge-documents` — Merge Documents
+#### `transform.merge-documents`: Merge Documents
 
 Concatenate several files into one PDF run output, in order. Accepts PDFs, images (multi-page TIFF included) and Word, PowerPoint, OpenDocument or RTF documents. Use it when one logical document arrives as several uploads: pass {{ steps.merge.output.file }} into Parse so page labels, page ranges and vision page indices stay continuous across every source. Output sources[] maps each input file to its merged page range.
 
@@ -7152,9 +7152,9 @@ Output schema:
 ```
 
 
-### Action steps — external side effects
+### Action steps: external side effects
 
-#### `action.http` — HTTP Request
+#### `action.http`: HTTP Request
 
 Make an HTTP request to an external API
 
@@ -7285,7 +7285,7 @@ Output schema:
 ```
 
 
-#### `action.invoke-workflow` — Invoke Workflow
+#### `action.invoke-workflow`: Invoke Workflow
 
 Execute another workflow and return its output
 
@@ -7395,7 +7395,7 @@ Output schema:
 ```
 
 
-#### `action.website-reader` — Website Reader
+#### `action.website-reader`: Website Reader
 
 Fetch a webpage and convert content to markdown
 
@@ -7527,13 +7527,13 @@ Output schema:
 ```
 
 
-#### `action.email` — Send Email
+#### `action.email`: Send Email
 
 Send an email with optional attachments via a selected email server. At most 10 recipients combined across to, cc, and bcc.
 
 **Behavior and examples:** `eigenpal docs read steps/action/email`
 
-**Durable retry:** This control step is not retried durably.
+**Durable retry:** Supported only for failures where the provider did not accept the message: SMTP connection errors before the message is sent, and Resend network errors, rate limits and server failures (Resend dedupes on an idempotency key). A message that may have been accepted is never resent.
 
 **Config** (in `step.with`):
 
@@ -7769,9 +7769,9 @@ Output schema:
 ```
 
 
-### Control steps — flow control
+### Control steps: flow control
 
-#### `control.if` — Condition
+#### `control.if`: Condition
 
 Branch execution based on a condition expression
 
@@ -7849,7 +7849,7 @@ Output schema:
 ```
 
 
-#### `control.switch` — Switch
+#### `control.switch`: Switch
 
 Multi-way routing: resolve an expression and run the first case whose value matches (else default). Cleaner than a nested control.if chain for routing an item to one of N pipelines by a discriminator field like a document type.
 
@@ -7957,7 +7957,7 @@ Output schema:
 ```
 
 
-#### `control.foreach` — For Each
+#### `control.foreach`: For Each
 
 Loop over an array and execute steps for each item
 
@@ -8045,7 +8045,7 @@ Output schema:
 ```
 
 
-#### `control.parallel_map` — Parallel Map
+#### `control.parallel_map`: Parallel Map
 
 Iterate over an array with concurrent execution up to a limit
 
@@ -8141,7 +8141,7 @@ Output schema:
 ```
 
 
-#### `control.parallel` — Parallel
+#### `control.parallel`: Parallel
 
 Execute multiple branches concurrently
 
@@ -8186,7 +8186,7 @@ Output schema:
 ```
 
 
-#### `control.wait` — Wait
+#### `control.wait`: Wait
 
 Pause workflow execution for a specified duration
 
@@ -8249,7 +8249,7 @@ Output schema:
 ```
 
 
-#### `control.human_review` — Human Review
+#### `control.human_review`: Human Review
 
 Pause the run for selective field confirmation or correction, then continue with the reviewed data.
 
@@ -8695,7 +8695,7 @@ Output schema:
 ```
 
 
-#### `control.fail` — Fail
+#### `control.fail`: Fail
 
 Terminate the workflow with a typed status code + message. With an optional condition, only fails when the condition is truthy; otherwise always fails when reached. Pair with ai.classify or any prior step to fail fast on bad inputs.
 

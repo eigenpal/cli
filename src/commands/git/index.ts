@@ -22,7 +22,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiClient, ApiError } from '../../lib/client';
+import { ApiClient, ApiError, buildClient } from '../../lib/client';
 import { requireApiKey, resolveConfig, type CliConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import { buildCliTelemetryHeaders } from '../../lib/telemetry';
@@ -256,7 +256,8 @@ function hostedArchiveRequest(input: {
   const match = input.repository.remoteUrl.match(/^(.*)\/orgs\/([^/]+)\.git$/);
   if (!match) return null;
   const [, baseUrl, gitRepositoryPath] = match;
-  return `${baseUrl}/export/orgs/${encodeURIComponent(gitRepositoryPath)}/${encodeURIComponent(input.ref)}/${input.packagePath}`;
+  const packagePath = input.packagePath.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl}/export/orgs/${encodeURIComponent(gitRepositoryPath)}/${encodeURIComponent(input.ref)}/${packagePath}`;
 }
 
 async function resolvePackageRef(input: {
@@ -379,6 +380,13 @@ async function tryHostedArchive(input: {
       authorization: `Bearer ${requireApiKey(input.config)}`,
     },
   }).catch(() => null);
+  // Only a missing archive or an unreachable host falls back to the local archive. A refused
+  // request means the key cannot read this package, so surface that instead of hiding it.
+  if (response?.status === 401 || response?.status === 403) {
+    throw new Error(
+      `The API key cannot export this agent source (HTTP ${response.status}). Check its access, or run from a clone.`
+    );
+  }
   if (!response?.ok) return false;
   rmSync(input.outDir, { recursive: true, force: true });
   mkdirSync(input.outDir, { recursive: true });
@@ -782,7 +790,7 @@ async function cloneSource(opts: {
 }
 
 async function show(target: string, opts: BaseOpts): Promise<void> {
-  const client = new ApiClient(resolveConfig(opts));
+  const client = buildClient(opts);
   const automation = await getPublicAgentAutomation(client, target);
   if (opts.json) console.log(JSON.stringify(automation, null, 2));
   else {
@@ -821,7 +829,7 @@ async function show(target: string, opts: BaseOpts): Promise<void> {
 
 async function versions(target: string, opts: BaseOpts): Promise<void> {
   const packagePath = resolvePackagePath(target);
-  const client = new ApiClient(resolveConfig(opts));
+  const client = buildClient(opts);
   const parsed = ReleasesSchema.parse(await client.get('/v1/source/releases', { packagePath }));
   const sorted = { ...parsed, releases: sortReleasesNewestFirst(parsed.releases) };
   if (opts.json) console.log(JSON.stringify(sorted, null, 2));
@@ -959,7 +967,7 @@ async function sync(target: string | undefined, opts: BaseOpts & ContextOpts): P
   if (!isAutomationPackagePath(packagePath)) {
     throw new Error('Sync only supports agent and workflow packages.');
   }
-  await syncLatestAutomation(new ApiClient(resolveConfig(opts)), packagePath);
+  await syncLatestAutomation(buildClient(opts), packagePath);
 }
 
 function localPackageInputHash(

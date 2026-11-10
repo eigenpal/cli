@@ -82,8 +82,11 @@ const initCmd = program
   .option('--dir <dir>', 'Target directory (default: cwd if `[name]` omitted, else ./<name>)')
   .option('--yes', 'Non-interactive: pick the default template (blank)')
   .action(
-    async (name: string | undefined, opts: { template?: string; dir?: string; yes?: boolean }) => {
-      try {
+    action(
+      async (
+        name: string | undefined,
+        opts: { template?: string; dir?: string; yes?: boolean }
+      ) => {
         if (name) {
           await init(name, opts);
         } else {
@@ -97,11 +100,8 @@ const initCmd = program
           const slug = /^[a-z0-9][a-z0-9-_]*$/.test(raw) && raw.length <= 60 ? raw : 'my-workflow';
           await init(slug, { ...opts, dir: opts.dir ?? '.' });
         }
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exit(1);
       }
-    }
+    )
   );
 
 // `init workflow <name>` — explicit workflow alias for the kind→noun command-tree shape.
@@ -114,14 +114,11 @@ initCmd
   .option('--template <name>', 'Skip the picker; use this template')
   .option('--dir <dir>', 'Target directory (default: ./<name>)')
   .option('--yes', 'Non-interactive: pick the default template (blank)')
-  .action(async (name: string, opts: { template?: string; dir?: string; yes?: boolean }) => {
-    try {
+  .action(
+    action(async (name: string, opts: { template?: string; dir?: string; yes?: boolean }) => {
       await init(name, opts);
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 const authCmd = program
   .command('auth')
@@ -202,14 +199,11 @@ program
   .description(
     'Print a shell completion script to stdout (supported shells: bash, zsh, fish). Pipe into the appropriate completion file for your shell — see the script header for install instructions.'
   )
-  .action(async (shell: string) => {
-    try {
+  .action(
+    action(async (shell: string) => {
       await completion(shell, program);
-    } catch (err) {
-      process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 // `skill` is a noun; install / uninstall / list are the verbs. Bare
 // `eigenpal skill` is a usage error — exit 2 (POSIX "command exists but
@@ -263,14 +257,11 @@ Examples
   eigenpal skill install --tools "" --yes             # uninstall everything via install picker
 `
   )
-  .action(async (opts: { tools?: string; target?: string; force?: boolean; yes?: boolean }) => {
-    try {
+  .action(
+    action(async (opts: { tools?: string; target?: string; force?: boolean; yes?: boolean }) => {
       await installSkillTools(opts);
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 skillCmd
   .command('uninstall [toolIds...]')
@@ -293,14 +284,11 @@ Examples
   eigenpal skill uninstall                     # interactive picker (only installed tools shown)
 `
   )
-  .action(async (toolIds: string[], opts: { all?: boolean; target?: string; yes?: boolean }) => {
-    try {
+  .action(
+    action(async (toolIds: string[], opts: { all?: boolean; target?: string; yes?: boolean }) => {
       await uninstallSkillTools({ toolIds, ...opts });
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 skillCmd
   .command('list')
@@ -308,14 +296,11 @@ skillCmd
     'Show every tool that has an Eigenpal skill installed in the current directory, with the CLI version that wrote it.'
   )
   .option('--json', 'Emit machine-readable JSON instead of a table')
-  .action((opts: { json?: boolean }) => {
-    try {
+  .action(
+    action(async (opts: { json?: boolean }) => {
       listSkillTools(opts);
-    } catch (err) {
-      console.error(err instanceof Error ? err.message : String(err));
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 applyCommandAliasConventions(program);
 

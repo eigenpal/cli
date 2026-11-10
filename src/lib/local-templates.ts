@@ -1,5 +1,5 @@
 import { isLocalTemplatePath } from '@eigenpal/types';
-import { collectLocalTemplateRefs, type LocalTemplateRef } from '@eigenpal/workflow-yaml';
+import { collectLocalTemplateRefs } from '@eigenpal/workflow-yaml';
 import { existsSync, promises as fs, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
@@ -383,27 +383,6 @@ export async function ensureWorkspaceTemplate(
   return { template: created, action: 'created', checksumMatched: false };
 }
 
-export async function resolveLocalTemplatesForPush(
-  client: ApiClient,
-  workflowFile: string,
-  yamlText: string,
-  parsedSteps: unknown,
-  opts: ResolveTemplatePathOptions = {}
-): Promise<{
-  yaml: string;
-  resolved: ResolvedLocalTemplate[];
-  created: StagedWorkspaceTemplate[];
-}> {
-  const loaded = await loadLocalTemplatesForPush(workflowFile, parsedSteps, opts);
-  if (loaded.length === 0) return { yaml: yamlText, resolved: [], created: [] };
-  const staged = await stageWorkspaceTemplatesForPush(client, loaded);
-  return {
-    yaml: rewriteLocalTemplateYaml(yamlText, staged.resolved),
-    resolved: staged.resolved,
-    created: staged.created,
-  };
-}
-
 export function rewriteLocalTemplateYaml(
   yamlText: string,
   resolved: ReadonlyArray<Pick<ResolvedLocalTemplate, 'path' | 'templateId' | 'templateRevisionId'>>
@@ -421,8 +400,4 @@ export function rewriteLocalTemplateYaml(
     withBlock.templateRevisionId = match.templateRevisionId;
   });
   return stringifyYaml(doc, { lineWidth: 0 });
-}
-
-export function collectLocalTemplateRefsFromYaml(steps: unknown): LocalTemplateRef[] {
-  return collectLocalTemplateRefs(steps);
 }

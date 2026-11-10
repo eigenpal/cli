@@ -1,11 +1,13 @@
 import { type Command } from 'commander';
 import { promises as fs } from 'node:fs';
-import { action } from '../../lib/format-error';
+import { buildClient } from '../../lib/client';
+import { action, UsageError } from '../../lib/format-error';
 import { selectJsonValue } from '../../lib/json-select';
 import { requireYesInNonInteractive } from '../../lib/non-interactive';
 import {
   addJsonFlag,
   intArg,
+  printJson,
   success,
   table,
   withBaseUrl,
@@ -28,14 +30,13 @@ import {
   type ExperimentDetailPayload,
 } from '../workflow/experiment-results';
 import {
-  BaseOpts,
   agentAutomationId,
-  buildClient,
+  BaseOpts,
   compactParams,
   parseResultsFormat,
   pollExperiment,
-  printJson,
   renderGeneric,
+  setExitCodeForFailedExperiment,
   toCsv,
 } from './shared';
 
@@ -143,10 +144,7 @@ async function runExperiment(
     opts,
     `${opts.wait ? 'Completed' : 'Started'} experiment ${experimentId ?? ''}`
   );
-  const failedCount = (payload as { failedCount?: unknown }).failedCount;
-  if (opts.wait && typeof failedCount === 'number' && failedCount > 0) {
-    process.exitCode = 1;
-  }
+  if (opts.wait) setExitCodeForFailedExperiment(payload);
 }
 
 async function experimentStatus(
@@ -162,20 +160,7 @@ async function experimentStatus(
         `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(batchId)}`
       );
   renderGeneric(payload, opts, `Experiment ${batchId}`);
-  if (opts.watch) {
-    const counts = payload as {
-      failedCount?: unknown;
-      cancelledCount?: unknown;
-      rejectedCount?: unknown;
-    };
-    if (
-      [counts.failedCount, counts.cancelledCount, counts.rejectedCount].some(
-        (count) => typeof count === 'number' && count > 0
-      )
-    ) {
-      process.exitCode = 1;
-    }
-  }
+  if (opts.watch) setExitCodeForFailedExperiment(payload);
 }
 
 async function experimentResults(
@@ -193,7 +178,7 @@ async function experimentResults(
   const client = buildClient(opts);
   const automationId = agentAutomationId(agentId);
   if (opts.json && opts.format !== 'json') {
-    throw new Error('--json cannot be combined with --format csv');
+    throw new UsageError('--json cannot be combined with --format csv');
   }
   const selected =
     batchId ??
@@ -210,7 +195,7 @@ async function experimentResults(
     opts.summary || opts.failedOnly || opts.evaluator !== undefined || opts.select !== undefined;
   if (analyze) {
     if (opts.format !== 'json')
-      throw new Error('Experiment analysis options require --format json');
+      throw new UsageError('Experiment analysis options require --format json');
     const detail = (await client.get(
       `/v1/automations/${encodeURIComponent(automationId)}/experiments/${encodeURIComponent(selected)}`
     )) as ExperimentDetailPayload;
@@ -282,12 +267,10 @@ async function compareExperiments(
   const sort = normalizeCompareSort(opts.sort);
   const threshold = opts.regressionThreshold;
   if (!Number.isFinite(threshold) || threshold < 0) {
-    throw new Error('--regression-threshold must be a non-negative number');
+    throw new UsageError('--regression-threshold must be a non-negative number');
   }
-  // The internal `/v1/agents/experiments/compare` endpoint was removed from
-  // the public surface. Rebuild the side-by-side diff entirely from public
-  // routes (runs?batchId + per-run eval-results) so workflow and agent compare
-  // share one code path.
+  // The side-by-side diff is rebuilt from public routes (runs?batchId and the
+  // experiment export) so workflow and agent compare share one code path.
   const client = buildClient(opts);
   if (opts.outputs) {
     const [outputsA, outputsB] = await Promise.all([

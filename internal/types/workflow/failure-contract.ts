@@ -87,8 +87,6 @@ export function collectWorkflowFailureContract(
           walk(branch.steps, `${path}.${branch.name}`, conditions, stack);
       } else if (step.type === 'control.foreach' || step.type === 'control.parallel_map') {
         walk(step.steps, `${path}[]`, [...conditions, `for each item in ${step.items}`], stack);
-      } else if (step.type === 'control.block') {
-        contract.unresolvedInvocations.push({ stepPath: path, target: step.blockName });
       } else if (step.type === 'action.invoke-workflow') {
         const config = step.with as Record<string, unknown> | undefined;
         const mode = getInvokeExecutionMode(config);

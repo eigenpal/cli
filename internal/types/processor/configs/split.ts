@@ -30,7 +30,7 @@ export const SplitInputSchema = z
   })
   .passthrough()
   .describe(
-    'Document-parser-shaped input. Pass {{ steps.parse.output }} directly — extra fields like text/metadata are ignored.'
+    'Document-parser-shaped input. Pass {{ steps.parse.output }} directly: extra fields like text/metadata are ignored.'
   );
 
 export const SplitConfigSchema = z.object({
@@ -54,7 +54,7 @@ export const SplitConfigSchema = z.object({
           .array(z.string())
           .optional()
           .describe(
-            'Natural-language hints fed to the LLM about what marks the END of this section (e.g. ["PRÍPAD PORUŠENIA ZMLUVY", "*Koniec prílohy*", "the next chapter heading"]). The LLM uses these as guidance — not a regex match — so casing variants, missing diacritics, and multilingual phrasings still close the section correctly. The LLM emits a structured end_anchor per section it judges closed; deterministic merge applies it.'
+            'Natural-language hints fed to the LLM about what marks the END of this section (e.g. ["PRÍPAD PORUŠENIA ZMLUVY", "*Koniec prílohy*", "the next chapter heading"]). The LLM uses these as guidance, not a regex match: so casing variants, missing diacritics, and multilingual phrasings still close the section correctly. The LLM emits a structured end_anchor per section it judges closed; deterministic merge applies it.'
           ),
       })
     )
@@ -115,7 +115,7 @@ const SplitSectionSchema = z.object({
     })
     .optional()
     .describe(
-      'Structured start-anchor evidence the LLM cited — for downstream parsing without regex over `notes`.'
+      'Structured start-anchor evidence the LLM cited, for downstream parsing without regex over `notes`.'
     ),
   end_evidence: z
     .object({

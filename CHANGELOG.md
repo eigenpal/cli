@@ -1,5 +1,22 @@
 # @eigenpal/cli
 
+## 0.23.7
+
+### Minor Changes
+
+- 9469d09: Remove the `workflow step exec` command. It only printed a disabled-command message and exited 2, so there is no replacement behavior to migrate to. Use `eigenpal run` or `eigenpal workflow experiment run` instead.
+
+### Patch Changes
+
+- 101e8a2: Bundled API docs now name the API "EigenPal API" in the OpenAPI specification that `eigenpal docs` serves offline.
+- dfcc71e: The bundled workflow reference for coding agents no longer lists the removed reusable-block step. To run another workflow's steps inside the current run, use an Invoke workflow step with `execution: inline`.
+- 8645bc7: Send Email steps now honor the retry setting. They retry only when the provider did not accept the message, so a retry cannot send it twice.
+- 9469d09: Show the server's error message instead of a bare HTTP status, exit with code 2 for invalid flags, fail with a clear message on 401 or 403 from hosted source export, and share one upload implementation with the SDK.
+- 9469d09: Make every run and experiment wait share one exit-code rule: exit 1 when a run or experiment has a failed, cancelled or rejected execution, and exit 2 when the wait times out. An example run that times out now reports a real timeout error instead of a fake `timeout` status.
+- 710a5d5: Remove the parse-v2 smoke-test pointer from the bundled docs. The script it referenced was deleted from the repository.
+- f8dc232: Refresh the bundled agent reference docs (evaluators, step types, workflow YAML and dataset format) to the current wording, with colons in place of em-dashes in headings and field descriptions.
+- a63d4fe: The bundled errors guide now lists `invalid_value` as the only validation issue code. The public API used `invalid` on seven routes before and now uses `invalid_value` everywhere.
+
 ## 0.23.6
 
 ### Patch Changes

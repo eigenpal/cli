@@ -1,18 +1,6 @@
 import type { ApiClient } from '../../lib/client';
-import { ApiClient as Client } from '../../lib/client';
-import { requireApiKey, resolveConfig } from '../../lib/config';
 
 export type WorkflowCommandConfig = { dir?: string; baseUrl?: string };
-
-export function buildClient(opts: WorkflowCommandConfig): ApiClient {
-  const config = resolveConfig(opts);
-  requireApiKey(config);
-  return new Client(config);
-}
-
-export function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
-}
 
 export interface AutomationDetail {
   id: string;

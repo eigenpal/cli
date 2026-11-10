@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { ApiClient } from '../lib/client';
+import { ApiClient, buildClient } from '../lib/client';
 import { action } from '../lib/format-error';
 import { selectJsonValue } from '../lib/json-select';
 import { requireTypedConfirmation, requireYesInNonInteractive } from '../lib/non-interactive';
@@ -20,6 +20,7 @@ import {
   error,
   formatTimestamp,
   intArg,
+  printJson,
   success,
   table,
   ui,
@@ -39,11 +40,9 @@ import {
   ArtifactInventoryRow,
   BaseOpts,
   agentAutomationId,
-  buildClient,
   collectRepeated,
   compactParams,
   pollRun,
-  printJson,
   renderGeneric,
   renderRunPayload,
   setExitCodeForFailedTerminalRun,
@@ -653,13 +652,10 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
   const source = objectOrNull(run.source);
   const sourceGit = objectOrNull(source?.git);
   const trigger = objectOrNull(run.trigger);
-  const lineage = objectOrNull(run.lineage);
   const execution = objectOrNull(run.execution);
-  const legacyRetry = objectOrNull(lineage?.retry);
-  const retry = objectOrNull(execution?.retry) ?? legacyRetry;
+  const retry = objectOrNull(execution?.retry);
   const nextRun = objectOrNull(retry?.nextRun);
   const evalInfo = objectOrNull(run.eval);
-  const result = objectOrNull(run.result);
   const input = objectOrNull(run.input);
   const usage = objectOrNull(run.usage);
   const tokens = objectOrNull(usage?.tokens);
@@ -667,16 +663,11 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
   const executionExpected = objectOrNull(execution?.expected);
   const debug = objectOrNull(run.debug);
 
-  const hasGroupedShape =
-    timing != null || source != null || result != null || run.output !== undefined;
+  const hasGroupedShape = timing != null || source != null || run.output !== undefined;
   if (!hasGroupedShape) return run;
 
-  const terminalOutput = run.output !== undefined ? run.output : result?.output;
-  const terminalFiles =
-    run.files !== undefined ? run.files : (result?.files ?? executionFiles?.output);
-  const terminalError = runErrorMessage(run.error !== undefined ? run.error : result?.error);
-  const terminalSchemaValid =
-    execution?.schemaValid !== undefined ? execution.schemaValid : result?.schemaValid;
+  const terminalFiles = run.files !== undefined ? run.files : executionFiles?.output;
+  const terminalError = runErrorMessage(run.error);
 
   return {
     ...run,
@@ -698,19 +689,19 @@ function toLegacyRunView(run: Record<string, unknown>): Record<string, unknown> 
     triggerType: trigger?.type,
     triggeredBy: trigger?.by,
     emailTrigger: trigger?.email,
-    batchId: execution?.batchId ?? lineage?.batchId,
+    batchId: execution?.batchId,
     retryNumber: retry?.number,
     previousExecutionId: retry?.previousRunId,
-    annotation: execution?.annotation ?? lineage?.annotation,
+    annotation: execution?.annotation,
     exampleId: evalInfo?.exampleId ?? evalInfo?.example,
     exampleName: evalInfo?.example,
     status: execution?.status ?? run.status,
     finished: run.finished,
     evalScore: evalInfo?.score,
     evalPassed: evalInfo?.passed,
-    output: terminalOutput,
+    output: run.output,
     resultFiles: terminalFiles,
-    schemaValid: terminalSchemaValid,
+    schemaValid: execution?.schemaValid,
     error: terminalError,
     input: input?.args,
     inputFiles: input?.files,

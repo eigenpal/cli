@@ -6,11 +6,11 @@ import {
   runTargetApiPath,
 } from '@eigenpal/types';
 import type { Command } from 'commander';
-import { action } from '../lib/format-error';
+import { buildClient } from '../lib/client';
+import { action, UsageError } from '../lib/format-error';
 import { addJsonFlag, intArg, withBaseUrl } from '../lib/ui';
 import {
   BaseOpts,
-  buildClient,
   collectRepeated,
   pollRun,
   renderRunPayload,
@@ -98,9 +98,9 @@ async function runTarget(
   const tags = opts.tag?.length ? ExecutionTagsSchema.parse(opts.tag) : undefined;
   if (opts.example) {
     if (tags)
-      throw new Error('--tag is supported for ad-hoc runs; example runs do not accept tags');
+      throw new UsageError('--tag is supported for ad-hoc runs; example runs do not accept tags');
     if (opts.inputJson || (opts.inputFile && opts.inputFile.length > 0)) {
-      throw new Error('--example cannot be combined with --input-json or --input-file');
+      throw new UsageError('--example cannot be combined with --input-json or --input-file');
     }
     if (parsed.type === 'agent') {
       return runExample(parsed.slug, {

@@ -48,7 +48,6 @@ export {
 } from './office-zip-safety';
 export {
   deepMerge,
-  getStepOverrideMode,
   isPlainObject,
   resolveStepOverride,
   type ResolveStepOverrideResult,

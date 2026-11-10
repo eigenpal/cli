@@ -94,12 +94,35 @@ export function shouldAbortMultipartUploadSession(options: { partsReady: boolean
   return !options.partsReady;
 }
 
+/**
+ * Abort leftover presigned-PUT state only while storage PUT is not yet authoritative.
+ *
+ * After a successful storage PUT, POST complete is idempotent. 409/429/timeout/lost
+ * responses must not abort — that would delete a recoverable up-to-4-GiB object and
+ * can race a complete that already succeeded server-side. Caller cancellation and
+ * unrecoverable PUT failures still abort because `putReady` is false in those cases.
+ */
+export function shouldAbortPresignedPutUploadSession(options: { putReady: boolean }): boolean {
+  return !options.putReady;
+}
+
 export function multipartCompleteRetryHint(uploadId: string): string {
   return `Uploaded parts remain stored for ${uploadId}; retry complete and do not abort the session.`;
 }
 
+export function presignedPutCompleteRetryHint(uploadId: string): string {
+  return `Uploaded object remains stored for ${uploadId}; retry complete and do not abort the session.`;
+}
+
 export function annotateMultipartCompleteFailure(uploadId: string, error: unknown): unknown {
-  const hint = multipartCompleteRetryHint(uploadId);
+  return annotateUploadCompleteFailure(multipartCompleteRetryHint(uploadId), error);
+}
+
+export function annotatePresignedPutCompleteFailure(uploadId: string, error: unknown): unknown {
+  return annotateUploadCompleteFailure(presignedPutCompleteRetryHint(uploadId), error);
+}
+
+function annotateUploadCompleteFailure(hint: string, error: unknown): unknown {
   if (error instanceof Error) {
     if (!error.message.includes('retry complete')) {
       error.message = `${error.message} ${hint}`;

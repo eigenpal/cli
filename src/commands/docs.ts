@@ -1,8 +1,7 @@
 import { type Command } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
 import { action } from '../lib/format-error';
-import { addJsonFlag, intArg, table } from '../lib/ui';
-import { printJson } from './agents/shared';
+import { addJsonFlag, intArg, printJson, table } from '../lib/ui';
 
 export interface BundledDoc {
   topic: string;

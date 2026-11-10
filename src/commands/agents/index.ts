@@ -1,6 +1,7 @@
 import { type Command } from 'commander';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { buildClient } from '../../lib/client';
 import { resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import {
@@ -13,6 +14,7 @@ import {
   dim,
   error,
   formatTimestamp,
+  printJson,
   success,
   table,
   ui,
@@ -28,7 +30,7 @@ import { registerEnvCommands, registerSecretsExportCommands } from './env';
 import { registerExperimentCommands } from './experiments';
 import { registerAgentFileCommands } from './files';
 import { registerSessionCommands } from './sessions';
-import { BaseOpts, agentAutomationId, buildClient, compactParams, printJson } from './shared';
+import { BaseOpts, agentAutomationId, compactParams } from './shared';
 import { validateAgentProject } from './validation';
 
 export { buildRunListParams, compareFileInventory, diffJson, runArtifactInventory } from '../runs';

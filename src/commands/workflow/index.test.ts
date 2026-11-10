@@ -889,7 +889,7 @@ describe('workflow experiment status (spot check, no --watch)', () => {
           url.pathname === '/v1/automations/wf_exp1/experiments/evb_empty'
         ) {
           statusGets++;
-          return jsonResponse({ executions: [] });
+          return jsonResponse({ runs: [] });
         }
         return new Response('not found', { status: 404 });
       },
@@ -917,7 +917,7 @@ describe('workflow experiment status (spot check, no --watch)', () => {
           request.method === 'GET' &&
           url.pathname === '/v1/automations/wf_exp1/experiments/evb_ok'
         ) {
-          return jsonResponse({ executions: [{ status: 'completed' }] });
+          return jsonResponse({ runs: [{ status: 'completed' }] });
         }
         return new Response('not found', { status: 404 });
       },

@@ -4,9 +4,8 @@
  */
 
 import { mimeTypeForExtension } from '@eigenpal/types';
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
-import { parse as parseYaml } from 'yaml';
 import { normalizeJsonString } from './normalize';
 
 /** Extensions for template index files (e.g., index.docx). */
@@ -21,18 +20,6 @@ export function guessMimeType(filename: string): string {
 }
 
 /**
- * Read JSON file or return empty object if missing/invalid.
- */
-export function readJsonOrEmpty<T>(path: string): T {
-  if (!existsSync(path)) return {} as T;
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8')) as T;
-  } catch {
-    return {} as T;
-  }
-}
-
-/**
  * Write eval JSON file (input.json, expected.json) or remove it when value is null/undefined.
  * Keeps push and pull in sync: neither writes a file containing only "null".
  */
@@ -42,21 +29,6 @@ export function writeEvalJson(path: string, value: unknown): void {
     return;
   }
   writeFileSync(path, normalizeJsonString(value) + '\n', 'utf-8');
-}
-
-/**
- * Extract workflow name from YAML content, falling back to provided default.
- */
-export function getWorkflowNameFromYaml(yaml: string, fallback: string): string {
-  try {
-    const parsed = parseYaml(yaml) as { name?: unknown };
-    if (typeof parsed?.name === 'string' && parsed.name.trim().length > 0) {
-      return parsed.name;
-    }
-  } catch {
-    // use fallback
-  }
-  return fallback;
 }
 
 /**

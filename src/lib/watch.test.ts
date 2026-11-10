@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { __testing, renderFrame, watchExecution, type ExecutionSnapshot } from './watch';
+import { __testing, pollUntil, renderFrame, watchExecution, type ExecutionSnapshot } from './watch';
 
 describe('renderFrame', () => {
   it('emits a header + one line per step', () => {
@@ -246,5 +246,28 @@ describe('snapshotsDiffer', () => {
       stepExecutions: [{ stepName: 's', status: 'running', durationMs: 200 }],
     };
     expect(snapshotsDiffer(a, b)).toBe(false);
+  });
+});
+
+describe('pollUntil', () => {
+  it('returns the terminal state without timing out', async () => {
+    const states = ['running', 'running', 'completed'];
+    const result = await pollUntil({
+      fetch: async () => states.shift() ?? 'completed',
+      isTerminal: (status) => status === 'completed',
+      intervalMs: 0,
+      maxWaitMs: 60_000,
+    });
+    expect(result).toEqual({ value: 'completed', timedOut: false });
+  });
+
+  it('reports a timeout with the last state once maxWaitMs elapses', async () => {
+    const result = await pollUntil({
+      fetch: async () => 'running',
+      isTerminal: () => false,
+      intervalMs: 0,
+      maxWaitMs: 0,
+    });
+    expect(result).toEqual({ value: 'running', timedOut: true });
   });
 });

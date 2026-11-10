@@ -78,9 +78,7 @@ eigenpal
 │   │   ├── list|ls
 │   │   └── get <type>
 │   ├── validate [path]
-│   ├── clear-local [examples...]
-│   └── step
-│       └── exec <type>
+│   └── clear-local [examples...]
 ├── agents
 │   ├── list|ls
 │   ├── delete <agent-id-or-slug>

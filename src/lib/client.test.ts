@@ -225,3 +225,19 @@ describe('ApiClient 429 retry', () => {
     expect((err as ApiError).retryAfterSeconds).toBe(600);
   });
 });
+
+describe('ApiError message', () => {
+  test('uses the first issue of the modern envelope and appends the request id', () => {
+    const err = new ApiError(409, {
+      issues: [{ field: 'name', message: 'Name already in use' }],
+      requestId: 'req_123',
+    });
+    expect(err.message).toBe('Name already in use (request id: req_123)');
+  });
+
+  test('falls back to the legacy error field, then to the status', () => {
+    expect(new ApiError(400, { error: 'Bad input' }).message).toBe('Bad input');
+    expect(new ApiError(500, { issues: [] }).message).toBe('HTTP 500');
+    expect(new ApiError(502, null).message).toBe('HTTP 502');
+  });
+});

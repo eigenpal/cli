@@ -15,7 +15,6 @@ Manage workflows: push, pull, and evaluate.
   - [Versions](#versions)
   - [Step-type](#step-type)
   - [Evaluator-type](#evaluator-type)
-  - [Step](#step)
 - [Details](#details)
   - [`eigenpal workflow list|ls [options]`](#eigenpal-workflow-listls-options)
   - [`eigenpal workflow get [options] <workflow-id>`](#eigenpal-workflow-get-options-workflow-id)
@@ -72,7 +71,6 @@ Manage workflows: push, pull, and evaluate.
   - [`eigenpal workflow step-type get [options] <type>`](#eigenpal-workflow-step-type-get-options-type)
   - [`eigenpal workflow evaluator-type list|ls [options]`](#eigenpal-workflow-evaluator-type-listls-options)
   - [`eigenpal workflow evaluator-type get [options] <type>`](#eigenpal-workflow-evaluator-type-get-options-type)
-  - [`eigenpal workflow step exec [options] <type>`](#eigenpal-workflow-step-exec-options-type)
 
 ## Surface
 
@@ -142,9 +140,7 @@ workflow
 │   ├── list|ls
 │   └── get <type>
 ├── validate [path]
-├── clear-local [examples...]
-└── step
-    └── exec <type>
+└── clear-local [examples...]
 ```
 
 ## Commands
@@ -248,12 +244,6 @@ workflow
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `eigenpal workflow evaluator-type list\|ls [options]`   | List every evaluator type with a one-line description.                                      |
 | `eigenpal workflow evaluator-type get [options] <type>` | Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect specific fields. |
-
-### Step
-
-| Command                                        | Description                                                                                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `eigenpal workflow step exec [options] <type>` | DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `run` or `workflow experiment run` instead. |
 
 ## Details
 
@@ -1276,22 +1266,3 @@ Fetch the JSON Schema for one evaluator type. Pipe through `jq` to inspect speci
 | Flag           | Required | Default | Description   |
 | -------------- | -------- | ------- | ------------- |
 | `--out <path>` | no       |         | Write to file |
-
-### `eigenpal workflow step exec [options] <type>`
-
-DISABLED — local mimic runners removed pending server-side redesign (EIG-104). Use `run` or `workflow experiment run` instead.
-
-### Arguments
-
-| Name   | Required | Variadic | Description |
-| ------ | -------- | -------- | ----------- |
-| `type` | yes      | no       |             |
-
-### Options
-
-| Flag                     | Required | Default | Description                            |
-| ------------------------ | -------- | ------- | -------------------------------------- |
-| `--config-json <json>`   | no       |         | (unused; kept for back-compat parsing) |
-| `--config-file <path>`   | no       |         | (unused)                               |
-| `--inputs <pairs...>`    | no       |         | (unused)                               |
-| `--output-schema <path>` | no       |         | (unused)                               |

@@ -1,8 +1,16 @@
 import { type Command } from 'commander';
+import { buildClient } from '../../lib/client';
 import { action } from '../../lib/format-error';
 import { requireYesInNonInteractive } from '../../lib/non-interactive';
-import { addJsonFlag, table, withBaseUrl, withPagination, type PaginationOpts } from '../../lib/ui';
-import { BaseOpts, buildClient, compactParams, printJson, renderGeneric } from './shared';
+import {
+  addJsonFlag,
+  printJson,
+  table,
+  withBaseUrl,
+  withPagination,
+  type PaginationOpts,
+} from '../../lib/ui';
+import { BaseOpts, compactParams, renderGeneric } from './shared';
 
 export function registerSessionCommands(agent: Command): void {
   const session = agent

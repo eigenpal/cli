@@ -10,7 +10,7 @@ import path from 'node:path';
 
 import { ApiClient } from '../../lib/client';
 import { requireApiKey, resolveConfig } from '../../lib/config';
-import { action } from '../../lib/format-error';
+import { action, UsageError } from '../../lib/format-error';
 import { addJsonFlag, info, success, table, ui } from '../../lib/ui';
 import {
   readYamlFile,
@@ -39,7 +39,7 @@ function writeSecretsFile(packageRoot: string, value: SourceSecretsFile): void {
 
 async function readSecretInput(opts: { stdin?: boolean; valueFile?: string }): Promise<string> {
   const selected = [opts.stdin, opts.valueFile].filter(Boolean).length;
-  if (selected > 1) throw new Error('Pass only one of --stdin or --value-file.');
+  if (selected > 1) throw new UsageError('Pass only one of --stdin or --value-file.');
   if (opts.stdin) return readFileSync(0, 'utf8').replace(/\n$/, '');
   if (opts.valueFile) return readFileSync(opts.valueFile, 'utf8').replace(/\n$/, '');
   if (process.stdin.isTTY && process.stdout.isTTY) {

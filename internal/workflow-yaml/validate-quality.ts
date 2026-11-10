@@ -304,7 +304,7 @@ function scanValue(
         out.push({
           code: 'unknown-step-reference',
           field: path,
-          message: `references \`steps.${name}\` but no step named "${name}" is in scope here. Steps nested inside control.parallel branches, control.parallel_map/control.foreach bodies, and control.if branches are not addressable from outside the container — reach inner outputs through the container's aggregate output instead.`,
+          message: `references \`steps.${name}\` but no step named "${name}" is in scope here. Steps nested inside control.parallel branches, control.parallel_map/control.foreach bodies, and control.if branches are not addressable from outside the container: reach inner outputs through the container's aggregate output instead.`,
           hint: `Use the container step's aggregate output, e.g. \`steps.<parallel>.output.<branch>.${name}.<field>\` or \`steps.<foreach>.output.items[i].${name}.<field>\`. See the "Control containers" section of \`step-types.md\`.`,
         });
       }
@@ -351,7 +351,6 @@ function warnIgnoredConfigKeys(
   basePath: string,
   out: SchemaQualityWarning[]
 ): void {
-  if (step.type === 'control.block') return;
   const def = getStepSchema(step.type);
   const cfg = (step as { with?: unknown }).with;
   if (!def?.configInWith || !cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return;

@@ -2,10 +2,11 @@ import { type Command } from 'commander';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ApiClient } from '../lib/client';
-import { action } from '../lib/format-error';
+import { action, UsageError } from '../lib/format-error';
 import {
   addJsonFlag,
   formatTimestamp,
+  printJson,
   renderListResult,
   success,
   table,
@@ -14,7 +15,6 @@ import {
   withPagination,
   type PaginationOpts,
 } from '../lib/ui';
-import { printJson } from './agents/shared';
 import {
   mergeFocusFields,
   mergeItemNotes,
@@ -105,12 +105,12 @@ function parseApprovalDecision(
 ): 'approved' | 'removed' | null {
   if (opts.clear) {
     if (opts.decision !== undefined) {
-      throw new Error('pass either --clear or --decision, not both');
+      throw new UsageError('pass either --clear or --decision, not both');
     }
     return null;
   }
   if (opts.decision === undefined) {
-    throw new Error(`--decision or --clear is required when --action ${action}`);
+    throw new UsageError(`--decision or --clear is required when --action ${action}`);
   }
   const normalized = opts.decision.trim().toLowerCase();
   if (normalized === 'null' || normalized === 'clear') {
@@ -119,7 +119,7 @@ function parseApprovalDecision(
   if (normalized === 'approved' || normalized === 'removed') {
     return normalized;
   }
-  throw new Error('--decision must be approved, removed, null, or clear');
+  throw new UsageError('--decision must be approved, removed, null, or clear');
 }
 
 /** Resolve field-decision payload; `null` clears the recorded decision on the server. */
@@ -162,15 +162,15 @@ export function buildReviewItemPatchBody(
   if (opts.filePath !== undefined) body.filePath = opts.filePath;
   if (action === 'edit') {
     if (opts.expectedJson === undefined) {
-      throw new Error('--expected-json is required when --action edit');
+      throw new UsageError('--expected-json is required when --action edit');
     }
     body.expected = parseJsonObjectFlag(opts.expectedJson, '--expected-json');
   } else if (opts.expectedJson !== undefined) {
-    throw new Error('--expected-json is only valid with --action edit');
+    throw new UsageError('--expected-json is only valid with --action edit');
   }
   if (action === 'field-decision') {
     if (!opts.fieldPath?.trim()) {
-      throw new Error('--field-path is required when --action field-decision');
+      throw new UsageError('--field-path is required when --action field-decision');
     }
     body.decision = parseFieldDecision({ decision: opts.decision, clear: opts.clear });
   } else if (opts.decision !== undefined || opts.clear) {
@@ -182,13 +182,13 @@ export function buildReviewItemPatchBody(
   }
   if (action === 'file-decision') {
     if (!opts.filePath?.trim()) {
-      throw new Error('--file-path is required when --action file-decision');
+      throw new UsageError('--file-path is required when --action file-decision');
     }
     if (opts.fieldPath !== undefined) {
-      throw new Error('--field-path is only valid with --action comment or field-decision');
+      throw new UsageError('--field-path is only valid with --action comment or field-decision');
     }
     if (opts.newPath !== undefined || opts.file !== undefined) {
-      throw new Error('--new-path / --file are only valid with --action edit-file');
+      throw new UsageError('--new-path / --file are only valid with --action edit-file');
     }
     // A comment without a decision is a note on the file — allowed only when
     // a decision already exists server-side. Otherwise a decision is required.
@@ -235,7 +235,7 @@ export function buildReviewItemFileFields(opts: {
     );
   }
   if (!opts.file?.trim()) {
-    throw new Error('--file <local path> is required when --action edit-file');
+    throw new UsageError('--file <local path> is required when --action edit-file');
   }
   return {
     ...(hasFilePath ? { filePath: opts.filePath!.trim() } : {}),
@@ -474,7 +474,7 @@ Use \`--json\` from agents; API errors exit non-zero.
           }
         ) => {
           if (opts.exampleName.length === 0) {
-            throw new Error('pass at least one --example-name');
+            throw new UsageError('pass at least one --example-name');
           }
           const { client, automationId } = await resolveAutomation(automationRef, opts);
           const focusFromFlags = mergeFocusFields(
@@ -488,7 +488,7 @@ Use \`--json\` from agents; API errors exit non-zero.
               ) as DatasetReviewFocusFieldInput[])
             : [];
           if (opts.focusJson && !Array.isArray(focusFromJson)) {
-            throw new Error('--focus-json must be a JSON array');
+            throw new UsageError('--focus-json must be a JSON array');
           }
           const notesFromFlags = mergeItemNotes([
             ...(opts.itemNote ?? []).map(parseItemNoteFlag),
@@ -498,7 +498,7 @@ Use \`--json\` from agents; API errors exit non-zero.
             ? (parseJsonObjectFlag(opts.notesJson, '--notes-json') as DatasetReviewItemNoteInput[])
             : [];
           if (opts.notesJson && !Array.isArray(notesFromJson)) {
-            throw new Error('--notes-json must be a JSON array');
+            throw new UsageError('--notes-json must be a JSON array');
           }
           const body: Record<string, unknown> = {
             title: opts.title,
@@ -684,7 +684,7 @@ the request (frozen like closed, reopenable with \`--status open\`).
                 ) as DatasetReviewFocusFieldInput[])
               : [];
             if (opts.focusJson && !Array.isArray(focusFromJson)) {
-              throw new Error('--focus-json must be a JSON array');
+              throw new UsageError('--focus-json must be a JSON array');
             }
             body.focusFields = [...focusFromFlags, ...focusFromJson];
           }
@@ -904,7 +904,7 @@ Always pass \`--expected-updated-at\` from the item payload you last observed.
             const localPath = resolve(opts.file!.trim());
             const fileStat = await stat(localPath);
             if (!fileStat.isFile()) {
-              throw new Error(`--file is not a file: ${localPath}`);
+              throw new UsageError(`--file is not a file: ${localPath}`);
             }
             if (fileStat.size > REVIEW_EDIT_FILE_MAX_BYTES) {
               throw new Error(

@@ -46,7 +46,7 @@ export class WorkflowValidationError extends Error {
 /**
  * Result of parsing a workflow YAML
  */
-export interface ParseResult {
+export interface WorkflowParseResult {
   /** Whether parsing succeeded */
   success: boolean;
   /** Parsed workflow definition (if success) */
@@ -258,10 +258,6 @@ function validateStepConfigsRecursive(
     const step = steps[i];
     const stepPath: (string | number)[] = [...pathPrefix, i];
 
-    if (step.type === 'control.block') {
-      continue;
-    }
-
     if (step.type === 'control.human_review' && pathPrefix.length > 1) {
       issues.push({
         path: [...stepPath, 'type'],
@@ -347,9 +343,9 @@ function validateStepConfigsRecursive(
  * Try to parse YAML string, returning a result object instead of throwing
  *
  * @param yaml - YAML string to parse
- * @returns ParseResult with success status and either definition or error
+ * @returns WorkflowParseResult with success status and either definition or error
  */
-export function tryParseWorkflow(yaml: string): ParseResult {
+export function tryParseWorkflow(yaml: string): WorkflowParseResult {
   try {
     const definition = parseWorkflow(yaml);
     return { success: true, definition };
@@ -377,7 +373,7 @@ export function tryParseWorkflow(yaml: string): ParseResult {
  * @param obj - Object to validate
  * @returns Validation result
  */
-export function validateWorkflow(obj: unknown): ParseResult {
+export function validateWorkflow(obj: unknown): WorkflowParseResult {
   // Apply upgrades to convert legacy formats
   const upgraded = upgradeWorkflow(obj as Record<string, unknown>);
 

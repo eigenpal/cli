@@ -10,8 +10,8 @@ export {
   parseWorkflow,
   tryParseWorkflow,
   validateWorkflow,
-  type ParseResult,
   type ValidationIssue,
+  type WorkflowParseResult,
 } from './parser';
 
 export {

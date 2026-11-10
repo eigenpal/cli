@@ -1,3 +1,5 @@
+import { UsageError } from '../lib/format-error';
+
 export type DatasetReviewFocusFieldInput = {
   path: string;
   reason?: string | null;
@@ -19,11 +21,11 @@ export function parseFocusReasonFlag(value: string): DatasetReviewFocusFieldInpu
   const [path, reason] = splitOnce(value, '=');
   const trimmedPath = path.trim();
   if (!trimmedPath) {
-    throw new Error('--focus-reason requires path=reason');
+    throw new UsageError('--focus-reason requires path=reason');
   }
   const trimmedReason = reason?.trim();
   if (!trimmedReason) {
-    throw new Error('--focus-reason requires path=reason');
+    throw new UsageError('--focus-reason requires path=reason');
   }
   return { path: trimmedPath, reason: trimmedReason };
 }
@@ -33,7 +35,7 @@ export function parseItemNoteFlag(value: string): DatasetReviewItemNoteInput {
   const trimmedName = exampleName.trim();
   const trimmedComment = comment?.trim();
   if (!trimmedName || !trimmedComment) {
-    throw new Error('--item-note requires exampleName=comment');
+    throw new UsageError('--item-note requires exampleName=comment');
   }
   return { exampleName: trimmedName, comment: trimmedComment };
 }
@@ -45,7 +47,7 @@ export function parseFieldNoteFlag(value: string): DatasetReviewItemNoteInput {
   const exampleName = (dot < 0 ? left : left.slice(0, dot)).trim();
   const path = (dot < 0 ? '' : left.slice(dot + 1)).trim();
   if (!exampleName || !path || !trimmedComment) {
-    throw new Error('--field-note requires exampleName.path=comment');
+    throw new UsageError('--field-note requires exampleName.path=comment');
   }
   return { exampleName, fields: [{ path, comment: trimmedComment }] };
 }

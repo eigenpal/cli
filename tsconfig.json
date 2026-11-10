@@ -31,6 +31,9 @@
       "@eigenpal/types/*": [
         "./internal/types/*"
       ],
+      "@eigenpal/sdk/upload": [
+        "./internal/sdk/upload.ts"
+      ],
       "@eigenpal/workflow-yaml": [
         "./internal/workflow-yaml/index.ts"
       ],

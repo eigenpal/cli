@@ -1,3 +1,4 @@
+import { InvalidArgumentError } from 'commander';
 import { ApiError, HtmlResponseError } from './client';
 import { resolveConfig } from './config';
 import { error, ui } from './ui';
@@ -156,8 +157,25 @@ export function printApiError(err: unknown, context?: { baseUrl?: string }): voi
 }
 
 /**
+ * Invalid invocation: a bad flag value, conflicting flags or a missing
+ * required option. `action()` exits 2 for it (the documented "misuse" code)
+ * so scripts can tell a bad flag from a server or runtime failure (exit 1).
+ */
+export class UsageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UsageError';
+  }
+}
+
+/** Exit code for an error thrown from a command: 2 for misuse, 1 otherwise. */
+export function exitCodeForError(err: unknown): 1 | 2 {
+  return err instanceof UsageError || err instanceof InvalidArgumentError ? 2 : 1;
+}
+
+/**
  * Wrap a Commander action handler so any thrown error is rendered through
- * `printApiError` and the process exits 1. Lets call sites replace the
+ * `printApiError` and the process exits 1 (2 for a {@link UsageError}). Lets call sites replace the
  * `try { body } catch (err) { printApiError(err); process.exit(1); }`
  * boilerplate with a single decorator while keeping each handler body focused
  * on its happy path.
@@ -166,7 +184,7 @@ export function printApiError(err: unknown, context?: { baseUrl?: string }): voi
  * (Commander's invocation shape is `(...positional, opts, command)`) and
  * forward `baseUrl` to `printApiError` so connection failures echo the URL
  * we tried — `formatCliError` reads it as context. For local-only commands
- * (no server in play, e.g. `step exec`) the lookup yields undefined and
+ * (no server in play, e.g. a local-only command) the lookup yields undefined and
  * the renderer just omits the URL.
  */
 export function action<A extends unknown[]>(
@@ -177,7 +195,7 @@ export function action<A extends unknown[]>(
       await body(...args);
     } catch (err) {
       printApiError(err, { baseUrl: resolveBaseUrlFromActionArgs(args) });
-      process.exit(1);
+      process.exit(exitCodeForError(err));
     }
   };
 }

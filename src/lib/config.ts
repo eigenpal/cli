@@ -1,5 +1,3 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { basename, isAbsolute, relative } from 'path';
 import { env } from '../env';
 import { activeProfileName, readActiveCredentials } from './credentials';
 import { error, ui } from './ui';
@@ -74,42 +72,6 @@ export function resolveSource(): ResolvedSource {
   const creds = readActiveCredentials();
   if (creds?.apiKey) return { apiKey: 'profile', profile: activeProfileName() };
   return { apiKey: 'none' };
-}
-
-export function ensureEvalArtifactsGitignore(dir: string): void {
-  const gitignorePath = '.gitignore';
-  const rel = isAbsolute(dir) ? relative(process.cwd(), dir) : dir;
-  const base = rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel : basename(dir || 'eigenpal');
-  const normalizedBase = base.replace(/\\/g, '/').replace(/^\.\/+/, '');
-  const patterns = [
-    `${normalizedBase}/**/executions/**`,
-    `${normalizedBase}/dataset/examples/**/llm-judge-summary-*.*`,
-  ];
-  const legacyPatterns = patterns.map((pattern) => `./${pattern}`);
-  const sectionHeader = '# Eigenpal eval artifacts';
-
-  let content = '';
-  if (existsSync(gitignorePath)) {
-    content = readFileSync(gitignorePath, 'utf-8');
-    const lines = content.split(/\r?\n/).map((line) => line.trim());
-    const hasAll = patterns.every(
-      (pattern, index) => lines.includes(pattern) || lines.includes(legacyPatterns[index])
-    );
-    if (hasAll) return;
-  }
-
-  const cleaned = (content ? content.split(/\r?\n/) : []).filter((line) => {
-    const trimmed = line.trim();
-    if (trimmed === sectionHeader) return false;
-    if (trimmed === '# Eigenpal eval artifacts./eigenpal/**/executions/**') return false;
-    if (patterns.includes(trimmed)) return false;
-    if (legacyPatterns.includes(trimmed)) return false;
-    return true;
-  });
-
-  const prefix = cleaned.length > 0 ? `${cleaned.join('\n').replace(/\s*$/, '')}\n` : '';
-  const next = `${prefix}${sectionHeader}\n${patterns.join('\n')}\n`;
-  writeFileSync(gitignorePath, next, 'utf-8');
 }
 
 export function requireApiKey(config: CliConfig): string {

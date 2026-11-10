@@ -5,4 +5,5 @@
  * These are pure constants with no Node.js dependencies.
  */
 
+export * from './protocols';
 export * from './semantic-conventions';

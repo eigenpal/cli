@@ -4,7 +4,7 @@
  * - If override has ALL required output fields and passes schema validation → use as full output (skip step).
  * - If override has only some fields or fails validation → run step, then deep-merge override onto step output.
  *
- * Used by: worker (executor), app (overrides edit sheet UI).
+ * Used by: worker (executor).
  */
 
 import type { Step, StepType } from '@eigenpal/types';
@@ -68,8 +68,8 @@ export interface ResolveStepOverrideResult {
  * Uses Zod output schema when available; if schema is unknown (e.g. transform.script), always partial.
  *
  * @param expectedOutputKeys - When provided (e.g. block output keys from definition), use this as the
- *   required keys list instead of getRequiredOutputKeys(stepType). Use for control.block or when the
- *   caller knows the full set of output fields.
+ *   required keys list instead of getRequiredOutputKeys(stepType). Use when the caller knows the
+ *   full set of output fields.
  */
 export function resolveStepOverride(
   step: Step,
@@ -125,7 +125,7 @@ export function resolveStepOverride(
     return { useAsFull: false };
   }
 
-  // For ZodRecord schemas (e.g. control.block), getRequiredOutputKeys returns [] because any object
+  // For ZodRecord schemas, getRequiredOutputKeys returns [] because any object
   // shape is valid. Without explicit expectedOutputKeys, we treat this as partial override since we
   // can't know what keys the step will actually produce at runtime.
   if (requiredKeys.length === 0 && !expectedOutputKeys?.length) {
@@ -142,24 +142,4 @@ export function resolveStepOverride(
     useAsFull: true,
     validatedOutput: parsedData,
   };
-}
-
-/**
- * Compute the override mode for UI display: will this step be skipped, partially overridden, or not overridden?
- * Uses the same logic as the worker (resolveStepOverride).
- *
- * @param expectedOutputKeys - When provided (e.g. known output fields for this step from schema/block def),
- *   use this to decide "all specified" so that full override shows as skipped.
- */
-export function getStepOverrideMode(
-  step: Step,
-  override: unknown,
-  expectedOutputKeys?: string[]
-): 'skipped' | 'partial' | null {
-  if (override === null || override === undefined) return null;
-  if (!isPlainObject(override)) return null;
-  if (Object.keys(override).length === 0) return null;
-
-  const resolved = resolveStepOverride(step, override, expectedOutputKeys);
-  return resolved.useAsFull ? 'skipped' : 'partial';
 }

@@ -2317,9 +2317,12 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
     replaySafety: 'safe',
     automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
   },
+  // The email handler marks a failure transient only when the provider did not
+  // accept the message (SMTP connect-phase errors, Resend with its idempotency
+  // key on network errors, 429 and 5xx), so replaying cannot send twice.
   'action.email': {
-    replaySafety: 'requires-idempotency',
-    automaticCategories: [],
+    replaySafety: 'safe',
+    automaticCategories: ['timeout', 'rate_limited', 'temporarily_unavailable'],
   },
   'control.if': CONTROL_RETRY_CAPABILITY,
   'control.switch': CONTROL_RETRY_CAPABILITY,
@@ -2330,10 +2333,6 @@ export const STEP_RETRY_CAPABILITIES: Record<StepType, StepRetryCapability> = {
   'control.human_review': CONTROL_RETRY_CAPABILITY,
   'control.fail': CONTROL_RETRY_CAPABILITY,
 };
-
-export function getStepRetryCapability(stepType: StepType): StepRetryCapability {
-  return STEP_RETRY_CAPABILITIES[stepType];
-}
 
 export const STEP_SCHEMAS: Record<StepType, StepSchemaDefinition> = {
   // AI Steps
@@ -2748,12 +2747,6 @@ export function listStepTypes(): StepType[] {
 /**
  * List step types by category
  */
-export function listStepTypesByCategory(category: StepCategory): StepType[] {
-  return Object.values(STEP_SCHEMAS)
-    .filter((s) => s.category === category)
-    .map((s) => s.type);
-}
-
 /**
  * Get all step schemas as JSON Schema (for LLM consumption)
  */
@@ -2781,22 +2774,6 @@ export function getAllStepJsonSchemas(): Array<{
  * Validate a step config against its schema
  * Returns { success: true, data } or { success: false, error }
  */
-export function validateStepConfig(
-  stepType: StepType,
-  config: unknown
-): { success: true; data: unknown } | { success: false; error: z.ZodError } {
-  const schema = getStepConfigSchema(stepType);
-  if (!schema) {
-    return { success: true, data: config };
-  }
-
-  const result = schema.safeParse(config);
-  if (result.success) {
-    return { success: true, data: result.data };
-  }
-  return { success: false, error: result.error };
-}
-
 function isZodOptional(schema: unknown): boolean {
   return schema instanceof z.ZodOptional;
 }
@@ -2822,7 +2799,7 @@ export function getRequiredOutputKeys(stepType: StepType): string[] | null {
     }
   }
 
-  // Record schemas (e.g. control.block: z.record(z.string(), z.unknown())) accept any object;
+  // Record schemas (e.g. z.record(z.string(), z.unknown())) accept any object;
   // there are no fixed required keys, so we return [] to signal this. The caller decides how to handle:
   // - resolveStepOverride treats [] as partial override (can't know runtime keys without expectedOutputKeys)
   if (current instanceof z.ZodRecord) return [];
@@ -2851,63 +2828,18 @@ export function isOutputSchemaUnknown(stepType: StepType): boolean {
 // Type exports
 // ============================================================================
 
-export type AiParseConfig = z.infer<typeof AiParseConfigSchema>;
-export type AiParseOutput = z.infer<typeof AiParseOutputSchema>;
-export type AiExtractConfig = z.infer<typeof AiExtractConfigSchema>;
-export type AiExtractOutput = z.infer<typeof AiExtractOutputSchema>;
-export type AiSplitConfig = z.infer<typeof AiSplitConfigSchema>;
-export type AiSplitOutput = z.infer<typeof AiSplitOutputSchema>;
-export type AiSegmentConfig = z.infer<typeof AiSegmentConfigSchema>;
-export type AiSegmentOutput = z.infer<typeof AiSegmentOutputSchema>;
-export type AiClassifyConfig = z.infer<typeof AiClassifyConfigSchema>;
-export type AiClassifyOutput = z.infer<typeof AiClassifyOutputSchema>;
-export type AiClassifyPagesConfig = z.infer<typeof AiClassifyPagesConfigSchema>;
-export type AiClassifyPagesOutput = z.infer<typeof AiClassifyPagesOutputSchema>;
-export type AiVisionConfig = z.infer<typeof AiVisionConfigSchema>;
-export type AiVisionOutput = z.infer<typeof AiVisionOutputSchema>;
-export type AiSearchFilesConfig = z.infer<typeof AiSearchFilesConfigSchema>;
 export type AiSearchFilesOutput = z.infer<typeof AiSearchFilesOutputSchema>;
 export type AiSearchFilesCitation = z.infer<typeof AiSearchFilesCitationSchema>;
-export type TransformSetConfig = z.infer<typeof TransformSetConfigSchema>;
-export type TransformRemoveConfig = z.infer<typeof TransformRemoveConfigSchema>;
-export type TransformCombineConfig = z.infer<typeof TransformCombineConfigSchema>;
-export type TransformSplitConfig = z.infer<typeof TransformSplitConfigSchema>;
-export type TransformMergeConfig = z.infer<typeof TransformMergeConfigSchema>;
-export type TransformTemplateConfig = z.infer<typeof TransformTemplateConfigSchema>;
-export type TransformPdfEmbedConfig = z.infer<typeof TransformPdfEmbedConfigSchema>;
-export type TransformPdfEmbedOutput = z.infer<typeof TransformPdfEmbedOutputSchema>;
 export type CropRegionSpec = z.infer<typeof CropRegionSpecSchema>;
-export type TransformCropRegionsConfig = z.infer<typeof TransformCropRegionsConfigSchema>;
 export type TransformCropRegionsOutput = z.infer<typeof TransformCropRegionsOutputSchema>;
 export type CropRegionsProcessorConfig = z.infer<typeof CropRegionsProcessorConfigSchema>;
-export type TransformJsonToXlsxConfig = z.infer<typeof TransformJsonToXlsxConfigSchema>;
-export type TransformJsonToXlsxOutput = z.infer<typeof TransformJsonToXlsxOutputSchema>;
 export type TransformArchiveListConfig = z.infer<typeof TransformArchiveListConfigSchema>;
 export type TransformArchiveListOutput = z.infer<typeof TransformArchiveListOutputSchema>;
-export type TransformArchiveListEntry = z.infer<typeof TransformArchiveListEntrySchema>;
 export type TransformArchiveExtractConfig = z.infer<typeof TransformArchiveExtractConfigSchema>;
 export type TransformArchiveExtractOutput = z.infer<typeof TransformArchiveExtractOutputSchema>;
 export type TransformMergeDocumentsConfig = z.infer<typeof TransformMergeDocumentsConfigSchema>;
 export type TransformMergeDocumentsOutput = z.infer<typeof TransformMergeDocumentsOutputSchema>;
 export type TransformMergeDocumentsSource = z.infer<typeof TransformMergeDocumentsSourceSchema>;
-export type TransformScriptConfig = z.infer<typeof TransformScriptConfigSchema>;
 export type TransformTextChunkerConfig = z.infer<typeof TransformTextChunkerConfigSchema>;
 export type TransformTextChunkerOutput = z.infer<typeof TransformTextChunkerOutputSchema>;
-export type TransformRegexExtractConfig = z.infer<typeof TransformRegexExtractConfigSchema>;
 export type TransformRegexExtractOutput = z.infer<typeof TransformRegexExtractOutputSchema>;
-export type ActionHttpConfig = z.infer<typeof ActionHttpConfigSchema>;
-export type ActionInvokeWorkflowConfig = z.infer<typeof ActionInvokeWorkflowConfigSchema>;
-export type ActionWebsiteReaderConfig = z.infer<typeof ActionWebsiteReaderConfigSchema>;
-export type ActionWebsiteReaderOutput = z.infer<typeof ActionWebsiteReaderOutputSchema>;
-export type ActionEmailConfig = z.infer<typeof ActionEmailConfigSchema>;
-export type ActionEmailOutput = z.infer<typeof ActionEmailOutputSchema>;
-export type ActionEmailAttachment = z.infer<typeof ActionEmailAttachmentSchema>;
-export type ControlIfConfig = z.infer<typeof ControlIfConfigSchema>;
-export type ControlSwitchConfig = z.infer<typeof ControlSwitchConfigSchema>;
-export type ControlSwitchOutput = z.infer<typeof ControlSwitchOutputSchema>;
-export type ControlForeachConfig = z.infer<typeof ControlForeachConfigSchema>;
-export type ControlParallelMapConfig = z.infer<typeof ControlParallelMapConfigSchema>;
-export type ControlParallelConfig = z.infer<typeof ControlParallelConfigSchema>;
-export type ControlWaitConfig = z.infer<typeof ControlWaitConfigSchema>;
-export type ControlHumanReviewConfig = z.infer<typeof ControlHumanReviewConfigSchema>;
-export type ControlFailConfig = z.infer<typeof ControlFailConfigSchema>;

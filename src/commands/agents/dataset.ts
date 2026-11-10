@@ -2,6 +2,7 @@ import { type Command } from 'commander';
 import { zipSync } from 'fflate';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { buildClient } from '../../lib/client';
 import { resolveConfig } from '../../lib/config';
 import { action } from '../../lib/format-error';
 import { requireTypedConfirmation } from '../../lib/non-interactive';
@@ -9,6 +10,7 @@ import {
   addJsonFlag,
   dim,
   error,
+  printJson,
   success,
   table,
   ui,
@@ -21,10 +23,8 @@ import {
   BaseOpts,
   DATASET_DIR,
   agentAutomationId,
-  buildClient,
   compactParams,
   parseDatasetMode,
-  printJson,
 } from './shared';
 import { validateDatasetDir } from './validation';
 

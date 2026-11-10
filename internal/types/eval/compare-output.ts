@@ -1,3 +1,4 @@
+import { isRecord } from '../core/is-record';
 /**
  * Compare expected output (data) to actual execution result (data) for eval.
  * Shared by: eval API route (server-side comparison, streamed to CLI), row comparison UI, metrics.
@@ -233,7 +234,7 @@ function valuesAtRulePath(tree: unknown, rulePath: string): unknown[] {
         if (Array.isArray(value)) next.push(...value);
         continue;
       }
-      if (isPlainObject(value) && Object.hasOwn(value, token)) next.push(value[token]);
+      if (isRecord(value) && Object.hasOwn(value, token)) next.push(value[token]);
     }
     current = next;
     if (current.length === 0) return [];
@@ -250,7 +251,7 @@ function diagnoseMisappliedRules(
     if (rule.ignore === true) continue;
     const values = valuesAtRulePath(expected, path);
     if (values.length === 0) continue;
-    const allScalar = values.every((value) => !isPlainObject(value) && !Array.isArray(value));
+    const allScalar = values.every((value) => !isRecord(value) && !Array.isArray(value));
     const allNonArray = values.every((value) => !Array.isArray(value));
     const sample = values[0];
     // Containers can inherit type-specific fields to descendants. Only flag
@@ -324,13 +325,9 @@ function exceedUnorderedBudget(
   options.unorderedBudget.details = details;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isWildcard(value: unknown): boolean {
   if (value === WILDCARD_ANY) return true;
-  return isPlainObject(value) && value.fileId === WILDCARD_ANY;
+  return isRecord(value) && value.fileId === WILDCARD_ANY;
 }
 
 /** Expected `null` means "this field stays empty": an absent actual key satisfies it too. */
@@ -405,7 +402,7 @@ export function valuesMatch(
     if (actual.length !== expected.length) return false;
     return actual.every((val, idx) => valuesMatch(val, expected[idx], options));
   }
-  if (isPlainObject(actual) && isPlainObject(expected)) {
+  if (isRecord(actual) && isRecord(expected)) {
     return Object.keys(expected).every((key) => valuesMatch(actual[key], expected[key], options));
   }
   try {
@@ -501,7 +498,7 @@ function partialMatch(
     return orderedPrefixMatch(expected, actual, path, mismatches, options, rule.items);
   }
 
-  if (isPlainObject(expected) && isPlainObject(actual)) {
+  if (isRecord(expected) && isRecord(actual)) {
     let allMatch = true;
     for (const [key, expectedVal] of Object.entries(expected)) {
       if (expectedVal === undefined) continue;
@@ -648,7 +645,7 @@ function readRelativeObjectPath(
     if (
       token === '[]' ||
       /^\[\d+\]$/.test(token) ||
-      !isPlainObject(current) ||
+      !isRecord(current) ||
       !Object.hasOwn(current, token)
     ) {
       return { kind: 'missing', path: walked };
@@ -735,7 +732,7 @@ function classifyIdentityItems(
   path: string
 ): ClassifiedIdentity[] {
   return items.map((item, index) => {
-    if (!isPlainObject(item)) return { kind: 'non-object', index };
+    if (!isRecord(item)) return { kind: 'non-object', index };
     const extracted = extractItemIdentity(item, matchBy, childPath(path, index));
     if (!extracted.ok) return { kind: 'invalid', index, mismatches: extracted.mismatches };
     return { kind: 'ok', identity: { index, key: extracted.key, atoms: extracted.atoms } };
@@ -1170,7 +1167,7 @@ function removeRulePath(current: unknown, tokens: string[]): void {
     else removeRulePath(current[index], rest);
     return;
   }
-  if (!isPlainObject(current) || !Object.hasOwn(current, token)) return;
+  if (!isRecord(current) || !Object.hasOwn(current, token)) return;
   if (rest.length === 0) delete current[token];
   else removeRulePath(current[token], rest);
 }
@@ -1209,7 +1206,7 @@ export function compareOutput(
   };
 
   const data: Record<string, unknown> | null =
-    expectedData && isPlainObject(expectedData) ? { ...expectedData } : null;
+    expectedData && isRecord(expectedData) ? { ...expectedData } : null;
   if (data && golden.length > 0) {
     for (const k of fileFieldSet) {
       delete data[k];
@@ -1233,7 +1230,7 @@ export function compareOutput(
     }
   }
 
-  if (!data || !isPlainObject(data)) {
+  if (!data || !isRecord(data)) {
     return {
       noExpectedData: totalFields === 0,
       passed: totalFields > 0 && mismatches.length === 0,
@@ -1243,7 +1240,7 @@ export function compareOutput(
     };
   }
 
-  const actual = isPlainObject(actualData) ? actualData : {};
+  const actual = isRecord(actualData) ? actualData : {};
 
   if (rules) {
     const diagnostics = diagnoseMisappliedRules(data, rules);
@@ -1341,8 +1338,8 @@ export function compareExpectedValues(
 }
 
 export function getActualDataFromResult(result: unknown): Record<string, unknown> | null {
-  if (!isPlainObject(result)) return null;
-  if (isPlainObject(result.data)) return result.data;
+  if (!isRecord(result)) return null;
+  if (isRecord(result.data)) return result.data;
   return result;
 }
 

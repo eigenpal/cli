@@ -19,6 +19,8 @@ export {
   type TemplatePlaceholder,
 } from './common';
 
+export { isRecord } from './is-record';
+
 // Processor IDs, Parser IDs, and Input Kinds
 export {
   INPUT_KINDS,

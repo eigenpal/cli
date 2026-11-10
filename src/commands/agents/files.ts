@@ -2,10 +2,10 @@ import { type Command } from 'commander';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ApiError } from '../../lib/client';
-import { action } from '../../lib/format-error';
-import { addJsonFlag, error, success, table, ui, withBaseUrl } from '../../lib/ui';
-import { BaseOpts, agentAutomationId, buildClient, printJson, writeBase64File } from './shared';
+import { ApiError, buildClient } from '../../lib/client';
+import { action, UsageError } from '../../lib/format-error';
+import { addJsonFlag, error, printJson, success, table, ui, withBaseUrl } from '../../lib/ui';
+import { agentAutomationId, BaseOpts, writeBase64File } from './shared';
 
 type FileDiffStatus = 'match' | 'different' | 'remote-missing';
 type AgentAutomationDetail = { type?: string; slug?: string };
@@ -68,7 +68,7 @@ async function getAgentFile(
   opts: BaseOpts & { out?: string }
 ): Promise<void> {
   if (opts.json && opts.out) {
-    throw new Error('--json and --out are mutually exclusive');
+    throw new UsageError('--json and --out are mutually exclusive');
   }
   const client = buildClient(opts);
   const payload = await readAgentFile(client, agentId, remotePath);
