@@ -261,6 +261,11 @@ export const S3_PATH_GRAMMAR = {
     'parse-cache': {
       $parseCacheDigest: PATH_LEAF,
     },
+    // Scratch object the on-prem preflight writes, reads back and deletes
+    // (packages/worker/src/preflight). Only ever exists for a second.
+    preflight: {
+      $preflightRunId: PATH_LEAF,
+    },
   },
 } as const;
 

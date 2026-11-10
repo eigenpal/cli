@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.3
+
+### Patch Changes
+
+- b92b4e8: The bundled self-hosting docs in `eigenpal docs` now describe the install preflight check and how to run it on its own.
+
 ## 0.22.6
 
 ### Patch Changes
