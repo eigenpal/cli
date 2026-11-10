@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.6
+
+### Patch Changes
+
+- 1daf6d9: Bundled self-hosting documentation explains every Helm value and environment variable.
+
 ## 0.23.4
 
 ### Patch Changes
