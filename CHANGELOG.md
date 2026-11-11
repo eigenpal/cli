@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.8
+
+### Patch Changes
+
+- c465c4f: Prometheus metrics: run, human review, and webhook counters and histograms now carry an `internal` label, so alerts can leave out traffic from demo and test organizations listed in `EIGENPAL_INTERNAL_ORG_IDS`.
+
 ## 0.23.7
 
 ### Minor Changes
