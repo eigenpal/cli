@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.10
+
+### Patch Changes
+
+- fedf770: Bundled docs describe the API request log and `EIGENPAL_REQUEST_LOG`.
+
 ## 0.23.8
 
 ### Patch Changes
