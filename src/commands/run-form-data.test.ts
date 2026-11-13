@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApiClient } from '../lib/client';
 import { multipartFileByteBudget } from '../lib/upload-limits';
-import { buildPreparedRunRequest, buildRunFormData } from './run-form-data';
+import { buildPreparedRunRequest } from './run-form-data';
 
 function createMockUploadClient(ids: string[]): ApiClient & { createSessionBodies: unknown[] } {
   let nextId = 0;
@@ -46,7 +46,7 @@ function multipartFileParts(form: FormData, fieldName: string): File[] {
     .map(([, value]) => value as unknown as File);
 }
 
-describe('buildRunFormData', () => {
+describe('run form envelope', () => {
   test('keeps a file named tags separate from execution tags', async () => {
     const { form } = await buildPreparedRunRequest(createMockUploadClient([]), {
       target: 'workflows.example',
@@ -63,7 +63,7 @@ describe('buildRunFormData', () => {
       const filePath = join(dir, 'contract.pdf');
       await writeFile(filePath, Buffer.from('%PDF-1.4'));
 
-      const form = await buildRunFormData({
+      const { form } = await buildPreparedRunRequest(createMockUploadClient([]), {
         target: 'workflows.invoice',
         inputFile: `document=${filePath}`,
         inputJson: '{"language":"en"}',
@@ -91,7 +91,7 @@ describe('buildRunFormData', () => {
       await writeFile(firstPath, Buffer.from('%PDF-a'));
       await writeFile(secondPath, Buffer.from('%PDF-b'));
 
-      const form = await buildRunFormData({
+      const { form } = await buildPreparedRunRequest(createMockUploadClient([]), {
         target: 'workflows.invoice',
         inputFile: [`document=${firstPath}`, `document=${secondPath}`],
       });
@@ -115,7 +115,7 @@ describe('buildRunFormData', () => {
       await writeFile(macroWorkbookPath, Buffer.from('workbook'));
       await writeFile(unknownPath, Buffer.from('unknown'));
 
-      const form = await buildRunFormData({
+      const { form } = await buildPreparedRunRequest(createMockUploadClient([]), {
         target: 'workflows.invoice',
         inputFile: [
           `documents=${messagePath}`,

@@ -106,7 +106,7 @@ export function isHttpChunkedTransport(
  * (pending + copy). MPU writes the canonical key directly.
  */
 export function pendingFileUploadKey(uploadId: string): string {
-  return `file-uploads/${uploadId}`;
+  return buildS3PathSuffix('file-uploads/:uploadId', { uploadId });
 }
 
 /** Staging prefix for `http-chunked` parts. Never write a file at `pendingFileUploadKey`. */

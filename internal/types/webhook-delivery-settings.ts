@@ -213,6 +213,7 @@ export const WEBHOOK_TRANSPORT_ERROR_CATEGORIES = [
   'timeout',
   'network',
   'invalid_header',
+  'invalid_secret',
   'security_validation',
   'invalid_payload',
   'payload_too_large',
@@ -323,6 +324,13 @@ export function explainWebhookFailure(
       return {
         title: 'Invalid custom header',
         detail: 'A custom header on this endpoint is not allowed. Edit the endpoint headers.',
+        setting: null,
+      };
+    case 'invalid_secret':
+      return {
+        title: 'Signing secret unreadable',
+        detail:
+          'The stored signing secret or custom headers could not be decrypted. Rotate the signing secret or re-enter the headers. This is not retried.',
         setting: null,
       };
     case 'security_validation':

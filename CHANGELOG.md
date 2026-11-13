@@ -1,5 +1,12 @@
 # @eigenpal/cli
 
+## 0.23.13
+
+### Patch Changes
+
+- 44349f8: Internal cleanup: removed an unused run-request helper. No user-facing change.
+- 2a2fb7a: The bundled Prometheus metrics guide now lists the `invalid_secret` webhook failure reason.
+
 ## 0.23.10
 
 ### Patch Changes

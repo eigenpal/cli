@@ -144,42 +144,6 @@ export async function buildPreparedRunRequest(
   return { form, hasMultipartFiles: remaining.length > 0 };
 }
 
-/** @deprecated Prefer {@link buildPreparedRunRequest} which applies aggregate pre-upload. */
-export async function buildRunFormData(input: {
-  target: string;
-  inputJson?: string;
-  input?: Record<string, unknown>;
-  inputFile?: string | string[];
-  overrides?: Record<string, unknown> | null;
-  metadata?: Record<string, unknown>;
-  files?: RunFormFile[];
-}): Promise<FormData> {
-  // Legacy helper kept for unit tests that assert form shape without a client.
-  const form = new FormData();
-  form.append('target', input.target);
-
-  const inputObj = input.input ?? (input.inputJson ? JSON.parse(input.inputJson) : {});
-  form.append('input', JSON.stringify(inputObj));
-
-  if (input.overrides) {
-    form.append('overrides', JSON.stringify(input.overrides));
-  }
-  if (input.metadata) {
-    form.append('metadata', JSON.stringify(input.metadata));
-  }
-
-  for (const spec of parseInputFileSpecs(input.inputFile ?? [])) {
-    const data = await fs.readFile(spec.filePath);
-    appendFilePart(form, spec.fieldName, data, path.basename(spec.filePath));
-  }
-
-  for (const file of input.files ?? []) {
-    appendFilePart(form, file.fieldName, file.content, file.filename, file.mimeType);
-  }
-
-  return form;
-}
-
 /**
  * When the same field has both pre-uploaded and multipart files, the canonical
  * run-start envelope rejects `files.<field>` if that field already appears in

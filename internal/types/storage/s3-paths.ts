@@ -254,15 +254,17 @@ export const S3_PATH_GRAMMAR = {
     templates: PATH_REST,
     knowledge: PATH_REST,
   },
-  // Tenant-scoped platform metadata (blob migration ledger, parse cache, etc.).
+  // Tenant-scoped platform metadata (parse cache, preflight scratch, etc.). The blob
+  // migration ledger is bucket-root, see BLOB_MIGRATIONS_LEDGER_PREFIX.
   _meta: {
     // When this installation last checked the promotion repository (lib/promotion/pull-health.ts).
     'promotion-pull.json': PATH_LEAF,
-    'blob-migrations': {
-      $migrationLedgerFile: PATH_LEAF,
-    },
     'parse-cache': {
       $parseCacheDigest: PATH_LEAF,
+      // ai.parse v2 results (worker/processors/ai/parser/parse-v2-cache.ts).
+      v2: {
+        $parseV2CacheDigest: PATH_LEAF,
+      },
     },
     // Scratch object the on-prem preflight writes, reads back and deletes
     // (packages/worker/src/preflight). Only ever exists for a second.
@@ -499,6 +501,52 @@ export function buildParseCacheS3Suffix(digest: string): string {
   return buildS3PathSuffix('_meta/parse-cache/:parseCacheDigest', {
     parseCacheDigest: `${safe}.json`,
   });
+}
+
+/** Tenant-scoped suffix for ai.parse v2 cache JSON (`_meta/parse-cache/v2/<digest>.json`). */
+export function buildParseV2CacheS3Suffix(digest: string): string {
+  const safe = assertSegment('digest', digest);
+  if (!PARSE_CACHE_DIGEST_RX.test(safe)) {
+    throw new Error('parse v2 cache digest must be a 64-char lowercase hex SHA-256');
+  }
+  return buildS3PathSuffix('_meta/parse-cache/v2/:parseV2CacheDigest', {
+    parseV2CacheDigest: `${safe}.json`,
+  });
+}
+
+/**
+ * Bucket-root prefix of the blob migration ledger (`_meta/blob-migrations/<id>.json`).
+ * It is per environment, not per tenant, so it is not part of the tenant grammar.
+ */
+export const BLOB_MIGRATIONS_LEDGER_PREFIX = '_meta/blob-migrations/';
+
+/**
+ * Root storage prefix owned by one tenant (`tenants/<tenantId>/`). Throws on an
+ * id that is empty or could introduce a path separator or relative segment.
+ */
+export function tenantS3Prefix(tenantId: string): string {
+  return `tenants/${assertSegment('tenantId', tenantId)}/`;
+}
+
+const EPHEMERAL_DOWNLOADS_ROOT = 'tmp/ephemeral-downloads';
+
+/**
+ * Bucket-root prefix (with trailing slash) of one tenant's materialized
+ * download objects (run-artifact and dataset-export ZIPs). The one place
+ * customer bytes live outside `tenants/<id>/`, so organization deletion sweeps
+ * it separately. The tenant segment is sanitized, not validated: generated ids
+ * (`<prefix>_<nanoid>`) pass through unchanged, so the mapping is injective on
+ * real ids.
+ */
+export function ephemeralDownloadPrefix(tenantId: string): string {
+  const safeTenant = tenantId.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'tenant';
+  return `${EPHEMERAL_DOWNLOADS_ROOT}/${safeTenant}/`;
+}
+
+/** Bucket-root key of one fresh materialized download object for a tenant. */
+export function ephemeralDownloadObjectKey(tenantId: string, filename: string): string {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'download.bin';
+  return `${ephemeralDownloadPrefix(tenantId)}${globalThis.crypto.randomUUID()}-${safe}`;
 }
 
 // Artifact names are `${fileId}-${filename}` where fileId is `file_<nanoid(21)>`

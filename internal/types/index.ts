@@ -648,14 +648,18 @@ export * from './typed-script';
 
 // Canonical typed S3/R2 path grammar and recursive builder
 export {
+  BLOB_MIGRATIONS_LEDGER_PREFIX,
   S3_PATH_GRAMMAR,
   assertS3PathSegment,
   buildParseCacheS3Suffix,
+  buildParseV2CacheS3Suffix,
   buildS3Path,
   buildS3PathSuffix,
   datasetExampleFilePath,
   datasetExampleFileS3Path,
   datasetExampleFolderS3Path,
+  ephemeralDownloadObjectKey,
+  ephemeralDownloadPrefix,
   extractSidecarS3Suffixes,
   fileIdFromArtifactName,
   filenameFromArtifactName,
@@ -666,6 +670,7 @@ export {
   s3PathFilename,
   stepArtifactIdFromStepExecutionId,
   stripTenantPrefix,
+  tenantS3Prefix,
   type RootS3PathBuilder,
   type RootS3PathParams,
   type S3PathBuilder,
