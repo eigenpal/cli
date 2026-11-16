@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.17
+
+### Patch Changes
+
+- 9698734: Update third-party dependencies to their latest minor and patch releases.
+
 ## 0.23.13
 
 ### Patch Changes

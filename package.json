@@ -1,6 +1,6 @@
 {
   "name": "@eigenpal/cli",
-  "version": "0.23.16",
+  "version": "0.23.17",
   "description": "Eigenpal CLI — author and run document workflows from your terminal. Agent-ready.",
   "keywords": [
     "eigenpal",
@@ -57,7 +57,7 @@
     "ajv": "8.20.0",
     "ajv-formats": "^3.0.1",
     "bun-types": "latest",
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "docxtemplater": "^3.71.1",
     "elementtree": "0.1.7",
     "fflate": "0.8.3",
