@@ -301,7 +301,7 @@ process — `--out` writes the file directly from the server's storage.
 
 LLM-judge scores have variance. To reduce flake:
 
-- Select a current model (`openai/gpt-6.1-sol`) and keep its reasoning effort fixed.
+- Select a current model (`openai/gpt-6.2-sol`) and keep its reasoning effort fixed.
   Re-run representative evaluations when changing models or when the provider updates it.
 - Keep `promptExtension` narrow — score one dimension per evaluator. Use
   multiple judges instead of one omnibus prompt.

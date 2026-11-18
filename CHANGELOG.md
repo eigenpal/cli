@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.19
+
+### Patch Changes
+
+- cb93544: Document GPT-6.2 Astra and Sol for structured extraction and use GPT-6.2 Sol in the judge stability examples.
+
 ## 0.23.17
 
 ### Patch Changes
