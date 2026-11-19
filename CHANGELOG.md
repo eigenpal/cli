@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.23.22
+
+### Patch Changes
+
+- 06194fb: Bundled docs include the Summary Agent per-model context window settings in the Helm values reference.
+
 ## 0.23.19
 
 ### Patch Changes
