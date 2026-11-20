@@ -248,6 +248,66 @@ export const S3_PATH_GRAMMAR = {
       },
     },
   },
+  // Process Discovery recordings, sources and upload staging. `recording.json` is the validated portable
+  // index (absent for plain video or audio uploads until the worker derives
+  // one); `media/` holds every file it references, one object per file, plus
+  // `source.<ext>` for plain uploads. Keys are immutable once written.
+  'process-discovery': {
+    // Staging for resumable chunked uploads; deleted on complete, abort or
+    // expiry. One object per part.
+    uploads: {
+      $uploadId: {
+        parts: { $partNumber: PATH_LEAF },
+      },
+    },
+    // Processes. The segment keeps their old name, `sessions`, on purpose:
+    // deployments (the EU demo among them) hold real recordings under it, and
+    // renaming it would need a copy of every stored object for no user benefit.
+    sessions: {
+      $processId: {
+        recordings: {
+          $recordingId: {
+            'recording.json': PATH_LEAF,
+            media: PATH_REST,
+          },
+        },
+        // Dataset examples found in a recording: the full frame each input
+        // was cropped from (`frame-<n>.png`) and the crop (`input-<n>.png`).
+        // A crop is rewritten when someone adjusts it; frames are immutable.
+        examples: {
+          $exampleId: {
+            $filename: PATH_LEAF,
+          },
+        },
+        // Non-recording sources (documents, images): the uploaded file as
+        // `source.<ext>` plus, for images browsers cannot show, `preview.jpg`.
+        // Immutable; extracted text and descriptions live in the database.
+        sources: {
+          $sourceId: { $filename: PATH_LEAF },
+        },
+      },
+    },
+    // Synced EigenPal Capture recordings (captures), private to their owner. One bundle per
+    // revision: the portable v2 ZIP with STORED entries, as uploaded. Either one object
+    // (`bundle.zip`, direct S3 multipart) or fixed-size part objects (`parts/<n>`,
+    // proxied transport) whose concatenation is the bundle. Never unpacked; media are
+    // served by range. A revision prefix is deleted whole when superseded or expired.
+    captures: {
+      $captureId: {
+        revisions: {
+          // 'r1', 'r2', ...
+          $captureRevision: {
+            'bundle.zip': PATH_LEAF,
+            parts: { $partNumber: PATH_LEAF },
+            // Contact sheet written by ingest.
+            'thumbnails.jpg': PATH_LEAF,
+          },
+        },
+        // Files added after recording (edit list `location.kind = 'capture'`).
+        attachments: { $attachmentId: { $filename: PATH_LEAF } },
+      },
+    },
+  },
   shared: {
     skills: PATH_REST,
     rules: PATH_REST,

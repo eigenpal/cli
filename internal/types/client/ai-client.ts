@@ -159,6 +159,8 @@ export interface VisionOptions {
    * 5xx, and connection resets still retry regardless of this flag.
    */
   retryTimeouts?: boolean;
+  /** Retries the client may make; callers that meter each attempt themselves pass 0. */
+  maxRetries?: number;
 }
 
 /**

@@ -84,6 +84,24 @@ export const ID_PREFIXES = {
   OCR_EXTRACTION_PIPELINE: 'oppl',
   // OpenParser API — public OCR job / batch parent / child IDs (`opj_…`)
   OCR_JOB: 'opj',
+  // Process Discovery (sessions, recordings, jobs, map versions, messages,
+  // observations) and EigenPal Capture sign-in codes
+  PROCESS_DISCOVERY_PROCESS: 'pds',
+  PROCESS_DISCOVERY_RECORDING: 'pdr',
+  PROCESS_DISCOVERY_JOB: 'pdj',
+  PROCESS_DISCOVERY_MAP_VERSION: 'pdv',
+  PROCESS_DISCOVERY_MESSAGE: 'pdm',
+  PROCESS_DISCOVERY_OBSERVATION: 'pdo',
+  PROCESS_DISCOVERY_UPLOAD: 'pdu',
+  // Dataset examples found in a recording
+  PROCESS_DISCOVERY_EXAMPLE: 'pdx',
+  PROCESS_DISCOVERY_SOURCE: 'pdsrc',
+  PROCESS_DISCOVERY_CAPTURE: 'pdc',
+  PROCESS_DISCOVERY_MODEL_CALL: 'pdmc',
+  PROCESS_DISCOVERY_STORAGE_PURGE: 'pdpg',
+  PROCESS_DISCOVERY_VOICE_CALL: 'pdvc',
+  CAPTURE_AUTH_CODE: 'cpc',
+  CAPTURE_DEVICE: 'cps',
   // Token prefixes (not IDs, but follow the same registry)
   SANDBOX_WS_TOKEN: 'sws',
 } as const;

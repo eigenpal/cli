@@ -534,6 +534,12 @@ export type {
 
 // Access grant levels (shared by db schema, resolver and API contracts)
 export { ACCESS_GRANT_LEVELS, type AccessGrantLevel } from './access-levels';
+export {
+  PROCESS_DISCOVERY_MODULE,
+  TENANT_MODULES,
+  isTenantModule,
+  type TenantModule,
+} from './modules';
 
 // OTEL Semantic Conventions (browser-safe)
 export {
