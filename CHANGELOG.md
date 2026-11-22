@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.24.4
+
+### Patch Changes
+
+- 5884992: The standalone summary agent's public research supports Linkup (EU-based) next to Exa. By default it uses the provider whose key is in the `eigenpal-summary-agent` Secret: `EXA_API_KEY` first, then the new optional `LINKUP_API_KEY`. The new `summaryAgent.research.provider` Helm value (`exa` or `linkup`) pins one; a pinned `linkup` is off without its key and never falls back to Exa. `summaryAgent.research.linkup.excludeDomains` (a block list of market-report, stock-aggregator and generated company-profile sites by default) and `summaryAgent.research.linkup.fetchTopResults` (full page text for the top 2 results of each search by default) tune Linkup's sources.
+
 ## 0.23.22
 
 ### Patch Changes
