@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.24.6
+
+### Patch Changes
+
+- 5206255: The standalone summary agent reads more kinds of case files. Word documents (`.docx`) are split into heading sections with their tables, and a citation scrolls to and highlights the paragraph in a read-only Word viewer. PowerPoint decks (`.pptx`) become one source per slide (text, tables and speaker notes), shown in a slide viewer that opens the cited slide. Outlook (`.msg`) and `.eml` emails bring their attachments along as their own sources, named `email.msg › file.pdf`, while signatures and unsupported files are listed in the email instead. PNG and JPG images are read with the same OCR as PDFs and highlight the cited text. CSV files (UTF-8 or Windows-1250, comma or semicolon) open in the workbook viewer with values kept as written. Legacy `.doc`, `.docm` and `.ppt` files are refused with a message to save them in the current format. Its Word editor moves to DOCX Editor 2.39.0.
+
 ## 0.24.4
 
 ### Patch Changes
