@@ -1,3 +1,5 @@
+import { CLIENT_CERTIFICATE_NAME } from '../client-certificate';
+import { EncryptedSecretValueSchema } from '../git-source/secrets';
 import { DOCUMENT_ARCHIVE_METADATA_SCHEMA } from './document-archive-metadata';
 import { FileReferenceError } from './reference';
 
@@ -38,6 +40,13 @@ export interface FileSourceConfigField {
   default?: string | number | boolean;
   /** Rarely-changed tuning field — rendered under an "Advanced" section in the UI. */
   advanced?: boolean;
+  /**
+   * For a `secret` field that was renamed: the key it was stored and encrypted
+   * under before. A migration moved the stored value to `key`, but the
+   * envelope stays bound to the old name until the value is saved again, so
+   * decryption also accepts it.
+   */
+  encryptedAs?: string;
 }
 
 /** Descriptor for a named file source. */
@@ -95,6 +104,100 @@ function isSet(config: FileSourceConfig, key: string): boolean {
   return value !== undefined && value !== '';
 }
 
+/**
+ * Keys of the client certificate fields an HTTPS source offers. The settings
+ * form renders them as one choice: none, a deployment certificate (by name),
+ * or a custom certificate and key pasted here.
+ */
+export const CLIENT_CERTIFICATE_FIELD_KEYS = {
+  /** Name of a deployment client certificate (`clientCertificates` in the deployment config). */
+  name: 'clientCertificate',
+  certificate: 'clientCertificatePem',
+  privateKey: 'clientPrivateKey',
+  ca: 'caCertificate',
+} as const;
+
+/**
+ * The removed Document Archive switch "Use deployment certificate". Rows
+ * saved before certificates had names still carry it; the worker resolves it
+ * to the only configured certificate (see `fileSourceTls`).
+ */
+export const LEGACY_DEPLOYMENT_CERTIFICATE_KEY = 'useDeploymentCertificate';
+
+/**
+ * The client certificate settings shared by the HTTPS sources: either the
+ * name of a deployment certificate, or a pasted certificate and key (stored
+ * encrypted), plus an optional CA bundle for the server's certificate.
+ */
+function clientCertificateFields(service: string): FileSourceConfigField[] {
+  return [
+    {
+      key: CLIENT_CERTIFICATE_FIELD_KEYS.name,
+      label: 'Client certificate',
+      type: 'string',
+      required: false,
+      description: `Certificate presented to the ${service} when it requires mutual TLS. A deployment certificate is mounted by your administrator; its key never leaves the server.`,
+    },
+    {
+      key: CLIENT_CERTIFICATE_FIELD_KEYS.certificate,
+      label: 'Certificate (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      description: 'The full PEM certificate chain, starting with the client certificate.',
+      // Document Archive stored the pasted certificate as `clientCertificate`
+      // before that key became the deployment certificate name (migration 0101).
+      encryptedAs: 'clientCertificate',
+    },
+    {
+      key: CLIENT_CERTIFICATE_FIELD_KEYS.privateKey,
+      label: 'Private key (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      description:
+        'The matching unencrypted PEM private key. Stored encrypted and never shown again.',
+    },
+    {
+      key: CLIENT_CERTIFICATE_FIELD_KEYS.ca,
+      label: 'Trusted CA certificate (PEM)',
+      type: 'secret',
+      multiline: true,
+      required: false,
+      description: `Only if the ${service} uses a private CA. Only this CA is then trusted for the ${service}, not the public ones; TLS verification stays on.`,
+    },
+  ];
+}
+
+/** Problems with the client certificate fields, shared by every HTTPS source. */
+function clientCertificateErrors(config: FileSourceConfig): string[] {
+  const errors: string[] = [];
+  const named = isSet(config, CLIENT_CERTIFICATE_FIELD_KEYS.name);
+  const certificate = isSet(config, CLIENT_CERTIFICATE_FIELD_KEYS.certificate);
+  const privateKey = isSet(config, CLIENT_CERTIFICATE_FIELD_KEYS.privateKey);
+  if (named && !CLIENT_CERTIFICATE_NAME.test(String(config[CLIENT_CERTIFICATE_FIELD_KEYS.name]))) {
+    errors.push('Client certificate must be the name of a deployment client certificate');
+  }
+  if (named && (certificate || privateKey)) {
+    errors.push('Use either a deployment client certificate or a custom one, not both');
+  } else if (certificate !== privateKey) {
+    errors.push('Set both the client certificate and its private key');
+  }
+  return errors;
+}
+
+/**
+ * True when the config presents a client certificate (deployment or custom),
+ * including a connection still saved with the legacy deployment switch.
+ */
+export function hasClientCertificate(config: FileSourceConfig): boolean {
+  return (
+    isSet(config, CLIENT_CERTIFICATE_FIELD_KEYS.name) ||
+    isSet(config, CLIENT_CERTIFICATE_FIELD_KEYS.certificate) ||
+    config[LEGACY_DEPLOYMENT_CERTIFICATE_KEY] === true
+  );
+}
+
 /** Built-in GPFS file source name. */
 export const GPFS_FILE_SOURCE_NAME = 'gpfs';
 
@@ -103,7 +206,8 @@ export const GPFS_FILE_SOURCE_NAME = 'gpfs';
  * GFR) resolver. A GFR file is identified by a stack plus a file id, so it
  * fetches `${baseUrl}/<stackId>/<fileId>/content`, taking the stack from the
  * reference or from `defaultStack`. A base URL that already ends in a stack
- * keeps working for bare file ids. Bearer auth optional.
+ * keeps working for bare file ids. Bearer auth and a client certificate
+ * (mutual TLS) are optional.
  */
 export const GPFS_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
   name: GPFS_FILE_SOURCE_NAME,
@@ -111,6 +215,7 @@ export const GPFS_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
   description: 'Fetch documents from a GPFS/GFR HTTP file registry by stack and file id.',
   referenceFormat: 'stackId/fileId',
   referenceParts: { container: 'stackId', id: 'fileId' },
+  check: clientCertificateErrors,
   configFields: [
     {
       key: 'baseUrl',
@@ -137,6 +242,7 @@ export const GPFS_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
       required: false,
       description: 'Bearer token for the registry, if it requires one.',
     },
+    ...clientCertificateFields('registry'),
     {
       key: 'insecureSkipTlsVerify',
       label: 'Skip TLS verification',
@@ -174,8 +280,6 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
     }
     const username = isSet(config, 'username');
     const password = isSet(config, 'password');
-    const certificate = isSet(config, 'clientCertificate');
-    const privateKey = isSet(config, 'clientPrivateKey');
     if (username !== password) errors.push('Set both the username and password');
     if (String(config.username ?? '').includes(':')) {
       errors.push('Basic authentication username cannot contain a colon');
@@ -187,21 +291,9 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
     ) {
       errors.push('Timeout must be a whole number between 1 and 2147483647 milliseconds');
     }
-    if (certificate !== privateKey) errors.push('Set both the client certificate and private key');
-    if (
-      config.useDeploymentCertificate === true &&
-      (username || password || certificate || privateKey || isSet(config, 'caCertificate'))
-    ) {
-      errors.push('Remove connection credentials before using the deployment certificate');
-    }
-    if (
-      config.useDeploymentCertificate !== true &&
-      !username &&
-      !password &&
-      !certificate &&
-      !privateKey
-    ) {
-      errors.push('Set a username and password, or a client certificate and private key');
+    errors.push(...clientCertificateErrors(config));
+    if (!username && !password && !hasClientCertificate(config)) {
+      errors.push('Set a username and password, or a client certificate');
     }
     if (
       !Number.isInteger(config.maxFileBytes) ||
@@ -223,15 +315,6 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
     },
     allowedContainersField('object stores'),
     {
-      key: 'useDeploymentCertificate',
-      label: 'Use deployment certificate',
-      type: 'boolean',
-      required: false,
-      default: false,
-      description:
-        'Use the client certificate mounted by your administrator. No private key needs to be pasted here.',
-    },
-    {
       key: 'username',
       label: 'Username',
       type: 'string',
@@ -240,33 +323,7 @@ export const VUB_DOCUMENT_ARCHIVE_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor =
         'Technical user for HTTP Basic authentication. Leave blank when using only a client certificate.',
     },
     { key: 'password', label: 'Password', type: 'secret', required: false },
-    {
-      key: 'clientCertificate',
-      label: 'Client certificate (PEM)',
-      type: 'secret',
-      multiline: true,
-      required: false,
-      description:
-        'For certificate authentication, paste the full PEM certificate chain and set its private key below.',
-    },
-    {
-      key: 'clientPrivateKey',
-      label: 'Client private key (PEM)',
-      type: 'secret',
-      multiline: true,
-      required: false,
-      description:
-        'Paste the matching unencrypted PEM private key. Stored encrypted and never shown again.',
-    },
-    {
-      key: 'caCertificate',
-      label: 'Trusted CA certificate (PEM)',
-      type: 'secret',
-      multiline: true,
-      required: false,
-      advanced: true,
-      description: 'Only if the gateway uses a private CA. TLS verification remains enabled.',
-    },
+    ...clientCertificateFields('gateway'),
     ...transferLimitFields('Document Archive').map((field) =>
       field.key === 'maxFileBytes'
         ? { ...field, description: 'Reject decoded documents larger than this. At most 100 MiB.' }
@@ -298,7 +355,7 @@ export const S3_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
     const secret = isSet(config, 'secretAccessKey');
     if (keyId !== secret) return ['Set both the access key ID and the secret access key'];
     if (!keyId && !isSet(config, 'roleArn')) return ['Set an access key or a role ARN'];
-    return [];
+    return clientCertificateErrors(config);
   },
   configFields: [
     {
@@ -368,6 +425,7 @@ export const S3_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
       placeholder: 'https://minio.example.com',
       advanced: true,
     },
+    ...clientCertificateFields('storage endpoint'),
     ...transferLimitFields('storage'),
   ],
 };
@@ -399,7 +457,7 @@ export const AZURE_BLOB_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
     if (!isHttpsOrLocal(config.accountUrl)) {
       return ['The account URL must use HTTPS (HTTP only for a local emulator)'];
     }
-    return [];
+    return clientCertificateErrors(config);
   },
   configFields: [
     {
@@ -448,6 +506,7 @@ export const AZURE_BLOB_FILE_SOURCE_DESCRIPTOR: FileSourceDescriptor = {
       default: 'https://login.microsoftonline.com',
       advanced: true,
     },
+    ...clientCertificateFields('storage account'),
     ...transferLimitFields('storage account'),
   ],
 };
@@ -599,7 +658,8 @@ export interface FileSourceConfigValidation {
  */
 export function validateFileSourceConfig(
   descriptor: FileSourceDescriptor,
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
+  options: { stored?: boolean } = {}
 ): FileSourceConfigValidation {
   const value: FileSourceConfig = {};
   const errors: Array<{ key: string; message: string }> = [];
@@ -634,10 +694,29 @@ export function validateFileSourceConfig(
       }
       case 'string':
       case 'secret': {
+        // An object here is a value stored under a key whose meaning changed
+        // (e.g. a pasted certificate kept under what is now a name field).
+        if (typeof provided === 'object') {
+          errors.push({
+            key: field.key,
+            message: `${field.label} has an unsupported value; set it again`,
+          });
+          break;
+        }
         value[field.key] = String(provided);
         break;
       }
     }
+  }
+
+  // A stored row may still carry the legacy switch; it counts as a
+  // certificate there. A save never keeps it, so it is not accepted on input.
+  if (
+    options.stored &&
+    raw[LEGACY_DEPLOYMENT_CERTIFICATE_KEY] === true &&
+    descriptor.configFields.some((field) => field.key === CLIENT_CERTIFICATE_FIELD_KEYS.name)
+  ) {
+    value[LEGACY_DEPLOYMENT_CERTIFICATE_KEY] = true;
   }
 
   if (errors.length === 0 && descriptor.check) {
@@ -660,7 +739,9 @@ export function storedFileSourceConfigErrors(
     const value = stored[field.key];
     input[field.key] = value === undefined || value === null || value === '' ? undefined : 'set';
   }
-  return validateFileSourceConfig(descriptor, input).errors.map((error) => error.message);
+  return validateFileSourceConfig(descriptor, input, { stored: true }).errors.map(
+    (error) => error.message
+  );
 }
 
 /**
@@ -675,9 +756,13 @@ export function redactFileSourceSecrets(
     descriptor.configFields.filter((f) => f.type === 'secret').map((f) => f.key)
   );
   const out: Record<string, unknown> = {};
-  // Non-secret values pass through.
+  // Non-secret values pass through, except anything shaped like an encrypted
+  // envelope: a secret left under a key that is no longer secret (a renamed
+  // field) must never reach the browser.
   for (const [key, val] of Object.entries(config)) {
-    if (!secretKeys.has(key)) out[key] = val;
+    if (!secretKeys.has(key) && !EncryptedSecretValueSchema.safeParse(val).success) {
+      out[key] = val;
+    }
   }
   // Every secret field reports a boolean "is set", even when absent.
   for (const key of secretKeys) {

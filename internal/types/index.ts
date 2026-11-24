@@ -645,6 +645,9 @@ export * from './env-vars';
 // Organization-managed outbound email servers
 export * from './email-servers';
 
+// Client certificates (mutual TLS identities)
+export * from './client-certificate';
+
 // Organization-managed outbound webhook contracts
 export * from './webhook-delivery-settings';
 export * from './webhooks';

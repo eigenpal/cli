@@ -7172,6 +7172,9 @@ Make an HTTP request to an external API
 | `body` | unknown | no |  | Request body (JSON or string) |
 | `timeout` | number | no | `30000` | Timeout in milliseconds |
 | `insecureSkipTlsVerify` | boolean | no | `false` | If true, skip TLS certificate verification (use only for read-only public endpoints with bad/expired certs) |
+| `clientCertificate` | string | no |  | Client certificate (mutual TLS) to present: the name of a certificate configured in this deployment's clientCertificates. Single-tenant only, and only to hosts listed in that certificate's workflowHosts. Each environment configures its own certificate under the same name. |
+| `clientCertificatePem` | string | no |  | Custom client certificate (PEM chain) as a variable reference, e.g. "{{ env.PARTNER_CERT }}". Use with clientPrivateKey, instead of clientCertificate. |
+| `clientPrivateKey` | string | no |  | Private key (PEM) of clientCertificatePem, as a reference to a secret variable, e.g. "{{ env.PARTNER_KEY }}". Never put PEM in the workflow. |
 
 **Output:** `object`
 
@@ -7232,6 +7235,21 @@ Config schema:
       "description": "If true, skip TLS certificate verification (use only for read-only public endpoints with bad/expired certs)",
       "default": false,
       "type": "boolean"
+    },
+    "clientCertificate": {
+      "description": "Client certificate (mutual TLS) to present: the name of a certificate configured in this deployment's clientCertificates. Single-tenant only, and only to hosts listed in that certificate's workflowHosts. Each environment configures its own certificate under the same name.",
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "clientCertificatePem": {
+      "description": "Custom client certificate (PEM chain) as a variable reference, e.g. \"{{ env.PARTNER_CERT }}\". Use with clientPrivateKey, instead of clientCertificate.",
+      "type": "string",
+      "pattern": "^\\{\\{\\s*env\\.([A-Z][A-Z0-9_]*)\\s*\\}\\}$"
+    },
+    "clientPrivateKey": {
+      "description": "Private key (PEM) of clientCertificatePem, as a reference to a secret variable, e.g. \"{{ env.PARTNER_KEY }}\". Never put PEM in the workflow.",
+      "type": "string",
+      "pattern": "^\\{\\{\\s*env\\.([A-Z][A-Z0-9_]*)\\s*\\}\\}$"
     }
   },
   "required": [

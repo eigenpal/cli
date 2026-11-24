@@ -55,6 +55,7 @@ export {
   CropRegionSpecListSchema,
   CropRegionSpecSchema,
   CropRegionsProcessorConfigSchema,
+  HTTP_SECRET_VARIABLE_REFERENCE,
   // Registry and utilities
   STEP_RETRY_CAPABILITIES,
   STEP_SCHEMAS,

@@ -214,6 +214,7 @@ export const WEBHOOK_TRANSPORT_ERROR_CATEGORIES = [
   'network',
   'invalid_header',
   'invalid_secret',
+  'client_certificate_unavailable',
   'security_validation',
   'invalid_payload',
   'payload_too_large',
@@ -331,6 +332,13 @@ export function explainWebhookFailure(
         title: 'Signing secret unreadable',
         detail:
           'The stored signing secret or custom headers could not be decrypted. Rotate the signing secret or re-enter the headers. This is not retried.',
+        setting: null,
+      };
+    case 'client_certificate_unavailable':
+      return {
+        title: 'Client certificate unavailable',
+        detail:
+          'The client certificate this endpoint presents could not be loaded: a deployment certificate is missing, expired or not mounted on the worker, or a pasted one could not be decrypted. Fix the certificate or choose another one. No request was sent and this is not retried.',
         setting: null,
       };
     case 'security_validation':

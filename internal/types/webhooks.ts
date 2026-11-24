@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WebhookClientCertificateInputSchema } from './client-certificate';
 import { EXECUTION_STATUSES } from './execution-row';
 import { HumanReviewSourceKindSchema, type HumanReviewSourceKind } from './human-review';
 
@@ -184,6 +185,22 @@ export const WebhookEndpointSchema = z.object({
   enabled: z.boolean(),
   signingConfigured: z.literal(true),
   customHeaders: z.array(RedactedWebhookCustomHeaderSchema),
+  clientCertificate: z
+    .discriminatedUnion('source', [
+      z.object({
+        source: z.literal('deployment'),
+        name: z.string(),
+        commonName: z.string().nullable().optional(),
+        expiresAt: z.string().nullable().optional(),
+      }),
+      z.object({
+        source: z.literal('custom'),
+        commonName: z.string().nullable(),
+        expiresAt: z.string(),
+      }),
+    ])
+    .nullable()
+    .optional(),
   createdBy: z.string().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
@@ -270,6 +287,8 @@ export const CreateWebhookEndpointSchema = z
     eventTypes: z.array(WebhookEventTypeSchema).min(1),
     workflowIds: WebhookWorkflowScopeSchema.default(null),
     customHeaders: z.array(WebhookCustomHeaderSchema).max(WEBHOOK_MAX_HEADERS).default([]),
+    /** Presented on delivery (mutual TLS). Omitted: none. */
+    clientCertificate: WebhookClientCertificateInputSchema.optional(),
   })
   .superRefine(validateWebhookHeaderCollection);
 
@@ -284,6 +303,8 @@ export const UpdateWebhookEndpointSchema = z
       .max(WEBHOOK_MAX_HEADERS)
       .optional(),
     enabled: z.boolean().optional(),
+    /** Omitted: keep the current certificate (a pasted key is never sent back). */
+    clientCertificate: WebhookClientCertificateInputSchema.optional(),
   })
   .superRefine(validateWebhookHeaderCollection);
 

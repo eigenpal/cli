@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { ClientCertificateNameSchema } from '../client-certificate';
 import { ReasoningEffortSchema } from '../client/ai-client';
 import {
   ID_PREFIXES,
@@ -1816,20 +1817,67 @@ export const TransformRegexExtractOutputSchema = z
  * action.http - Make HTTP request
  * Config goes in step.with
  */
-export const ActionHttpConfigSchema = z.object({
-  url: z.string().min(1, 'URL is required').describe('Request URL (supports template expressions)'),
-  method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET').optional(),
-  headers: z.record(z.string(), z.string()).optional().describe('HTTP headers'),
-  body: z.unknown().optional().describe('Request body (JSON or string)'),
-  timeout: z.number().positive().default(30000).optional().describe('Timeout in milliseconds'),
-  insecureSkipTlsVerify: z
-    .boolean()
-    .default(false)
-    .optional()
-    .describe(
-      'If true, skip TLS certificate verification (use only for read-only public endpoints with bad/expired certs)'
+/**
+ * A custom client certificate and key on `action.http` come only from
+ * variables (`{{ env.NAME }}`), so no PEM is ever committed with a workflow and
+ * each environment supplies its own. The key's variable must be a secret.
+ */
+export const HTTP_SECRET_VARIABLE_REFERENCE = /^\{\{\s*env\.([A-Z][A-Z0-9_]*)\s*\}\}$/;
+const HTTP_SECRET_VARIABLE_MESSAGE =
+  'Reference a variable, e.g. "{{ env.PARTNER_KEY }}"; never put PEM in the workflow';
+
+export const ActionHttpConfigSchema = z
+  .object({
+    url: z
+      .string()
+      .min(1, 'URL is required')
+      .describe('Request URL (supports template expressions)'),
+    method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET').optional(),
+    headers: z.record(z.string(), z.string()).optional().describe('HTTP headers'),
+    body: z.unknown().optional().describe('Request body (JSON or string)'),
+    timeout: z.number().positive().default(30000).optional().describe('Timeout in milliseconds'),
+    insecureSkipTlsVerify: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe(
+        'If true, skip TLS certificate verification (use only for read-only public endpoints with bad/expired certs)'
+      ),
+    clientCertificate: ClientCertificateNameSchema.optional().describe(
+      "Client certificate (mutual TLS) to present: the name of a certificate configured in this deployment's clientCertificates. Single-tenant only, and only to hosts listed in that certificate's workflowHosts. Each environment configures its own certificate under the same name."
     ),
-});
+    clientCertificatePem: z
+      .string()
+      .regex(HTTP_SECRET_VARIABLE_REFERENCE, HTTP_SECRET_VARIABLE_MESSAGE)
+      .optional()
+      .describe(
+        'Custom client certificate (PEM chain) as a variable reference, e.g. "{{ env.PARTNER_CERT }}". Use with clientPrivateKey, instead of clientCertificate.'
+      ),
+    clientPrivateKey: z
+      .string()
+      .regex(HTTP_SECRET_VARIABLE_REFERENCE, HTTP_SECRET_VARIABLE_MESSAGE)
+      .optional()
+      .describe(
+        'Private key (PEM) of clientCertificatePem, as a reference to a secret variable, e.g. "{{ env.PARTNER_KEY }}". Never put PEM in the workflow.'
+      ),
+  })
+  .superRefine((config, ctx) => {
+    if (config.clientCertificate && (config.clientCertificatePem || config.clientPrivateKey)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['clientCertificate'],
+        message:
+          'Use either clientCertificate or clientCertificatePem with clientPrivateKey, not both',
+      });
+    }
+    if (Boolean(config.clientCertificatePem) !== Boolean(config.clientPrivateKey)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [config.clientCertificatePem ? 'clientPrivateKey' : 'clientCertificatePem'],
+        message: 'Set both clientCertificatePem and clientPrivateKey',
+      });
+    }
+  });
 
 export const ActionHttpOutputSchema = z.object({
   status: z.number().describe('HTTP status code'),

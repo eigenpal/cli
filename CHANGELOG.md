@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.25.0
+
+### Patch Changes
+
+- c944d17: Bundled docs describe named client certificates (mutual TLS) for SSO, file sources and webhook endpoints.
+
 ## 0.24.6
 
 ### Patch Changes
