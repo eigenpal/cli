@@ -1,5 +1,11 @@
 # @eigenpal/cli
 
+## 0.25.4
+
+### Patch Changes
+
+- 7a90341: `eigenpal run workflows.<slug>@^1` and `eigenpal rerun --version ^1` accept workflow version ranges; help and bundled docs explain how versions resolve.
+
 ## 0.25.0
 
 ### Patch Changes

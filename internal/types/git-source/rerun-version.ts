@@ -32,7 +32,7 @@ export function parseWorkflowRerunVersion(
     return {
       ok: false,
       message:
-        'Use latest, original, an exact X.Y.Z version, or a workflow version/history id (wfv_*, version_*, wfh_*).',
+        'Use latest, original, an exact X.Y.Z version, a range (1, 1.2, 1.x, ^1.2.3, ~1.2.3), or a workflow version/history id (wfv_*, version_*, wfh_*).',
     };
   }
   return { ok: true, parsed: { kind: 'explicit', value: result.data } };

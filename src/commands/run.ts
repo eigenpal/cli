@@ -22,7 +22,9 @@ import { runSavedWorkflowExamples } from './workflow/execution';
 
 export function registerRunCommands(program: Command): void {
   addJsonFlag(withBaseUrl(program.command('run <target>')))
-    .description('Start a workflow or agent run, e.g. workflows.extract-invoice.')
+    .description(
+      'Start a workflow or agent run, e.g. workflows.extract-invoice or workflows.extract-invoice@^1.'
+    )
     .option('--tag <tag>', 'Execution tag. Repeat for multiple tags.', collectRepeated, [])
     .option('--input-json <json>', 'JSON input object')
     .option(
@@ -44,6 +46,19 @@ export function registerRunCommands(program: Command): void {
     .addHelpText(
       'after',
       `
+Versions
+  Append @<version> to the target. Default is @latest, the workflow's current
+  version: every save made current runs for latest callers right away.
+    workflows.extract-invoice@1.2.3    exactly that tag
+    workflows.extract-invoice@^1       highest released 1.x.y (also 1, 1.x)
+    workflows.extract-invoice@~1.2.3   highest released 1.2.y at or above 1.2.3
+    workflows.extract-invoice@1.2      highest released 1.2.y (also 1.2.x)
+    workflows.extract-invoice@wfv_...  a version id
+  A range only matches tags that have been made current (candidates kept off
+  live traffic never match) and never a prerelease unless the range names one.
+  No match is a 404 "No version matches <range>". Agent targets take a git ref
+  (main, 1.2.3, 1.x, or a commit SHA).
+
 Grading --example runs
   --example runs the SERVER's stored dataset example for the target — workflows
   (workflows.<slug>) and agents (agents.<slug>) alike — so push your latest
@@ -71,7 +86,7 @@ Exit codes
     .description("Create a new run from a previous run's stored input snapshot.")
     .option(
       '--version <version>',
-      'Version/source ref for the new run: latest, original, or an explicit ref',
+      'Version for the new run: latest, original (the source run version), an exact tag (1.2.3), a workflow range (^1, 1.2.x, ~1.2.3), or a version id. Agent reruns take a git ref.',
       'latest'
     )
     .option('--wait', 'Poll until the rerun reaches a terminal status')

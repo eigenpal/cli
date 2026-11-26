@@ -1,6 +1,6 @@
 # eigenpal run
 
-Start a workflow or agent run, e.g. workflows.extract-invoice.
+Start a workflow or agent run, e.g. workflows.extract-invoice or workflows.extract-invoice@^1.
 
 ### Arguments
 

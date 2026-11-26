@@ -23,6 +23,7 @@ import {
   type JsonSchema7Type,
 } from '../core/common';
 import { EmailServerIdSchema } from '../email-servers';
+import { WorkflowRunVersionRefSchema } from '../git-source/grammar';
 import { HumanReviewStepConfigSchema } from '../human-review';
 import {
   PARSE_OUTPUT_FORMAT_DESCRIPTION,
@@ -1911,6 +1912,9 @@ export const ActionInvokeWorkflowConfigSchema = z
       .min(1)
       .optional()
       .describe('Legacy alias for workflow when the value is a wf_ id'),
+    version: WorkflowRunVersionRefSchema.optional().describe(
+      'Version of the invoked workflow. Default `latest` (its current version, so every save of the target goes live here). An exact tag (`1.2.3`), a range (`^1`, `1.2.x`, `~1.2.3`; the highest released tag that matches, never a candidate), or a version id. A literal, not a template; checked when the workflow is saved.'
+    ),
     execution: z
       .enum(['inline', 'child'])
       .optional()

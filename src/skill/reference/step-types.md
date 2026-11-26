@@ -7318,6 +7318,7 @@ Execute another workflow and return its output
 | `tags` | string \| array<string> | no |  | Child mode only. One tag or a list. Supports templates resolving to a string or string array. Tags are not inherited. |
 | `workflow` | string | no |  | Workflow to invoke — definition name or wf_ id (tenant-scoped) |
 | `workflowId` | string | no |  | Legacy alias for workflow when the value is a wf_ id |
+| `version` | string | no |  | Version of the invoked workflow. Default `latest` (its current version, so every save of the target goes live here). An exact tag (`1.2.3`), a range (`^1`, `1.2.x`, `~1.2.3`; the highest released tag that matches, never a candidate), or a version id. A literal, not a template; checked when the workflow is saved. |
 | `execution` | `"inline"` \| `"child"` | no |  | inline: run target steps in this execution (default). child: spawn a separate run with lineage. |
 | `input` | record<string, unknown> | no |  | Input record keyed by the invoked workflow's declared inputs |
 | `wait` | boolean | no |  | Child mode only. Wait for the invoked workflow to complete and return its output (default: true). Set false for fire-and-forget. |
@@ -7363,6 +7364,10 @@ Config schema:
       "description": "Legacy alias for workflow when the value is a wf_ id",
       "type": "string",
       "minLength": 1
+    },
+    "version": {
+      "description": "Version of the invoked workflow. Default `latest` (its current version, so every save of the target goes live here). An exact tag (`1.2.3`), a range (`^1`, `1.2.x`, `~1.2.3`; the highest released tag that matches, never a candidate), or a version id. A literal, not a template; checked when the workflow is saved.",
+      "type": "string"
     },
     "execution": {
       "description": "inline: run target steps in this execution (default). child: spawn a separate run with lineage.",

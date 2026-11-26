@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  WORKFLOW_VERSION_SELECTOR_HINT,
+  parseWorkflowVersionSelector,
+} from './workflow-version-selector';
 
 export const SOURCE_PACKAGE_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 /**
@@ -76,18 +80,10 @@ export const SourceVersionRefSchema = z.string().superRefine((value, ctx) => {
 export type SourceVersionRef = z.infer<typeof SourceVersionRefSchema>;
 
 export const WorkflowRunVersionRefSchema = z.string().superRefine((value, ctx) => {
-  if (
-    value === 'latest' ||
-    SOURCE_SEMVER_PATTERN.test(value) ||
-    value.startsWith('version_') ||
-    value.startsWith('wfv_') ||
-    value.startsWith('wfh_')
-  ) {
-    return;
-  }
+  if (parseWorkflowVersionSelector(value)) return;
   ctx.addIssue({
     code: 'custom',
-    message: 'Use latest, an exact X.Y.Z version, or a workflow version/history id',
+    message: `Invalid workflow version "${value}". ${WORKFLOW_VERSION_SELECTOR_HINT}.`,
   });
 });
 export type WorkflowRunVersionRef = z.infer<typeof WorkflowRunVersionRefSchema>;
@@ -196,7 +192,13 @@ export const RunTargetStringSchema = z.string().superRefine((value, ctx) => {
   if (ref) {
     const refSchema = root === 'workflows' ? WorkflowRunVersionRefSchema : SourceVersionRefSchema;
     if (!refSchema.safeParse(ref).success) {
-      ctx.addIssue({ code: 'custom', message: `Invalid run target version: ${ref}` });
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          root === 'workflows'
+            ? `Invalid run target version: ${ref}. ${WORKFLOW_VERSION_SELECTOR_HINT}.`
+            : `Invalid run target version: ${ref}`,
+      });
     }
   }
 });

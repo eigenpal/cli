@@ -150,3 +150,21 @@ export { definitionAssetImports } from './definition-imports';
 
 export { sourceFileText } from './definition-imports';
 export type { CapturedSourceFile } from './definition-imports';
+
+export {
+  WORKFLOW_VERSION_EXACT_PATTERN,
+  WORKFLOW_VERSION_RANGE_PATTERN,
+  WORKFLOW_VERSION_SELECTOR_HINT,
+  isWorkflowVersionRange,
+  maxSatisfyingWorkflowVersion,
+  parseWorkflowVersionSelector,
+  type WorkflowVersionSelector,
+  type WorkflowVersionSelectorKind,
+} from './workflow-version-selector';
+
+export {
+  resolveWorkflowVersionSelector,
+  type WorkflowVersionLookup,
+  type WorkflowVersionResolution,
+  type WorkflowVersionRowLike,
+} from './resolve-workflow-version';

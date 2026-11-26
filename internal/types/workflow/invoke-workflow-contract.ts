@@ -111,6 +111,8 @@ export interface InvokeWorkflowTargetRef {
   /** Workflow name or `wf_` id as authored in the step config. */
   ref: string;
   mode: InvokeExecutionMode;
+  /** Version selector from `with.version`; `latest` when the step sets none. */
+  version: string;
   stepName?: string;
 }
 
@@ -131,6 +133,29 @@ export function getInvokeExecutionMode(
   return withConfig?.execution === 'child' ? 'child' : 'inline';
 }
 
+/**
+ * Version selector an invoke step asks for (`with.version`), `latest` when
+ * unset. Same grammar as run targets: `latest`, `1.2.3`, a range such as
+ * `^1`, or a version id.
+ */
+export function getInvokeWorkflowVersion(withConfig: Record<string, unknown> | undefined): string {
+  const version = withConfig?.version;
+  return typeof version === 'string' && version.trim().length > 0 ? version.trim() : 'latest';
+}
+
+/**
+ * Find the pinned inline snapshot for an invoke step: same workflow (id or
+ * name) and same version selector. Snapshots without `version` (including
+ * ones stored before steps could pin a version) are the `latest` entry.
+ */
+export function findInlineSnapshot<
+  T extends { workflowId: string; name?: string; version?: string },
+>(snapshots: readonly T[], ref: string, version: string): T | undefined {
+  return snapshots.find(
+    (s) => (s.workflowId === ref || s.name === ref) && (s.version ?? 'latest') === version
+  );
+}
+
 /** Resolve the target reference from `workflow` or legacy `workflowId`. */
 export function getInvokeWorkflowRef(
   withConfig: Record<string, unknown> | undefined
@@ -144,7 +169,9 @@ export function getInvokeWorkflowRef(
 
 interface StepLike {
   type?: unknown;
-  with?: { workflow?: unknown; workflowId?: unknown; execution?: unknown } | undefined;
+  with?:
+    | { workflow?: unknown; workflowId?: unknown; execution?: unknown; version?: unknown }
+    | undefined;
   [key: string]: unknown;
 }
 
@@ -193,12 +220,14 @@ export function collectInvokeWorkflowTargets(
     const withConfig = step.with as Record<string, unknown> | undefined;
     const ref = getInvokeWorkflowRef(withConfig);
     if (!ref) continue;
-    const key = `${getInvokeExecutionMode(withConfig)}:${ref}`;
+    const version = getInvokeWorkflowVersion(withConfig);
+    const key = `${getInvokeExecutionMode(withConfig)}:${ref}@${version}`;
     if (seen.has(key)) continue;
     seen.add(key);
     targets.push({
       ref,
       mode: getInvokeExecutionMode(withConfig),
+      version,
       stepName: typeof step.name === 'string' ? step.name : undefined,
     });
   }
